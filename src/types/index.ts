@@ -41,6 +41,10 @@ export interface TwitterSettings {
   username: string
   userId: string
   listIds: { id: string; name: string }[]
+  apiKey: string
+  apiSecret: string
+  accessToken: string
+  accessTokenSecret: string
 }
 
 export interface Tweet {
@@ -119,6 +123,10 @@ export interface ElectronAPI {
   verifyClaudeKey: (key: string) => Promise<{ valid: boolean; error?: string }>
   summarizeFeed: (apiKey: string, articles: { title: string; description: string }[], section: string) => Promise<string>
   parseVoiceCommand: (apiKey: string, transcript: string, categoryNames: string[]) => Promise<VoiceCommand>
+
+  // Tweet posting
+  postTweet: (text: string) => Promise<{ success: boolean; tweetId?: string; error?: string }>
+  verifyTwitterOAuth: () => Promise<{ valid: boolean; username?: string; error?: string }>
 
   // Utilities
   openExternal: (url: string) => Promise<void>

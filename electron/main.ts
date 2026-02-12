@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, shell } from 'electron'
 import path from 'path'
 import { initDatabase, getCategories, getTasks, addTask, updateTask, deleteTask, toggleTaskComplete, getDailyNote, saveDailyNote, getRecentNotes, getStats, getTwitterSettings, saveTwitterSettings, getRSSFeeds, addRSSFeed, removeRSSFeed, getClaudeApiKey, saveClaudeApiKey } from './database'
-import { verifyToken, getUserByUsername, getUserLists, fetchAllLists } from './twitter'
+import { verifyToken, getUserByUsername, getUserLists, fetchAllLists, postTweet, verifyOAuthCredentials } from './twitter'
 import { fetchAllFeeds } from './rss'
 import { summarizeAI, summarizeGeo, verifyClaudeKey, parseVoiceCommand } from './summarize'
 
@@ -168,6 +168,23 @@ ipcMain.handle('twitter-get-lists', async (_, bearerToken: string, userId: strin
 
 ipcMain.handle('twitter-fetch-feed', async (_, bearerToken: string, lists: { id: string; name: string }[]) => {
   return fetchAllLists(bearerToken, lists)
+})
+
+// Tweet posting
+ipcMain.handle('post-tweet', async (_, text: string) => {
+  const settings = getTwitterSettings()
+  if (!settings.apiKey || !settings.apiSecret || !settings.accessToken || !settings.accessTokenSecret) {
+    return { success: false, error: 'Twitter OAuth credentials not configured. Set them in Settings.' }
+  }
+  return postTweet({ apiKey: settings.apiKey, apiSecret: settings.apiSecret, accessToken: settings.accessToken, accessTokenSecret: settings.accessTokenSecret }, text)
+})
+
+ipcMain.handle('verify-twitter-oauth', async () => {
+  const settings = getTwitterSettings()
+  if (!settings.apiKey || !settings.apiSecret || !settings.accessToken || !settings.accessTokenSecret) {
+    return { valid: false, error: 'Missing credentials' }
+  }
+  return verifyOAuthCredentials({ apiKey: settings.apiKey, apiSecret: settings.apiSecret, accessToken: settings.accessToken, accessTokenSecret: settings.accessTokenSecret })
 })
 
 // RSS handlers

@@ -9,6 +9,7 @@ import TaskList from './components/TaskList'
 import Feed from './components/Feed'
 import Settings from './components/Settings'
 import VoiceButton from './components/VoiceButton'
+import ComposeTweet from './components/ComposeTweet'
 
 type Tab = 'dashboard' | 'tasks' | 'list' | 'notes' | 'feed' | 'settings'
 
@@ -20,6 +21,7 @@ function App() {
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null)
   const [defaultCategoryId, setDefaultCategoryId] = useState<number | undefined>()
   const [activeTab, setActiveTab] = useState<Tab>('dashboard')
+  const [showTweetModal, setShowTweetModal] = useState(false)
   const voiceListeningRef = useRef(false)
 
   const loadData = useCallback(async () => {
@@ -151,6 +153,15 @@ function App() {
           <h1 className="text-xs font-display font-semibold text-white/80 tracking-wide uppercase">Mega Agenda</h1>
         </div>
         <div className="flex gap-1.5 no-drag items-center">
+          <button
+            onClick={() => setShowTweetModal(true)}
+            className="w-6 h-6 rounded-md hover:bg-white/[0.06] flex items-center justify-center text-white/30 hover:text-accent-blue transition-all"
+            title="Compose Tweet"
+          >
+            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+            </svg>
+          </button>
           <VoiceButton
             categories={categories}
             onCommand={handleVoiceCommand}
@@ -291,6 +302,11 @@ function App() {
           onAdd={handleAddTask}
           onClose={() => { setShowAddModal(false); setDefaultCategoryId(undefined) }}
         />
+      )}
+
+      {/* Compose Tweet Modal */}
+      {showTweetModal && (
+        <ComposeTweet onClose={() => setShowTweetModal(false)} />
       )}
 
     </div>

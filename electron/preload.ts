@@ -51,6 +51,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   twitterGetLists: (token: string, userId: string) => ipcRenderer.invoke('twitter-get-lists', token, userId),
   twitterFetchFeed: (token: string, lists: any[]) => ipcRenderer.invoke('twitter-fetch-feed', token, lists),
 
+  // Tweet posting
+  postTweet: (text: string) => ipcRenderer.invoke('post-tweet', text),
+  verifyTwitterOAuth: () => ipcRenderer.invoke('verify-twitter-oauth'),
+
   // RSS
   getRSSFeeds: () => ipcRenderer.invoke('get-rss-feeds'),
   addRSSFeed: (url: string, name: string, category: string) => ipcRenderer.invoke('add-rss-feed', url, name, category),

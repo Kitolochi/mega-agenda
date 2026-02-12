@@ -46,6 +46,11 @@ interface TwitterSettings {
   username: string
   userId: string
   listIds: { id: string; name: string }[]
+  // OAuth 1.0a credentials for posting tweets
+  apiKey: string
+  apiSecret: string
+  accessToken: string
+  accessTokenSecret: string
 }
 
 interface RSSFeed {
@@ -126,7 +131,7 @@ export function initDatabase(): Database {
         tasksCompletedThisWeek: 0,
         weekStartDate: getWeekStart()
       },
-      twitter: { bearerToken: '', username: '', userId: '', listIds: [] },
+      twitter: { bearerToken: '', username: '', userId: '', listIds: [], apiKey: '', apiSecret: '', accessToken: '', accessTokenSecret: '' },
       rssFeeds: [],
       claudeApiKey: ''
     }
@@ -135,7 +140,16 @@ export function initDatabase(): Database {
 
   // Initialize twitter settings if missing
   if (!db.twitter) {
-    db.twitter = { bearerToken: '', username: '', userId: '', listIds: [] }
+    db.twitter = { bearerToken: '', username: '', userId: '', listIds: [], apiKey: '', apiSecret: '', accessToken: '', accessTokenSecret: '' }
+    saveDatabase()
+  }
+
+  // Migrate: add OAuth fields if missing
+  if (db.twitter.apiKey === undefined) {
+    db.twitter.apiKey = ''
+    db.twitter.apiSecret = ''
+    db.twitter.accessToken = ''
+    db.twitter.accessTokenSecret = ''
     saveDatabase()
   }
 
@@ -403,6 +417,10 @@ export function saveTwitterSettings(settings: Partial<TwitterSettings>): Twitter
   if (settings.username !== undefined) db.twitter.username = settings.username
   if (settings.userId !== undefined) db.twitter.userId = settings.userId
   if (settings.listIds !== undefined) db.twitter.listIds = settings.listIds
+  if (settings.apiKey !== undefined) db.twitter.apiKey = settings.apiKey
+  if (settings.apiSecret !== undefined) db.twitter.apiSecret = settings.apiSecret
+  if (settings.accessToken !== undefined) db.twitter.accessToken = settings.accessToken
+  if (settings.accessTokenSecret !== undefined) db.twitter.accessTokenSecret = settings.accessTokenSecret
   saveDatabase()
   return db.twitter
 }

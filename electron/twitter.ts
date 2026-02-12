@@ -1,8 +1,16 @@
 import https from 'https'
+import crypto from 'crypto'
 
 export interface TwitterSettings {
   bearerToken: string
   listIds: { id: string; name: string }[]
+}
+
+export interface TwitterOAuthCredentials {
+  apiKey: string
+  apiSecret: string
+  accessToken: string
+  accessTokenSecret: string
 }
 
 export interface Tweet {
@@ -137,6 +145,122 @@ export async function getListTweets(bearerToken: string, listId: string, listNam
     console.error(`Failed to fetch tweets for list ${listId}:`, err)
     return []
   }
+}
+
+// OAuth 1.0a signature generation for tweet posting
+function percentEncode(str: string): string {
+  return encodeURIComponent(str).replace(/[!'()*]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase())
+}
+
+function generateOAuthSignature(
+  method: string,
+  url: string,
+  params: Record<string, string>,
+  consumerSecret: string,
+  tokenSecret: string
+): string {
+  const sortedParams = Object.keys(params).sort().map(k => `${percentEncode(k)}=${percentEncode(params[k])}`).join('&')
+  const baseString = `${method.toUpperCase()}&${percentEncode(url)}&${percentEncode(sortedParams)}`
+  const signingKey = `${percentEncode(consumerSecret)}&${percentEncode(tokenSecret)}`
+  return crypto.createHmac('sha1', signingKey).update(baseString).digest('base64')
+}
+
+function buildOAuthHeader(creds: TwitterOAuthCredentials, method: string, url: string): string {
+  const oauthParams: Record<string, string> = {
+    oauth_consumer_key: creds.apiKey,
+    oauth_nonce: crypto.randomBytes(16).toString('hex'),
+    oauth_signature_method: 'HMAC-SHA1',
+    oauth_timestamp: Math.floor(Date.now() / 1000).toString(),
+    oauth_token: creds.accessToken,
+    oauth_version: '1.0',
+  }
+
+  const signature = generateOAuthSignature(method, url, oauthParams, creds.apiSecret, creds.accessTokenSecret)
+  oauthParams['oauth_signature'] = signature
+
+  const headerParts = Object.keys(oauthParams).sort().map(k => `${percentEncode(k)}="${percentEncode(oauthParams[k])}"`)
+  return 'OAuth ' + headerParts.join(', ')
+}
+
+export async function postTweet(creds: TwitterOAuthCredentials, text: string): Promise<{ success: boolean; tweetId?: string; error?: string }> {
+  const url = 'https://api.twitter.com/2/tweets'
+  const authHeader = buildOAuthHeader(creds, 'POST', url)
+  const body = JSON.stringify({ text })
+
+  return new Promise((resolve) => {
+    const parsedUrl = new URL(url)
+    const req = https.request({
+      hostname: parsedUrl.hostname,
+      path: parsedUrl.pathname,
+      method: 'POST',
+      headers: {
+        'Authorization': authHeader,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body),
+      }
+    }, (res) => {
+      let data = ''
+      res.on('data', (chunk) => { data += chunk })
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data)
+          if (res.statusCode === 201 && parsed.data?.id) {
+            resolve({ success: true, tweetId: parsed.data.id })
+          } else {
+            const errMsg = parsed.detail || parsed.title || parsed.errors?.[0]?.message || `HTTP ${res.statusCode}`
+            resolve({ success: false, error: errMsg })
+          }
+        } catch {
+          resolve({ success: false, error: `Failed to parse response: ${data.slice(0, 200)}` })
+        }
+      })
+    })
+
+    req.on('error', (err) => resolve({ success: false, error: err.message }))
+    req.setTimeout(15000, () => { req.destroy(); resolve({ success: false, error: 'Request timeout' }) })
+    req.write(body)
+    req.end()
+  })
+}
+
+export async function verifyOAuthCredentials(creds: TwitterOAuthCredentials): Promise<{ valid: boolean; username?: string; error?: string }> {
+  const url = 'https://api.twitter.com/2/users/me'
+  const authHeader = buildOAuthHeader(creds, 'GET', url)
+
+  return new Promise((resolve) => {
+    const parsedUrl = new URL(url)
+    const req = https.request({
+      hostname: parsedUrl.hostname,
+      path: parsedUrl.pathname,
+      method: 'GET',
+      headers: {
+        'Authorization': authHeader,
+      }
+    }, (res) => {
+      let data = ''
+      res.on('data', (chunk) => { data += chunk })
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data)
+          if (res.statusCode === 200 && parsed.data?.username) {
+            resolve({ valid: true, username: parsed.data.username })
+          } else if (res.statusCode === 401) {
+            resolve({ valid: false, error: 'Invalid credentials' })
+          } else if (res.statusCode === 403) {
+            resolve({ valid: false, error: parsed.detail || 'Forbidden — check your app permissions on developer.x.com' })
+          } else {
+            resolve({ valid: false, error: parsed.detail || parsed.title || `HTTP ${res.statusCode}` })
+          }
+        } catch {
+          resolve({ valid: false, error: `Failed to parse response` })
+        }
+      })
+    })
+
+    req.on('error', (err) => resolve({ valid: false, error: err.message }))
+    req.setTimeout(15000, () => { req.destroy(); resolve({ valid: false, error: 'Request timeout' }) })
+    req.end()
+  })
 }
 
 export async function fetchAllLists(bearerToken: string, lists: { id: string; name: string }[]): Promise<Tweet[]> {
