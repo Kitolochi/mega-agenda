@@ -126,6 +126,48 @@ export interface VoiceCommand {
   note?: string
 }
 
+export interface ChatMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  timestamp: string
+  model?: string
+  tokenUsage?: { input: number; output: number }
+}
+
+export interface ChatConversation {
+  id: string
+  title: string
+  messages: ChatMessage[]
+  createdAt: string
+  updatedAt: string
+  systemPrompt?: string
+}
+
+export interface ChatSettings {
+  model: string
+  systemPromptMode: 'default' | 'context' | 'custom'
+  maxTokens: number
+  customSystemPrompt?: string
+}
+
+export interface CLISession {
+  sessionId: string
+  firstPrompt: string
+  messageCount: number
+  created: string
+  modified: string
+  project: string
+}
+
+export interface CLISessionMessage {
+  type: 'user' | 'assistant'
+  content: string
+  timestamp: string
+  model?: string
+  uuid?: string
+}
+
 export interface ElectronAPI {
   // Task operations
   getCategories: () => Promise<Category[]>
@@ -210,6 +252,30 @@ export interface ElectronAPI {
   closeWindow: () => void
   minimizeWindow: () => void
   onOpenAddModal: (callback: () => void) => () => void
+
+  // Chat conversations
+  getChatConversations: () => Promise<ChatConversation[]>
+  getChatConversation: (id: string) => Promise<ChatConversation | null>
+  createChatConversation: (title: string) => Promise<ChatConversation>
+  addChatMessage: (conversationId: string, message: ChatMessage) => Promise<ChatConversation>
+  deleteChatConversation: (id: string) => Promise<void>
+  renameChatConversation: (id: string, title: string) => Promise<ChatConversation>
+
+  // Chat settings
+  getChatSettings: () => Promise<ChatSettings>
+  saveChatSettings: (settings: Partial<ChatSettings>) => Promise<ChatSettings>
+
+  // Chat streaming
+  chatSendMessage: (conversationId: string, messages: { role: string; content: string }[], systemPrompt?: string) => Promise<void>
+  chatAbort: () => Promise<void>
+  onChatStreamChunk: (callback: (data: { conversationId: string; text: string }) => void) => () => void
+  onChatStreamEnd: (callback: (data: { conversationId: string; model: string; usage: { input: number; output: number } }) => void) => () => void
+  onChatStreamError: (callback: (data: { conversationId: string; error: string }) => void) => () => void
+
+  // CLI logs
+  getCliSessions: () => Promise<CLISession[]>
+  getCliSessionMessages: (sessionId: string, offset?: number, limit?: number) => Promise<{ messages: CLISessionMessage[]; hasMore: boolean }>
+  searchCliSessions: (query: string) => Promise<{ sessionId: string; firstPrompt: string; matches: string[] }[]>
 }
 
 declare global {

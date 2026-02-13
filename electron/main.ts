@@ -1,10 +1,12 @@
 import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, shell, Notification, clipboard } from 'electron'
 import path from 'path'
-import { initDatabase, getCategories, getTasks, addTask, updateTask, deleteTask, toggleTaskComplete, getDailyNote, saveDailyNote, getRecentNotes, getStats, getTwitterSettings, saveTwitterSettings, getRSSFeeds, addRSSFeed, removeRSSFeed, getClaudeApiKey, saveClaudeApiKey, getActivityLog, getPomodoroState, startPomodoro, completePomodoro, startBreak, stopPomodoro, getMorningBriefing, saveMorningBriefing, dismissMorningBriefing, getBriefingData, getWeeklyReview, saveWeeklyReview, getAllWeeklyReviews, getWeeklyReviewData, checkWeeklyReviewNeeded } from './database'
+import { initDatabase, getCategories, getTasks, addTask, updateTask, deleteTask, toggleTaskComplete, getDailyNote, saveDailyNote, getRecentNotes, getStats, getTwitterSettings, saveTwitterSettings, getRSSFeeds, addRSSFeed, removeRSSFeed, getClaudeApiKey, saveClaudeApiKey, getActivityLog, getPomodoroState, startPomodoro, completePomodoro, startBreak, stopPomodoro, getMorningBriefing, saveMorningBriefing, dismissMorningBriefing, getBriefingData, getWeeklyReview, saveWeeklyReview, getAllWeeklyReviews, getWeeklyReviewData, checkWeeklyReviewNeeded, getChatConversations, getChatConversation, createChatConversation, addChatMessage, deleteChatConversation, renameChatConversation, getChatSettings, saveChatSettings } from './database'
 import { verifyToken, getUserByUsername, getUserLists, fetchAllLists, postTweet, verifyOAuthCredentials } from './twitter'
 import { fetchAllFeeds } from './rss'
 import { summarizeAI, summarizeGeo, verifyClaudeKey, parseVoiceCommand, generateMorningBriefing, generateWeeklyReview } from './summarize'
 import { createTerminal, writeTerminal, resizeTerminal, killTerminal } from './terminal'
+import { streamChatMessage, abortChatStream } from './chat'
+import { getCliSessions, getCliSessionMessages, searchCliSessions } from './cli-logs'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -396,6 +398,64 @@ function buildLocalWeeklyReview(data: ReturnType<typeof getWeeklyReviewData>): s
   }
   return lines.join('\n')
 }
+
+// Chat conversations
+ipcMain.handle('get-chat-conversations', () => {
+  return getChatConversations()
+})
+
+ipcMain.handle('get-chat-conversation', (_, id: string) => {
+  return getChatConversation(id)
+})
+
+ipcMain.handle('create-chat-conversation', (_, title: string) => {
+  return createChatConversation(title)
+})
+
+ipcMain.handle('add-chat-message', (_, conversationId: string, message: any) => {
+  return addChatMessage(conversationId, message)
+})
+
+ipcMain.handle('delete-chat-conversation', (_, id: string) => {
+  return deleteChatConversation(id)
+})
+
+ipcMain.handle('rename-chat-conversation', (_, id: string, title: string) => {
+  return renameChatConversation(id, title)
+})
+
+// Chat settings
+ipcMain.handle('get-chat-settings', () => {
+  return getChatSettings()
+})
+
+ipcMain.handle('save-chat-settings', (_, settings: any) => {
+  return saveChatSettings(settings)
+})
+
+// Chat streaming
+ipcMain.handle('chat-send-message', (_, conversationId: string, messages: { role: string; content: string }[], systemPrompt?: string) => {
+  if (mainWindow) {
+    streamChatMessage(mainWindow, conversationId, messages, systemPrompt)
+  }
+})
+
+ipcMain.handle('chat-abort', () => {
+  abortChatStream()
+})
+
+// CLI logs
+ipcMain.handle('get-cli-sessions', async () => {
+  return getCliSessions()
+})
+
+ipcMain.handle('get-cli-session-messages', async (_, sessionId: string, offset?: number, limit?: number) => {
+  return getCliSessionMessages(sessionId, offset, limit)
+})
+
+ipcMain.handle('search-cli-sessions', async (_, query: string) => {
+  return searchCliSessions(query)
+})
 
 // Terminal
 ipcMain.handle('create-terminal', (_, cols: number, rows: number) => {

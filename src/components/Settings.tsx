@@ -48,6 +48,7 @@ const SHORTCUTS = [
   { key: 'L', label: 'List' },
   { key: 'J', label: 'Journal' },
   { key: 'F', label: 'Feed' },
+  { key: 'H', label: 'Chat' },
   { key: 'S', label: 'Settings' },
   { key: 'C', label: 'Code' },
   { key: 'V', label: 'Voice' },

@@ -99,6 +99,31 @@ interface WeeklyReview {
   streakAtGeneration: number
 }
 
+interface ChatMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  timestamp: string
+  model?: string
+  tokenUsage?: { input: number; output: number }
+}
+
+interface ChatConversation {
+  id: string
+  title: string
+  messages: ChatMessage[]
+  createdAt: string
+  updatedAt: string
+  systemPrompt?: string
+}
+
+interface ChatSettings {
+  model: string
+  systemPromptMode: 'default' | 'context' | 'custom'
+  maxTokens: number
+  customSystemPrompt?: string
+}
+
 interface Database {
   categories: Category[]
   tasks: Task[]
@@ -112,6 +137,8 @@ interface Database {
   pomodoroState: PomodoroState
   morningBriefings: MorningBriefing[]
   weeklyReviews: WeeklyReview[]
+  chatConversations: ChatConversation[]
+  chatSettings: ChatSettings
 }
 
 let db: Database
@@ -187,7 +214,13 @@ export function initDatabase(): Database {
         todayDate: new Date().toISOString().split('T')[0]
       },
       morningBriefings: [],
-      weeklyReviews: []
+      weeklyReviews: [],
+      chatConversations: [],
+      chatSettings: {
+        model: 'claude-sonnet-4-5-20250929',
+        systemPromptMode: 'default',
+        maxTokens: 4096
+      }
     }
     saveDatabase()
   }
@@ -252,6 +285,22 @@ export function initDatabase(): Database {
   // Initialize weeklyReviews if missing
   if (!db.weeklyReviews) {
     db.weeklyReviews = []
+    saveDatabase()
+  }
+
+  // Initialize chatConversations if missing
+  if (!db.chatConversations) {
+    db.chatConversations = []
+    saveDatabase()
+  }
+
+  // Initialize chatSettings if missing
+  if (!db.chatSettings) {
+    db.chatSettings = {
+      model: 'claude-sonnet-4-5-20250929',
+      systemPromptMode: 'default',
+      maxTokens: 4096
+    }
     saveDatabase()
   }
 
@@ -740,4 +789,67 @@ export function checkWeeklyReviewNeeded(): { needed: boolean; weekStart: string 
   const weekStartStr = lastMonday.toISOString().split('T')[0]
   const existing = db.weeklyReviews.find(r => r.weekStartDate === weekStartStr)
   return { needed: dayOfWeek === 0 && !existing, weekStart: weekStartStr }
+}
+
+// Chat Conversation CRUD
+function generateId(): string {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
+}
+
+export function getChatConversations(): ChatConversation[] {
+  return (db.chatConversations || [])
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+}
+
+export function getChatConversation(id: string): ChatConversation | null {
+  return db.chatConversations.find(c => c.id === id) || null
+}
+
+export function createChatConversation(title: string): ChatConversation {
+  const conv: ChatConversation = {
+    id: generateId(),
+    title,
+    messages: [],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  }
+  db.chatConversations.push(conv)
+  saveDatabase()
+  return conv
+}
+
+export function addChatMessage(conversationId: string, message: ChatMessage): ChatConversation | null {
+  const conv = db.chatConversations.find(c => c.id === conversationId)
+  if (!conv) return null
+  conv.messages.push(message)
+  conv.updatedAt = new Date().toISOString()
+  saveDatabase()
+  return conv
+}
+
+export function deleteChatConversation(id: string): void {
+  db.chatConversations = db.chatConversations.filter(c => c.id !== id)
+  saveDatabase()
+}
+
+export function renameChatConversation(id: string, title: string): ChatConversation | null {
+  const conv = db.chatConversations.find(c => c.id === id)
+  if (!conv) return null
+  conv.title = title
+  conv.updatedAt = new Date().toISOString()
+  saveDatabase()
+  return conv
+}
+
+export function getChatSettings(): ChatSettings {
+  return db.chatSettings
+}
+
+export function saveChatSettings(updates: Partial<ChatSettings>): ChatSettings {
+  if (updates.model !== undefined) db.chatSettings.model = updates.model
+  if (updates.systemPromptMode !== undefined) db.chatSettings.systemPromptMode = updates.systemPromptMode
+  if (updates.maxTokens !== undefined) db.chatSettings.maxTokens = updates.maxTokens
+  if (updates.customSystemPrompt !== undefined) db.chatSettings.customSystemPrompt = updates.customSystemPrompt
+  saveDatabase()
+  return db.chatSettings
 }

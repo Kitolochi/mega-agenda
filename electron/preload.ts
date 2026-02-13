@@ -106,6 +106,44 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => { ipcRenderer.removeListener('terminal-data', handler) }
   },
 
+  // Chat conversations
+  getChatConversations: () => ipcRenderer.invoke('get-chat-conversations'),
+  getChatConversation: (id: string) => ipcRenderer.invoke('get-chat-conversation', id),
+  createChatConversation: (title: string) => ipcRenderer.invoke('create-chat-conversation', title),
+  addChatMessage: (conversationId: string, message: any) => ipcRenderer.invoke('add-chat-message', conversationId, message),
+  deleteChatConversation: (id: string) => ipcRenderer.invoke('delete-chat-conversation', id),
+  renameChatConversation: (id: string, title: string) => ipcRenderer.invoke('rename-chat-conversation', id, title),
+
+  // Chat settings
+  getChatSettings: () => ipcRenderer.invoke('get-chat-settings'),
+  saveChatSettings: (settings: any) => ipcRenderer.invoke('save-chat-settings', settings),
+
+  // Chat streaming
+  chatSendMessage: (conversationId: string, messages: { role: string; content: string }[], systemPrompt?: string) =>
+    ipcRenderer.invoke('chat-send-message', conversationId, messages, systemPrompt),
+  chatAbort: () => ipcRenderer.invoke('chat-abort'),
+  onChatStreamChunk: (callback: (data: { conversationId: string; text: string }) => void) => {
+    const handler = (_: any, data: { conversationId: string; text: string }) => callback(data)
+    ipcRenderer.on('chat-stream-chunk', handler)
+    return () => { ipcRenderer.removeListener('chat-stream-chunk', handler) }
+  },
+  onChatStreamEnd: (callback: (data: { conversationId: string; model: string; usage: { input: number; output: number } }) => void) => {
+    const handler = (_: any, data: any) => callback(data)
+    ipcRenderer.on('chat-stream-end', handler)
+    return () => { ipcRenderer.removeListener('chat-stream-end', handler) }
+  },
+  onChatStreamError: (callback: (data: { conversationId: string; error: string }) => void) => {
+    const handler = (_: any, data: any) => callback(data)
+    ipcRenderer.on('chat-stream-error', handler)
+    return () => { ipcRenderer.removeListener('chat-stream-error', handler) }
+  },
+
+  // CLI logs
+  getCliSessions: () => ipcRenderer.invoke('get-cli-sessions'),
+  getCliSessionMessages: (sessionId: string, offset?: number, limit?: number) =>
+    ipcRenderer.invoke('get-cli-session-messages', sessionId, offset, limit),
+  searchCliSessions: (query: string) => ipcRenderer.invoke('search-cli-sessions', query),
+
   // Clipboard
   readClipboard: () => ipcRenderer.sendSync('read-clipboard'),
   writeClipboard: (text: string) => ipcRenderer.send('write-clipboard', text),

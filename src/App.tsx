@@ -12,8 +12,9 @@ import VoiceButton from './components/VoiceButton'
 import ComposeTweet from './components/ComposeTweet'
 import PomodoroTimer from './components/PomodoroTimer'
 import CodeTerminal from './components/CodeTerminal'
+import ChatTab from './components/ChatTab'
 
-type Tab = 'dashboard' | 'tasks' | 'list' | 'notes' | 'feed' | 'code' | 'settings'
+type Tab = 'dashboard' | 'tasks' | 'list' | 'notes' | 'feed' | 'chat' | 'code' | 'settings'
 
 function App() {
   const [categories, setCategories] = useState<Category[]>([])
@@ -58,6 +59,7 @@ function App() {
       if (e.key === 'l' && !e.metaKey && !e.ctrlKey) { setActiveTab('list'); setSelectedCategory(null) }
       if (e.key === 'j' && !e.metaKey && !e.ctrlKey) { setActiveTab('notes'); setSelectedCategory(null) }
       if (e.key === 'f' && !e.metaKey && !e.ctrlKey) { setActiveTab('feed'); setSelectedCategory(null) }
+      if (e.key === 'h' && !e.metaKey && !e.ctrlKey) { setActiveTab('chat'); setSelectedCategory(null) }
       if (e.key === 'c' && !e.metaKey && !e.ctrlKey) { setActiveTab('code'); setSelectedCategory(null) }
       if (e.key === 's' && !e.metaKey && !e.ctrlKey) { setActiveTab('settings'); setSelectedCategory(null) }
       if (e.key === 'v' && !e.metaKey && !e.ctrlKey) { (window as any).__voiceToggle?.() }
@@ -101,7 +103,7 @@ function App() {
   const handleVoiceCommand = useCallback(async (command: VoiceCommand) => {
     switch (command.action) {
       case 'switch_tab': {
-        const tabMap: Record<string, Tab> = { dashboard: 'dashboard', tasks: 'tasks', list: 'list', notes: 'notes', feed: 'feed', code: 'code', settings: 'settings' }
+        const tabMap: Record<string, Tab> = { dashboard: 'dashboard', tasks: 'tasks', list: 'list', notes: 'notes', feed: 'feed', chat: 'chat', code: 'code', settings: 'settings' }
         const tab = tabMap[command.tab || '']
         if (tab) { setActiveTab(tab); setSelectedCategory(null) }
         break
@@ -221,6 +223,11 @@ function App() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 5c7.18 0 13 5.82 13 13M6 11a7 7 0 017 7m-6 0a1 1 0 110-2 1 1 0 010 2z" />
             </svg>
           )},
+          { id: 'chat' as Tab, label: 'Chat', icon: (
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+          )},
           { id: 'code' as Tab, label: 'Code', icon: (
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -253,7 +260,7 @@ function App() {
         {/* Keyboard shortcuts hint */}
         <div className="ml-auto flex items-center">
           <div className="flex gap-1 items-center opacity-0 hover:opacity-100 transition-opacity duration-300">
-            {[{ key: 'N', label: 'add' }, { key: 'D', label: 'dash' }, { key: 'T', label: 'tasks' }, { key: 'L', label: 'list' }, { key: 'J', label: 'journal' }, { key: 'F', label: 'feed' }, { key: 'C', label: 'code' }, { key: 'S', label: 'settings' }, { key: 'V', label: 'voice' }, { key: 'P', label: 'focus' }].map(s => (
+            {[{ key: 'N', label: 'add' }, { key: 'D', label: 'dash' }, { key: 'T', label: 'tasks' }, { key: 'L', label: 'list' }, { key: 'J', label: 'journal' }, { key: 'F', label: 'feed' }, { key: 'H', label: 'chat' }, { key: 'C', label: 'code' }, { key: 'S', label: 'settings' }, { key: 'V', label: 'voice' }, { key: 'P', label: 'focus' }].map(s => (
               <span key={s.key} className="text-[9px] text-muted">
                 <kbd className="px-1 py-0.5 rounded bg-surface-3 text-white/40 font-mono text-[8px] mr-0.5">{s.key}</kbd>
                 {s.label}
@@ -267,7 +274,9 @@ function App() {
       <div className={`flex-1 relative z-10 ${activeTab === 'code' ? 'overflow-hidden' : 'overflow-auto'}`}>
         {/* CodeTerminal always mounted — hidden via CSS when not active */}
         <CodeTerminal active={activeTab === 'code'} />
-        {activeTab === 'code' ? null : activeTab === 'settings' ? (
+        {activeTab === 'code' ? null : activeTab === 'chat' ? (
+          <ChatTab />
+        ) : activeTab === 'settings' ? (
           <Settings />
         ) : activeTab === 'feed' ? (
           <Feed onOpenSettings={() => setActiveTab('settings')} />
