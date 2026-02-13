@@ -171,6 +171,8 @@ export interface CLISessionMessage {
 export interface ElectronAPI {
   // Task operations
   getCategories: () => Promise<Category[]>
+  addCategory: (name: string, color: string, icon: string) => Promise<Category>
+  deleteCategory: (id: number) => Promise<void>
   getTasks: (categoryId?: number) => Promise<Task[]>
   addTask: (task: Omit<Task, 'id' | 'created_at' | 'updated_at' | 'last_completed'>) => Promise<Task>
   updateTask: (id: number, updates: Partial<Task>) => Promise<Task>

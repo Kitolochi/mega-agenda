@@ -29,6 +29,8 @@ export interface DailyNote {
 contextBridge.exposeInMainWorld('electronAPI', {
   // Task operations
   getCategories: () => ipcRenderer.invoke('get-categories'),
+  addCategory: (name: string, color: string, icon: string) => ipcRenderer.invoke('add-category', name, color, icon),
+  deleteCategory: (id: number) => ipcRenderer.invoke('delete-category', id),
   getTasks: (categoryId?: number) => ipcRenderer.invoke('get-tasks', categoryId),
   addTask: (task: Omit<Task, 'id' | 'created_at' | 'updated_at'>) => ipcRenderer.invoke('add-task', task),
   updateTask: (id: number, updates: Partial<Task>) => ipcRenderer.invoke('update-task', id, updates),

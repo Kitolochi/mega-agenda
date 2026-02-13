@@ -367,6 +367,23 @@ export function getCategories(): Category[] {
   return db.categories.sort((a, b) => a.sort_order - b.sort_order)
 }
 
+export function addCategory(name: string, color: string, icon: string): Category {
+  const maxId = Math.max(...db.categories.map(c => c.id), 0)
+  const maxSort = Math.max(...db.categories.map(c => c.sort_order), 0)
+  const cat: Category = { id: maxId + 1, name, color, icon, sort_order: maxSort + 1 }
+  db.categories.push(cat)
+  saveDatabase()
+  return cat
+}
+
+export function deleteCategory(id: number): void {
+  // Don't delete if tasks exist in this category
+  const hasTasks = db.tasks.some(t => t.category_id === id)
+  if (hasTasks) return
+  db.categories = db.categories.filter(c => c.id !== id)
+  saveDatabase()
+}
+
 export function getTasks(categoryId?: number): Task[] {
   let tasks = db.tasks
   if (categoryId) {
