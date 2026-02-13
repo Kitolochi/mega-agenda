@@ -265,9 +265,9 @@ function App() {
 
       {/* Main Content */}
       <div className={`flex-1 relative z-10 ${activeTab === 'code' ? 'overflow-hidden' : 'overflow-auto'}`}>
-        {activeTab === 'code' ? (
-          <CodeTerminal />
-        ) : activeTab === 'settings' ? (
+        {/* CodeTerminal always mounted — hidden via CSS when not active */}
+        <CodeTerminal active={activeTab === 'code'} />
+        {activeTab === 'code' ? null : activeTab === 'settings' ? (
           <Settings />
         ) : activeTab === 'feed' ? (
           <Feed onOpenSettings={() => setActiveTab('settings')} />

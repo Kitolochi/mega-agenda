@@ -28,14 +28,19 @@ function keyToData(e: KeyboardEvent): string | null {
   }
 }
 
-export default function CodeTerminal() {
+export default function CodeTerminal({ active }: { active: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const termRef = useRef<Terminal | null>(null)
+  const spawnedRef = useRef(false)
+  const activeRef = useRef(active)
 
+  // Keep activeRef in sync so the keydown closure always has the latest value
+  activeRef.current = active
+
+  // One-time terminal setup — never tears down
   useEffect(() => {
     const el = containerRef.current
-    if (!el) return
-
-    el.innerHTML = ''
+    if (!el || termRef.current) return
 
     const term = new Terminal({
       cursorBlink: true,
@@ -68,18 +73,17 @@ export default function CodeTerminal() {
     const fitAddon = new FitAddon()
     term.loadAddon(fitAddon)
     term.open(el)
-
-    // Disable xterm's own keyboard handling — we'll handle all input ourselves
-    // This prevents double-sending and the DA response issue
     term.attachCustomKeyEventHandler(() => false)
+    termRef.current = term
 
     // PTY output → xterm
-    const removeListener = window.electronAPI.onTerminalData((data: string) => {
+    window.electronAPI.onTerminalData((data: string) => {
       term.write(data)
     })
 
-    // GLOBAL keyboard capture — no target filtering, all keys go to PTY
+    // Global keyboard capture — only sends when active
     const onDocKeyDown = (e: KeyboardEvent) => {
+      if (!activeRef.current) return
       const data = keyToData(e)
       if (data) {
         e.preventDefault()
@@ -89,15 +93,9 @@ export default function CodeTerminal() {
     }
     document.addEventListener('keydown', onDocKeyDown, true)
 
-    // Fit and create PTY after layout settles
-    setTimeout(() => {
-      try { fitAddon.fit() } catch {}
-      const { cols, rows } = term
-      window.electronAPI.createTerminal(cols, rows)
-    }, 100)
-
     // Resize observer
     const observer = new ResizeObserver(() => {
+      if (!activeRef.current) return
       try {
         fitAddon.fit()
         const { cols, rows } = term
@@ -106,14 +104,31 @@ export default function CodeTerminal() {
     })
     observer.observe(el)
 
-    return () => {
-      document.removeEventListener('keydown', onDocKeyDown, true)
-      observer.disconnect()
-      removeListener()
-      window.electronAPI.killTerminal()
-      term.dispose()
-    }
+    // Spawn PTY
+    setTimeout(() => {
+      if (spawnedRef.current) return
+      spawnedRef.current = true
+      try { fitAddon.fit() } catch {}
+      const { cols, rows } = term
+      window.electronAPI.createTerminal(cols, rows)
+    }, 100)
+
+    // No cleanup — terminal lives for the lifetime of the app
   }, [])
+
+  // Re-fit when becoming visible
+  useEffect(() => {
+    if (active && termRef.current) {
+      setTimeout(() => {
+        try {
+          const fit = termRef.current as any
+          // Access the fit addon through the terminal's loaded addons is not straightforward,
+          // so just trigger a resize event which the ResizeObserver will pick up
+          containerRef.current?.dispatchEvent(new Event('resize'))
+        } catch {}
+      }, 50)
+    }
+  }, [active])
 
   return (
     <div
@@ -124,6 +139,7 @@ export default function CodeTerminal() {
         padding: '4px 0 0 4px',
         background: '#0c0c0e',
         WebkitAppRegion: 'no-drag',
+        display: active ? 'block' : 'none',
       }}
     />
   )
