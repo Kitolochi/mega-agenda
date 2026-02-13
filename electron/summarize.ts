@@ -103,6 +103,69 @@ Examples:
   }
 }
 
+export async function generateMorningBriefing(apiKey: string, data: {
+  overdueTasks: { title: string; priority: number }[]
+  todayTasks: { title: string; priority: number }[]
+  highPriorityTasks: { title: string; priority: number }[]
+  stats: { currentStreak: number; tasksCompletedThisWeek: number }
+  recentNotes: { date: string; content: string }[]
+  streak: number
+}): Promise<string> {
+  const context = [
+    data.overdueTasks.length > 0 ? `Overdue tasks: ${data.overdueTasks.map(t => t.title).join(', ')}` : '',
+    data.todayTasks.length > 0 ? `Due today: ${data.todayTasks.map(t => t.title).join(', ')}` : '',
+    data.highPriorityTasks.length > 0 ? `High priority: ${data.highPriorityTasks.map(t => t.title).join(', ')}` : '',
+    `Current streak: ${data.streak} days`,
+    `Tasks completed this week: ${data.stats.tasksCompletedThisWeek}`,
+    data.recentNotes.length > 0 ? `Recent journal entries: ${data.recentNotes.map(n => `${n.date}: ${n.content.slice(0, 100)}`).join('; ')}` : '',
+  ].filter(Boolean).join('\n')
+
+  const prompt = `You are a productivity assistant generating a morning briefing. Based on this user's task data, write 4-6 concise bullet points to help them start their day effectively.
+
+${context}
+
+Rules:
+- Start with the most urgent items (overdue, high priority)
+- Be encouraging but honest about workload
+- Reference their streak if active
+- Keep each bullet to 1 sentence
+- Use plain text bullet points starting with "- "
+- No headers, no markdown formatting beyond bullets
+- Be direct and actionable`
+
+  return callClaude(apiKey, prompt)
+}
+
+export async function generateWeeklyReview(apiKey: string, data: {
+  completedTasks: { title: string; category: string; priority: number }[]
+  focusMinutes: number
+  notesCount: number
+  categoriesWorked: string[]
+  streak: number
+}): Promise<string> {
+  const context = [
+    `Tasks completed: ${data.completedTasks.length}`,
+    data.completedTasks.length > 0 ? `Completed: ${data.completedTasks.map(t => `${t.title} (${t.category})`).join(', ')}` : '',
+    `Focus time: ${data.focusMinutes} minutes`,
+    `Journal entries: ${data.notesCount}`,
+    data.categoriesWorked.length > 0 ? `Categories worked: ${data.categoriesWorked.join(', ')}` : '',
+    `Current streak: ${data.streak} days`,
+  ].filter(Boolean).join('\n')
+
+  const prompt = `You are a productivity coach writing a brief weekly review. Based on this user's week data, write a 100-200 word review.
+
+${context}
+
+Structure your response with these sections using **bold** headers:
+**Week Summary** - 2-3 sentences overview
+**Highlights** - top 2-3 achievements as bullet points
+**Focus Areas** - 1-2 suggestions for next week
+
+Be encouraging, specific, and concise. Use markdown bullet points for lists.`
+
+  return callClaude(apiKey, prompt)
+}
+
 export async function verifyClaudeKey(apiKey: string): Promise<{ valid: boolean; error?: string }> {
   try {
     await callClaude(apiKey, 'Say "ok" and nothing else.')

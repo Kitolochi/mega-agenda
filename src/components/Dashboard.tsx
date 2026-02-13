@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { Category, Task, Stats } from '../types'
 import CategoryCard from './CategoryCard'
 import TaskItem from './TaskItem'
+import MorningBriefing from './MorningBriefing'
+import ActivityHeatmap from './ActivityHeatmap'
 
 interface DashboardProps {
   categories: Category[]
@@ -78,6 +80,9 @@ export default function Dashboard({
 
   return (
     <div className="p-4 space-y-3 animate-fade-in">
+      {/* Morning Briefing */}
+      <MorningBriefing />
+
       {/* Hero Stats Row */}
       <div className="flex gap-3">
         {/* Progress Ring Card */}
@@ -140,6 +145,9 @@ export default function Dashboard({
           </div>
         </div>
       )}
+
+      {/* Activity Heatmap */}
+      <ActivityHeatmap />
 
       {/* View Tabs */}
       <div className="flex gap-0.5 bg-surface-2 rounded-lg p-0.5">

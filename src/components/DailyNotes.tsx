@@ -1,7 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
-import { DailyNote } from '../types'
+import WeeklyReview from './WeeklyReview'
+
+type JournalView = 'notes' | 'reviews'
 
 export default function DailyNotes() {
+  const [journalView, setJournalView] = useState<JournalView>('notes')
   const [currentDate, setCurrentDate] = useState(() => new Date().toISOString().split('T')[0])
   const [content, setContent] = useState('')
   const [isSaving, setIsSaving] = useState(false)
@@ -70,8 +73,47 @@ export default function DailyNotes() {
     calendarDays.push(`${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`)
   }
 
+  if (journalView === 'reviews') {
+    return (
+      <div className="h-full flex flex-col animate-fade-in">
+        {/* View Toggle */}
+        <div className="flex gap-0.5 bg-surface-2 rounded-lg p-0.5 mx-4 mt-4">
+          <button
+            onClick={() => setJournalView('notes')}
+            className="flex-1 py-1.5 px-2 rounded-md text-[11px] font-medium transition-all text-muted hover:text-white/60"
+          >
+            Daily Notes
+          </button>
+          <button
+            onClick={() => setJournalView('reviews')}
+            className="flex-1 py-1.5 px-2 rounded-md text-[11px] font-medium transition-all bg-surface-4 text-white shadow-sm"
+          >
+            Weekly Reviews
+          </button>
+        </div>
+        <WeeklyReview />
+      </div>
+    )
+  }
+
   return (
     <div className="h-full flex flex-col p-4 animate-fade-in">
+      {/* View Toggle */}
+      <div className="flex gap-0.5 bg-surface-2 rounded-lg p-0.5 mb-3">
+        <button
+          onClick={() => setJournalView('notes')}
+          className="flex-1 py-1.5 px-2 rounded-md text-[11px] font-medium transition-all bg-surface-4 text-white shadow-sm"
+        >
+          Daily Notes
+        </button>
+        <button
+          onClick={() => setJournalView('reviews')}
+          className="flex-1 py-1.5 px-2 rounded-md text-[11px] font-medium transition-all text-muted hover:text-white/60"
+        >
+          Weekly Reviews
+        </button>
+      </div>
+
       {/* Date Navigation */}
       <div className="flex items-center justify-between mb-4">
         <button

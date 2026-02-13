@@ -59,6 +59,46 @@ interface RSSFeed {
   category: string
 }
 
+interface ActivityEntry {
+  date: string
+  tasksCompleted: number
+  focusMinutes: number
+  categoriesWorked: string[]
+}
+
+interface PomodoroSession {
+  taskId: number | null
+  taskTitle: string
+  startedAt: string
+  durationMinutes: number
+  type: 'work' | 'short_break' | 'long_break'
+}
+
+interface PomodoroState {
+  isRunning: boolean
+  currentSession: PomodoroSession | null
+  sessionsCompleted: number
+  totalSessionsToday: number
+  todayDate: string
+}
+
+interface MorningBriefing {
+  date: string
+  content: string
+  isAiEnhanced: boolean
+  dismissed: boolean
+  generatedAt: string
+}
+
+interface WeeklyReview {
+  weekStartDate: string
+  content: string
+  generatedAt: string
+  tasksCompletedCount: number
+  categoriesWorked: string[]
+  streakAtGeneration: number
+}
+
 interface Database {
   categories: Category[]
   tasks: Task[]
@@ -68,6 +108,10 @@ interface Database {
   twitter: TwitterSettings
   rssFeeds: RSSFeed[]
   claudeApiKey: string
+  activityLog: ActivityEntry[]
+  pomodoroState: PomodoroState
+  morningBriefings: MorningBriefing[]
+  weeklyReviews: WeeklyReview[]
 }
 
 let db: Database
@@ -133,7 +177,17 @@ export function initDatabase(): Database {
       },
       twitter: { bearerToken: '', username: '', userId: '', listIds: [], apiKey: '', apiSecret: '', accessToken: '', accessTokenSecret: '' },
       rssFeeds: [],
-      claudeApiKey: ''
+      claudeApiKey: '',
+      activityLog: [],
+      pomodoroState: {
+        isRunning: false,
+        currentSession: null,
+        sessionsCompleted: 0,
+        totalSessionsToday: 0,
+        todayDate: new Date().toISOString().split('T')[0]
+      },
+      morningBriefings: [],
+      weeklyReviews: []
     }
     saveDatabase()
   }
@@ -168,6 +222,36 @@ export function initDatabase(): Database {
   // Initialize claudeApiKey if missing
   if (db.claudeApiKey === undefined) {
     db.claudeApiKey = ''
+    saveDatabase()
+  }
+
+  // Initialize activityLog if missing
+  if (!db.activityLog) {
+    db.activityLog = []
+    saveDatabase()
+  }
+
+  // Initialize pomodoroState if missing
+  if (!db.pomodoroState) {
+    db.pomodoroState = {
+      isRunning: false,
+      currentSession: null,
+      sessionsCompleted: 0,
+      totalSessionsToday: 0,
+      todayDate: new Date().toISOString().split('T')[0]
+    }
+    saveDatabase()
+  }
+
+  // Initialize morningBriefings if missing
+  if (!db.morningBriefings) {
+    db.morningBriefings = []
+    saveDatabase()
+  }
+
+  // Initialize weeklyReviews if missing
+  if (!db.weeklyReviews) {
+    db.weeklyReviews = []
     saveDatabase()
   }
 
@@ -331,6 +415,10 @@ export function toggleTaskComplete(id: number): Task | null {
     // Update weekly stats
     db.stats.tasksCompletedThisWeek++
 
+    // Log activity
+    const category = db.categories.find(c => c.id === task.category_id)
+    logActivity('task_complete', { categoryName: category?.name || 'Unknown' })
+
     // Check streak - if all high priority tasks are done today
     updateStreak()
   } else {
@@ -339,6 +427,7 @@ export function toggleTaskComplete(id: number): Task | null {
     if (wasCompleted) {
       db.stats.tasksCompletedThisWeek = Math.max(0, db.stats.tasksCompletedThisWeek - 1)
     }
+    logActivity('task_uncomplete', {})
   }
 
   task.updated_at = new Date().toISOString()
@@ -451,4 +540,204 @@ export function getClaudeApiKey(): string {
 export function saveClaudeApiKey(key: string): void {
   db.claudeApiKey = key
   saveDatabase()
+}
+
+// Activity Log functions
+function logActivity(type: string, data: { categoryName?: string; minutes?: number }) {
+  const today = new Date().toISOString().split('T')[0]
+  let entry = db.activityLog.find(e => e.date === today)
+  if (!entry) {
+    entry = { date: today, tasksCompleted: 0, focusMinutes: 0, categoriesWorked: [] }
+    db.activityLog.push(entry)
+  }
+
+  if (type === 'task_complete') {
+    entry.tasksCompleted++
+    if (data.categoryName && !entry.categoriesWorked.includes(data.categoryName)) {
+      entry.categoriesWorked.push(data.categoryName)
+    }
+  } else if (type === 'task_uncomplete') {
+    entry.tasksCompleted = Math.max(0, entry.tasksCompleted - 1)
+  } else if (type === 'focus_minutes') {
+    entry.focusMinutes += data.minutes || 0
+  }
+
+  saveDatabase()
+}
+
+export function getActivityLog(days: number = 90): ActivityEntry[] {
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - days)
+  const cutoffStr = cutoff.toISOString().split('T')[0]
+  return db.activityLog.filter(e => e.date >= cutoffStr).sort((a, b) => a.date.localeCompare(b.date))
+}
+
+// Pomodoro functions
+export function getPomodoroState(): PomodoroState {
+  const today = new Date().toISOString().split('T')[0]
+  if (db.pomodoroState.todayDate !== today) {
+    db.pomodoroState.totalSessionsToday = 0
+    db.pomodoroState.sessionsCompleted = 0
+    db.pomodoroState.todayDate = today
+    saveDatabase()
+  }
+  return db.pomodoroState
+}
+
+export function startPomodoro(taskId: number | null, taskTitle: string, durationMinutes: number = 25): PomodoroState {
+  db.pomodoroState.isRunning = true
+  db.pomodoroState.currentSession = {
+    taskId,
+    taskTitle,
+    startedAt: new Date().toISOString(),
+    durationMinutes,
+    type: 'work'
+  }
+  saveDatabase()
+  return db.pomodoroState
+}
+
+export function completePomodoro(): PomodoroState {
+  if (db.pomodoroState.currentSession?.type === 'work') {
+    db.pomodoroState.sessionsCompleted++
+    db.pomodoroState.totalSessionsToday++
+    logActivity('focus_minutes', { minutes: db.pomodoroState.currentSession.durationMinutes })
+  }
+  db.pomodoroState.isRunning = false
+  db.pomodoroState.currentSession = null
+  saveDatabase()
+  return db.pomodoroState
+}
+
+export function startBreak(type: 'short_break' | 'long_break'): PomodoroState {
+  const duration = type === 'short_break' ? 5 : 15
+  db.pomodoroState.isRunning = true
+  db.pomodoroState.currentSession = {
+    taskId: null,
+    taskTitle: type === 'short_break' ? 'Short Break' : 'Long Break',
+    startedAt: new Date().toISOString(),
+    durationMinutes: duration,
+    type
+  }
+  saveDatabase()
+  return db.pomodoroState
+}
+
+export function stopPomodoro(): PomodoroState {
+  db.pomodoroState.isRunning = false
+  db.pomodoroState.currentSession = null
+  saveDatabase()
+  return db.pomodoroState
+}
+
+// Morning Briefing functions
+export function getMorningBriefing(date: string): MorningBriefing | null {
+  return db.morningBriefings.find(b => b.date === date) || null
+}
+
+export function saveMorningBriefing(briefing: MorningBriefing): MorningBriefing {
+  const existingIndex = db.morningBriefings.findIndex(b => b.date === briefing.date)
+  if (existingIndex !== -1) {
+    db.morningBriefings[existingIndex] = briefing
+  } else {
+    db.morningBriefings.push(briefing)
+  }
+  saveDatabase()
+  return briefing
+}
+
+export function dismissMorningBriefing(date: string): void {
+  const briefing = db.morningBriefings.find(b => b.date === date)
+  if (briefing) {
+    briefing.dismissed = true
+    saveDatabase()
+  }
+}
+
+export function getBriefingData(): {
+  overdueTasks: Task[]
+  todayTasks: Task[]
+  highPriorityTasks: Task[]
+  stats: Stats
+  recentNotes: DailyNote[]
+  streak: number
+} {
+  const today = new Date().toISOString().split('T')[0]
+  const overdueTasks = db.tasks.filter(t => !t.completed && t.due_date && t.due_date < today)
+  const todayTasks = db.tasks.filter(t => !t.completed && t.due_date === today)
+  const highPriorityTasks = db.tasks.filter(t => !t.completed && t.priority === 1)
+  const recentNotes = db.dailyNotes
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, 3)
+
+  return {
+    overdueTasks,
+    todayTasks,
+    highPriorityTasks,
+    stats: db.stats,
+    recentNotes,
+    streak: db.stats.currentStreak
+  }
+}
+
+// Weekly Review functions
+export function getWeeklyReview(weekStart: string): WeeklyReview | null {
+  return db.weeklyReviews.find(r => r.weekStartDate === weekStart) || null
+}
+
+export function saveWeeklyReview(review: WeeklyReview): WeeklyReview {
+  const existingIndex = db.weeklyReviews.findIndex(r => r.weekStartDate === review.weekStartDate)
+  if (existingIndex !== -1) {
+    db.weeklyReviews[existingIndex] = review
+  } else {
+    db.weeklyReviews.push(review)
+  }
+  saveDatabase()
+  return review
+}
+
+export function getAllWeeklyReviews(): WeeklyReview[] {
+  return db.weeklyReviews.sort((a, b) => b.weekStartDate.localeCompare(a.weekStartDate))
+}
+
+export function getWeeklyReviewData(weekStart: string): {
+  completedTasks: Task[]
+  focusMinutes: number
+  notesWritten: DailyNote[]
+  categoriesWorked: string[]
+  streak: number
+} {
+  const weekEnd = new Date(weekStart + 'T00:00:00')
+  weekEnd.setDate(weekEnd.getDate() + 7)
+  const weekEndStr = weekEnd.toISOString().split('T')[0]
+
+  const completedTasks = db.tasks.filter(t =>
+    t.completed && t.updated_at && t.updated_at >= weekStart && t.updated_at < weekEndStr
+  )
+
+  const weekActivity = db.activityLog.filter(e => e.date >= weekStart && e.date < weekEndStr)
+  const focusMinutes = weekActivity.reduce((sum, e) => sum + e.focusMinutes, 0)
+  const categoriesWorked = [...new Set(weekActivity.flatMap(e => e.categoriesWorked))]
+
+  const notesWritten = db.dailyNotes.filter(n => n.date >= weekStart && n.date < weekEndStr)
+
+  return {
+    completedTasks,
+    focusMinutes,
+    notesWritten,
+    categoriesWorked,
+    streak: db.stats.currentStreak
+  }
+}
+
+export function checkWeeklyReviewNeeded(): { needed: boolean; weekStart: string } {
+  const now = new Date()
+  const dayOfWeek = now.getDay()
+  // Check on Sunday (0) if review exists for the past week (Monday start)
+  const lastMonday = new Date(now)
+  const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1
+  lastMonday.setDate(lastMonday.getDate() - diff)
+  const weekStartStr = lastMonday.toISOString().split('T')[0]
+  const existing = db.weeklyReviews.find(r => r.weekStartDate === weekStartStr)
+  return { needed: dayOfWeek === 0 && !existing, weekStart: weekStartStr }
 }
