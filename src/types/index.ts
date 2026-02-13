@@ -199,6 +199,10 @@ export interface ElectronAPI {
   killTerminal: () => Promise<void>
   onTerminalData: (callback: (data: string) => void) => () => void
 
+  // Clipboard
+  readClipboard: () => string
+  writeClipboard: (text: string) => void
+
   // Utilities
   openExternal: (url: string) => Promise<void>
 

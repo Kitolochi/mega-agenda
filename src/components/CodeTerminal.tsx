@@ -84,6 +84,30 @@ export default function CodeTerminal({ active }: { active: boolean }) {
     // Global keyboard capture — only sends when active
     const onDocKeyDown = (e: KeyboardEvent) => {
       if (!activeRef.current) return
+
+      // Handle paste (Ctrl+V or Ctrl+Shift+V)
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V')) {
+        e.preventDefault()
+        e.stopImmediatePropagation()
+        try {
+          const text = window.electronAPI.readClipboard()
+          if (text) window.electronAPI.writeTerminal(text)
+        } catch {}
+        return
+      }
+
+      // Handle copy (Ctrl+C when there's a selection, otherwise send SIGINT)
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
+        const selection = term.getSelection()
+        if (selection) {
+          e.preventDefault()
+          e.stopImmediatePropagation()
+          window.electronAPI.writeClipboard(selection)
+          return
+        }
+        // No selection — fall through to send Ctrl+C (SIGINT) to PTY
+      }
+
       const data = keyToData(e)
       if (data) {
         e.preventDefault()

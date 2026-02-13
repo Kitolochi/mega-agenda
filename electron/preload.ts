@@ -106,6 +106,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => { ipcRenderer.removeListener('terminal-data', handler) }
   },
 
+  // Clipboard
+  readClipboard: () => ipcRenderer.sendSync('read-clipboard'),
+  writeClipboard: (text: string) => ipcRenderer.send('write-clipboard', text),
+
   // Window controls
   closeWindow: () => ipcRenderer.send('close-window'),
   minimizeWindow: () => ipcRenderer.send('minimize-window'),

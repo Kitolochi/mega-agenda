@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, shell, Notification } from 'electron'
+import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, shell, Notification, clipboard } from 'electron'
 import path from 'path'
 import { initDatabase, getCategories, getTasks, addTask, updateTask, deleteTask, toggleTaskComplete, getDailyNote, saveDailyNote, getRecentNotes, getStats, getTwitterSettings, saveTwitterSettings, getRSSFeeds, addRSSFeed, removeRSSFeed, getClaudeApiKey, saveClaudeApiKey, getActivityLog, getPomodoroState, startPomodoro, completePomodoro, startBreak, stopPomodoro, getMorningBriefing, saveMorningBriefing, dismissMorningBriefing, getBriefingData, getWeeklyReview, saveWeeklyReview, getAllWeeklyReviews, getWeeklyReviewData, checkWeeklyReviewNeeded } from './database'
 import { verifyToken, getUserByUsername, getUserLists, fetchAllLists, postTweet, verifyOAuthCredentials } from './twitter'
@@ -412,6 +412,15 @@ ipcMain.handle('resize-terminal', (_, cols: number, rows: number) => {
 
 ipcMain.handle('kill-terminal', () => {
   killTerminal()
+})
+
+// Clipboard
+ipcMain.on('read-clipboard', (event) => {
+  event.returnValue = clipboard.readText()
+})
+
+ipcMain.on('write-clipboard', (_, text: string) => {
+  clipboard.writeText(text)
 })
 
 // Open URL in browser
