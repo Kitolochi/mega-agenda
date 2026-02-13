@@ -105,6 +105,13 @@ select, input, textarea {
   100% { background-position: 200% center; }
 }
 
+/* Terminal: override global user-select:none so xterm textarea can receive input */
+.xterm,
+.xterm * {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+
 .streak-shimmer {
   background: linear-gradient(
     90deg,

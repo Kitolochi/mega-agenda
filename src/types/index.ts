@@ -76,6 +76,46 @@ export interface FeedItem {
   feedName: string
 }
 
+export interface ActivityEntry {
+  date: string
+  tasksCompleted: number
+  focusMinutes: number
+  categoriesWorked: string[]
+}
+
+export interface PomodoroSession {
+  taskId: number | null
+  taskTitle: string
+  startedAt: string
+  durationMinutes: number
+  type: 'work' | 'short_break' | 'long_break'
+}
+
+export interface PomodoroState {
+  isRunning: boolean
+  currentSession: PomodoroSession | null
+  sessionsCompleted: number
+  totalSessionsToday: number
+  todayDate: string
+}
+
+export interface MorningBriefing {
+  date: string
+  content: string
+  isAiEnhanced: boolean
+  dismissed: boolean
+  generatedAt: string
+}
+
+export interface WeeklyReview {
+  weekStartDate: string
+  content: string
+  generatedAt: string
+  tasksCompletedCount: number
+  categoriesWorked: string[]
+  streakAtGeneration: number
+}
+
 export interface VoiceCommand {
   action: 'add_task' | 'complete_task' | 'switch_tab' | 'open_modal' | 'add_note' | 'summarize_feed' | 'unknown'
   category?: string
@@ -127,6 +167,37 @@ export interface ElectronAPI {
   // Tweet posting
   postTweet: (text: string) => Promise<{ success: boolean; tweetId?: string; error?: string }>
   verifyTwitterOAuth: () => Promise<{ valid: boolean; username?: string; error?: string }>
+
+  // Activity Log
+  getActivityLog: (days?: number) => Promise<ActivityEntry[]>
+
+  // Pomodoro
+  getPomodoroState: () => Promise<PomodoroState>
+  startPomodoro: (taskId: number | null, taskTitle: string, durationMinutes?: number) => Promise<PomodoroState>
+  completePomodoro: () => Promise<PomodoroState>
+  startBreak: (type: 'short_break' | 'long_break') => Promise<PomodoroState>
+  stopPomodoro: () => Promise<PomodoroState>
+
+  // Morning Briefing
+  getMorningBriefing: (date: string) => Promise<MorningBriefing | null>
+  generateMorningBriefing: () => Promise<MorningBriefing>
+  dismissMorningBriefing: (date: string) => Promise<void>
+
+  // Weekly Review
+  getWeeklyReview: (weekStart: string) => Promise<WeeklyReview | null>
+  getAllWeeklyReviews: () => Promise<WeeklyReview[]>
+  generateWeeklyReview: (weekStart: string) => Promise<WeeklyReview>
+  checkWeeklyReviewNeeded: () => Promise<{ needed: boolean; weekStart: string }>
+
+  // Notifications
+  showNotification: (title: string, body: string) => Promise<void>
+
+  // Terminal
+  createTerminal: (cols: number, rows: number) => Promise<void>
+  writeTerminal: (data: string) => Promise<void>
+  resizeTerminal: (cols: number, rows: number) => Promise<void>
+  killTerminal: () => Promise<void>
+  onTerminalData: (callback: (data: string) => void) => () => void
 
   // Utilities
   openExternal: (url: string) => Promise<void>

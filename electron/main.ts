@@ -1,9 +1,10 @@
-import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, shell, Notification } from 'electron'
 import path from 'path'
-import { initDatabase, getCategories, getTasks, addTask, updateTask, deleteTask, toggleTaskComplete, getDailyNote, saveDailyNote, getRecentNotes, getStats, getTwitterSettings, saveTwitterSettings, getRSSFeeds, addRSSFeed, removeRSSFeed, getClaudeApiKey, saveClaudeApiKey } from './database'
+import { initDatabase, getCategories, getTasks, addTask, updateTask, deleteTask, toggleTaskComplete, getDailyNote, saveDailyNote, getRecentNotes, getStats, getTwitterSettings, saveTwitterSettings, getRSSFeeds, addRSSFeed, removeRSSFeed, getClaudeApiKey, saveClaudeApiKey, getActivityLog, getPomodoroState, startPomodoro, completePomodoro, startBreak, stopPomodoro, getMorningBriefing, saveMorningBriefing, dismissMorningBriefing, getBriefingData, getWeeklyReview, saveWeeklyReview, getAllWeeklyReviews, getWeeklyReviewData, checkWeeklyReviewNeeded } from './database'
 import { verifyToken, getUserByUsername, getUserLists, fetchAllLists, postTweet, verifyOAuthCredentials } from './twitter'
 import { fetchAllFeeds } from './rss'
-import { summarizeAI, summarizeGeo, verifyClaudeKey, parseVoiceCommand } from './summarize'
+import { summarizeAI, summarizeGeo, verifyClaudeKey, parseVoiceCommand, generateMorningBriefing, generateWeeklyReview } from './summarize'
+import { createTerminal, writeTerminal, resizeTerminal, killTerminal } from './terminal'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -227,6 +228,190 @@ ipcMain.handle('summarize-feed', async (_, apiKey: string, articles: { title: st
 // Voice command parsing
 ipcMain.handle('parse-voice-command', async (_, apiKey: string, transcript: string, categoryNames: string[]) => {
   return parseVoiceCommand(apiKey, transcript, categoryNames)
+})
+
+// Activity Log
+ipcMain.handle('get-activity-log', (_, days?: number) => {
+  return getActivityLog(days)
+})
+
+// Pomodoro
+ipcMain.handle('get-pomodoro-state', () => {
+  return getPomodoroState()
+})
+
+ipcMain.handle('start-pomodoro', (_, taskId: number | null, taskTitle: string, durationMinutes?: number) => {
+  return startPomodoro(taskId, taskTitle, durationMinutes)
+})
+
+ipcMain.handle('complete-pomodoro', () => {
+  return completePomodoro()
+})
+
+ipcMain.handle('start-break', (_, type: 'short_break' | 'long_break') => {
+  return startBreak(type)
+})
+
+ipcMain.handle('stop-pomodoro', () => {
+  return stopPomodoro()
+})
+
+// Morning Briefing
+ipcMain.handle('get-morning-briefing', (_, date: string) => {
+  return getMorningBriefing(date)
+})
+
+ipcMain.handle('generate-morning-briefing', async () => {
+  const today = new Date().toISOString().split('T')[0]
+  const existing = getMorningBriefing(today)
+  if (existing) return existing
+
+  const data = getBriefingData()
+  const apiKey = getClaudeApiKey()
+
+  let content: string
+  let isAiEnhanced = false
+
+  if (apiKey) {
+    try {
+      content = await generateMorningBriefing(apiKey, data)
+      isAiEnhanced = true
+    } catch {
+      content = buildLocalBriefing(data)
+    }
+  } else {
+    content = buildLocalBriefing(data)
+  }
+
+  const briefing = {
+    date: today,
+    content,
+    isAiEnhanced,
+    dismissed: false,
+    generatedAt: new Date().toISOString()
+  }
+  return saveMorningBriefing(briefing)
+})
+
+ipcMain.handle('dismiss-morning-briefing', (_, date: string) => {
+  return dismissMorningBriefing(date)
+})
+
+// Weekly Review
+ipcMain.handle('get-weekly-review', (_, weekStart: string) => {
+  return getWeeklyReview(weekStart)
+})
+
+ipcMain.handle('get-all-weekly-reviews', () => {
+  return getAllWeeklyReviews()
+})
+
+ipcMain.handle('generate-weekly-review', async (_, weekStart: string) => {
+  const existing = getWeeklyReview(weekStart)
+  if (existing) return existing
+
+  const data = getWeeklyReviewData(weekStart)
+  const apiKey = getClaudeApiKey()
+  const categories = getCategories()
+
+  let content: string
+  if (apiKey) {
+    try {
+      content = await generateWeeklyReview(apiKey, {
+        completedTasks: data.completedTasks.map(t => ({
+          title: t.title,
+          category: categories.find(c => c.id === t.category_id)?.name || 'Unknown',
+          priority: t.priority
+        })),
+        focusMinutes: data.focusMinutes,
+        notesCount: data.notesWritten.length,
+        categoriesWorked: data.categoriesWorked,
+        streak: data.streak
+      })
+    } catch {
+      content = buildLocalWeeklyReview(data)
+    }
+  } else {
+    content = buildLocalWeeklyReview(data)
+  }
+
+  const review = {
+    weekStartDate: weekStart,
+    content,
+    generatedAt: new Date().toISOString(),
+    tasksCompletedCount: data.completedTasks.length,
+    categoriesWorked: data.categoriesWorked,
+    streakAtGeneration: data.streak
+  }
+  return saveWeeklyReview(review)
+})
+
+ipcMain.handle('check-weekly-review-needed', () => {
+  return checkWeeklyReviewNeeded()
+})
+
+// Notifications
+ipcMain.handle('show-notification', (_, title: string, body: string) => {
+  new Notification({ title, body }).show()
+})
+
+function buildLocalBriefing(data: ReturnType<typeof getBriefingData>): string {
+  const lines: string[] = []
+  if (data.overdueTasks.length > 0) {
+    lines.push(`You have ${data.overdueTasks.length} overdue task${data.overdueTasks.length > 1 ? 's' : ''} that need attention.`)
+  }
+  if (data.todayTasks.length > 0) {
+    lines.push(`${data.todayTasks.length} task${data.todayTasks.length > 1 ? 's' : ''} due today.`)
+  }
+  if (data.highPriorityTasks.length > 0) {
+    lines.push(`${data.highPriorityTasks.length} high priority task${data.highPriorityTasks.length > 1 ? 's' : ''}: ${data.highPriorityTasks.slice(0, 3).map(t => t.title).join(', ')}`)
+  }
+  if (data.streak > 0) {
+    lines.push(`You're on a ${data.streak}-day streak! Keep it going.`)
+  }
+  if (data.stats.tasksCompletedThisWeek > 0) {
+    lines.push(`${data.stats.tasksCompletedThisWeek} tasks completed this week so far.`)
+  }
+  if (lines.length === 0) {
+    lines.push('No pressing items today. A great day to get ahead!')
+  }
+  return lines.map(l => `- ${l}`).join('\n')
+}
+
+function buildLocalWeeklyReview(data: ReturnType<typeof getWeeklyReviewData>): string {
+  const lines: string[] = []
+  lines.push(`**Week Summary**`)
+  lines.push(`- Completed ${data.completedTasks.length} task${data.completedTasks.length !== 1 ? 's' : ''}`)
+  if (data.focusMinutes > 0) {
+    lines.push(`- ${data.focusMinutes} minutes of focused work`)
+  }
+  if (data.notesWritten.length > 0) {
+    lines.push(`- Wrote ${data.notesWritten.length} journal entr${data.notesWritten.length !== 1 ? 'ies' : 'y'}`)
+  }
+  if (data.categoriesWorked.length > 0) {
+    lines.push(`- Active in: ${data.categoriesWorked.join(', ')}`)
+  }
+  if (data.streak > 0) {
+    lines.push(`- Current streak: ${data.streak} days`)
+  }
+  return lines.join('\n')
+}
+
+// Terminal
+ipcMain.handle('create-terminal', (_, cols: number, rows: number) => {
+  if (mainWindow) createTerminal(mainWindow, cols, rows)
+})
+
+ipcMain.handle('write-terminal', (_, data: string) => {
+  writeTerminal(data)
+})
+
+ipcMain.handle('resize-terminal', (_, cols: number, rows: number) => {
+  resizeTerminal(cols, rows)
+})
+
+ipcMain.handle('kill-terminal', () => {
+  killTerminal()
 })
 
 // Open URL in browser

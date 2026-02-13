@@ -68,8 +68,43 @@ contextBridge.exposeInMainWorld('electronAPI', {
   summarizeFeed: (apiKey: string, articles: { title: string; description: string }[], section: string) => ipcRenderer.invoke('summarize-feed', apiKey, articles, section),
   parseVoiceCommand: (apiKey: string, transcript: string, categoryNames: string[]) => ipcRenderer.invoke('parse-voice-command', apiKey, transcript, categoryNames),
 
+  // Activity Log
+  getActivityLog: (days?: number) => ipcRenderer.invoke('get-activity-log', days),
+
+  // Pomodoro
+  getPomodoroState: () => ipcRenderer.invoke('get-pomodoro-state'),
+  startPomodoro: (taskId: number | null, taskTitle: string, durationMinutes?: number) => ipcRenderer.invoke('start-pomodoro', taskId, taskTitle, durationMinutes),
+  completePomodoro: () => ipcRenderer.invoke('complete-pomodoro'),
+  startBreak: (type: 'short_break' | 'long_break') => ipcRenderer.invoke('start-break', type),
+  stopPomodoro: () => ipcRenderer.invoke('stop-pomodoro'),
+
+  // Morning Briefing
+  getMorningBriefing: (date: string) => ipcRenderer.invoke('get-morning-briefing', date),
+  generateMorningBriefing: () => ipcRenderer.invoke('generate-morning-briefing'),
+  dismissMorningBriefing: (date: string) => ipcRenderer.invoke('dismiss-morning-briefing', date),
+
+  // Weekly Review
+  getWeeklyReview: (weekStart: string) => ipcRenderer.invoke('get-weekly-review', weekStart),
+  getAllWeeklyReviews: () => ipcRenderer.invoke('get-all-weekly-reviews'),
+  generateWeeklyReview: (weekStart: string) => ipcRenderer.invoke('generate-weekly-review', weekStart),
+  checkWeeklyReviewNeeded: () => ipcRenderer.invoke('check-weekly-review-needed'),
+
+  // Notifications
+  showNotification: (title: string, body: string) => ipcRenderer.invoke('show-notification', title, body),
+
   // Open URL in browser
   openExternal: (url: string) => ipcRenderer.invoke('open-external', url),
+
+  // Terminal
+  createTerminal: (cols: number, rows: number) => ipcRenderer.invoke('create-terminal', cols, rows),
+  writeTerminal: (data: string) => ipcRenderer.invoke('write-terminal', data),
+  resizeTerminal: (cols: number, rows: number) => ipcRenderer.invoke('resize-terminal', cols, rows),
+  killTerminal: () => ipcRenderer.invoke('kill-terminal'),
+  onTerminalData: (callback: (data: string) => void) => {
+    const handler = (_: any, data: string) => callback(data)
+    ipcRenderer.on('terminal-data', handler)
+    return () => { ipcRenderer.removeListener('terminal-data', handler) }
+  },
 
   // Window controls
   closeWindow: () => ipcRenderer.send('close-window'),

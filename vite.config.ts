@@ -12,6 +12,7 @@ export default defineConfig({
         vite: {
           build: {
             rollupOptions: {
+              external: ['node-pty'],
               output: {
                 format: 'cjs'
               }

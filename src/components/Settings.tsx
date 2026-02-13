@@ -49,7 +49,9 @@ const SHORTCUTS = [
   { key: 'J', label: 'Journal' },
   { key: 'F', label: 'Feed' },
   { key: 'S', label: 'Settings' },
+  { key: 'C', label: 'Code' },
   { key: 'V', label: 'Voice' },
+  { key: 'P', label: 'Focus timer' },
   { key: '1-7', label: 'Select category' },
   { key: 'Esc', label: 'Back / Close' },
 ]

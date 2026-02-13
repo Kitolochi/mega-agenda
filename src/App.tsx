@@ -10,8 +10,10 @@ import Feed from './components/Feed'
 import Settings from './components/Settings'
 import VoiceButton from './components/VoiceButton'
 import ComposeTweet from './components/ComposeTweet'
+import PomodoroTimer from './components/PomodoroTimer'
+import CodeTerminal from './components/CodeTerminal'
 
-type Tab = 'dashboard' | 'tasks' | 'list' | 'notes' | 'feed' | 'settings'
+type Tab = 'dashboard' | 'tasks' | 'list' | 'notes' | 'feed' | 'code' | 'settings'
 
 function App() {
   const [categories, setCategories] = useState<Category[]>([])
@@ -46,14 +48,20 @@ function App() {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) {
         return
       }
+      // Don't intercept any keys when the Code terminal tab is active — all keystrokes go to the terminal
+      if (activeTab === 'code') {
+        return
+      }
       if (e.key === 'n' && !e.metaKey && !e.ctrlKey) setShowAddModal(true)
       if (e.key === 'd' && !e.metaKey && !e.ctrlKey) { setActiveTab('dashboard'); setSelectedCategory(null) }
       if (e.key === 't' && !e.metaKey && !e.ctrlKey) { setActiveTab('tasks'); setSelectedCategory(null) }
       if (e.key === 'l' && !e.metaKey && !e.ctrlKey) { setActiveTab('list'); setSelectedCategory(null) }
       if (e.key === 'j' && !e.metaKey && !e.ctrlKey) { setActiveTab('notes'); setSelectedCategory(null) }
       if (e.key === 'f' && !e.metaKey && !e.ctrlKey) { setActiveTab('feed'); setSelectedCategory(null) }
+      if (e.key === 'c' && !e.metaKey && !e.ctrlKey) { setActiveTab('code'); setSelectedCategory(null) }
       if (e.key === 's' && !e.metaKey && !e.ctrlKey) { setActiveTab('settings'); setSelectedCategory(null) }
       if (e.key === 'v' && !e.metaKey && !e.ctrlKey) { (window as any).__voiceToggle?.() }
+      if (e.key === 'p' && !e.metaKey && !e.ctrlKey) { (window as any).__pomodoroToggle?.() }
       if (e.key === 'Escape') {
         if (showAddModal) setShowAddModal(false)
         else if (selectedCategory) setSelectedCategory(null)
@@ -93,7 +101,7 @@ function App() {
   const handleVoiceCommand = useCallback(async (command: VoiceCommand) => {
     switch (command.action) {
       case 'switch_tab': {
-        const tabMap: Record<string, Tab> = { dashboard: 'dashboard', tasks: 'tasks', list: 'list', notes: 'notes', feed: 'feed', settings: 'settings' }
+        const tabMap: Record<string, Tab> = { dashboard: 'dashboard', tasks: 'tasks', list: 'list', notes: 'notes', feed: 'feed', code: 'code', settings: 'settings' }
         const tab = tabMap[command.tab || '']
         if (tab) { setActiveTab(tab); setSelectedCategory(null) }
         break
@@ -153,6 +161,7 @@ function App() {
           <h1 className="text-xs font-display font-semibold text-white/80 tracking-wide uppercase">Mega Agenda</h1>
         </div>
         <div className="flex gap-1.5 no-drag items-center">
+          <PomodoroTimer tasks={tasks} />
           <button
             onClick={() => setShowTweetModal(true)}
             className="w-6 h-6 rounded-md hover:bg-white/[0.06] flex items-center justify-center text-white/30 hover:text-accent-blue transition-all"
@@ -212,6 +221,11 @@ function App() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 5c7.18 0 13 5.82 13 13M6 11a7 7 0 017 7m-6 0a1 1 0 110-2 1 1 0 010 2z" />
             </svg>
           )},
+          { id: 'code' as Tab, label: 'Code', icon: (
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+          )},
           { id: 'settings' as Tab, label: '', icon: (
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -239,7 +253,7 @@ function App() {
         {/* Keyboard shortcuts hint */}
         <div className="ml-auto flex items-center">
           <div className="flex gap-1 items-center opacity-0 hover:opacity-100 transition-opacity duration-300">
-            {[{ key: 'N', label: 'add' }, { key: 'D', label: 'dash' }, { key: 'T', label: 'tasks' }, { key: 'L', label: 'list' }, { key: 'J', label: 'journal' }, { key: 'F', label: 'feed' }, { key: 'S', label: 'settings' }, { key: 'V', label: 'voice' }].map(s => (
+            {[{ key: 'N', label: 'add' }, { key: 'D', label: 'dash' }, { key: 'T', label: 'tasks' }, { key: 'L', label: 'list' }, { key: 'J', label: 'journal' }, { key: 'F', label: 'feed' }, { key: 'C', label: 'code' }, { key: 'S', label: 'settings' }, { key: 'V', label: 'voice' }, { key: 'P', label: 'focus' }].map(s => (
               <span key={s.key} className="text-[9px] text-muted">
                 <kbd className="px-1 py-0.5 rounded bg-surface-3 text-white/40 font-mono text-[8px] mr-0.5">{s.key}</kbd>
                 {s.label}
@@ -250,8 +264,10 @@ function App() {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 overflow-auto relative z-10">
-        {activeTab === 'settings' ? (
+      <div className={`flex-1 relative z-10 ${activeTab === 'code' ? 'overflow-hidden' : 'overflow-auto'}`}>
+        {activeTab === 'code' ? (
+          <CodeTerminal />
+        ) : activeTab === 'settings' ? (
           <Settings />
         ) : activeTab === 'feed' ? (
           <Feed onOpenSettings={() => setActiveTab('settings')} />
