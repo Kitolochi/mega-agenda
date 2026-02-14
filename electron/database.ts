@@ -135,6 +135,8 @@ interface TweetAIMessage {
 interface TweetDraft {
   id: string
   text: string
+  segments: string[]
+  isThread: boolean
   status: 'draft' | 'refining' | 'ready' | 'posted'
   topic?: string
   aiHistory: TweetAIMessage[]
@@ -142,6 +144,16 @@ interface TweetDraft {
   updatedAt: string
   postedAt?: string
   tweetId?: string
+  threadTweetIds: string[]
+}
+
+interface TweetPersona {
+  id: string
+  name: string
+  description: string
+  exampleTweets: string[]
+  isBuiltIn: boolean
+  createdAt: string
 }
 
 interface Database {
@@ -160,6 +172,7 @@ interface Database {
   chatConversations: ChatConversation[]
   chatSettings: ChatSettings
   tweetDrafts: TweetDraft[]
+  tweetPersonas: TweetPersona[]
 }
 
 let db: Database
@@ -242,7 +255,8 @@ export function initDatabase(): Database {
         systemPromptMode: 'default',
         maxTokens: 4096
       },
-      tweetDrafts: []
+      tweetDrafts: [],
+      tweetPersonas: []
     }
     saveDatabase()
   }
@@ -329,6 +343,23 @@ export function initDatabase(): Database {
   // Initialize tweetDrafts if missing
   if (!db.tweetDrafts) {
     db.tweetDrafts = []
+    saveDatabase()
+  }
+
+  // Migrate tweetDrafts: add thread fields if missing
+  let draftsNeedMigration = false
+  db.tweetDrafts = db.tweetDrafts.map(d => {
+    if (d.segments === undefined) {
+      draftsNeedMigration = true
+      return { ...d, segments: d.text ? [d.text] : [''], isThread: false, threadTweetIds: [] }
+    }
+    return d
+  })
+  if (draftsNeedMigration) saveDatabase()
+
+  // Initialize tweetPersonas if missing
+  if (!db.tweetPersonas) {
+    db.tweetPersonas = []
     saveDatabase()
   }
 
@@ -913,11 +944,14 @@ export function createTweetDraft(topic?: string): TweetDraft {
   const draft: TweetDraft = {
     id: generateId(),
     text: '',
+    segments: [''],
+    isThread: false,
     status: 'draft',
     topic: topic || undefined,
     aiHistory: [],
     createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
+    updatedAt: new Date().toISOString(),
+    threadTweetIds: []
   }
   db.tweetDrafts.push(draft)
   saveDatabase()
@@ -928,10 +962,13 @@ export function updateTweetDraft(id: string, updates: Partial<TweetDraft>): Twee
   const draft = db.tweetDrafts.find(d => d.id === id)
   if (!draft) return null
   if (updates.text !== undefined) draft.text = updates.text
+  if (updates.segments !== undefined) draft.segments = updates.segments
+  if (updates.isThread !== undefined) draft.isThread = updates.isThread
   if (updates.status !== undefined) draft.status = updates.status
   if (updates.topic !== undefined) draft.topic = updates.topic
   if (updates.postedAt !== undefined) draft.postedAt = updates.postedAt
   if (updates.tweetId !== undefined) draft.tweetId = updates.tweetId
+  if (updates.threadTweetIds !== undefined) draft.threadTweetIds = updates.threadTweetIds
   draft.updatedAt = new Date().toISOString()
   saveDatabase()
   return draft
@@ -948,5 +985,29 @@ export function addTweetAIMessage(draftId: string, msg: TweetAIMessage): TweetDr
 
 export function deleteTweetDraft(id: string): void {
   db.tweetDrafts = db.tweetDrafts.filter(d => d.id !== id)
+  saveDatabase()
+}
+
+// Tweet Persona CRUD
+export function getTweetPersonas(): TweetPersona[] {
+  return db.tweetPersonas || []
+}
+
+export function createTweetPersona(data: { name: string; description: string; exampleTweets: string[] }): TweetPersona {
+  const persona: TweetPersona = {
+    id: generateId(),
+    name: data.name,
+    description: data.description,
+    exampleTweets: data.exampleTweets,
+    isBuiltIn: false,
+    createdAt: new Date().toISOString()
+  }
+  db.tweetPersonas.push(persona)
+  saveDatabase()
+  return persona
+}
+
+export function deleteTweetPersona(id: string): void {
+  db.tweetPersonas = db.tweetPersonas.filter(p => p.id !== id)
   saveDatabase()
 }

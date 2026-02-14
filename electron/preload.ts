@@ -54,7 +54,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   twitterFetchFeed: (token: string, lists: any[]) => ipcRenderer.invoke('twitter-fetch-feed', token, lists),
 
   // Tweet posting
-  postTweet: (text: string) => ipcRenderer.invoke('post-tweet', text),
+  postTweet: (text: string, replyToTweetId?: string) => ipcRenderer.invoke('post-tweet', text, replyToTweetId),
   verifyTwitterOAuth: () => ipcRenderer.invoke('verify-twitter-oauth'),
 
   // RSS
@@ -155,11 +155,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deleteTweetDraft: (id: string) => ipcRenderer.invoke('delete-tweet-draft', id),
 
   // Tweet AI
-  tweetBrainstorm: (topic: string, history: { role: string; content: string }[]) =>
-    ipcRenderer.invoke('tweet-brainstorm', topic, history),
-  tweetRefine: (text: string, instruction: string, history: { role: string; content: string }[]) =>
-    ipcRenderer.invoke('tweet-refine', text, instruction, history),
+  tweetBrainstorm: (topic: string, history: { role: string; content: string }[], persona?: any) =>
+    ipcRenderer.invoke('tweet-brainstorm', topic, history, persona),
+  tweetBrainstormThread: (topic: string, history: { role: string; content: string }[], persona?: any) =>
+    ipcRenderer.invoke('tweet-brainstorm-thread', topic, history, persona),
+  tweetRefine: (text: string, instruction: string, history: { role: string; content: string }[], persona?: any) =>
+    ipcRenderer.invoke('tweet-refine', text, instruction, history, persona),
   tweetAnalyze: (text: string) => ipcRenderer.invoke('tweet-analyze', text),
+
+  // Tweet Personas
+  getTweetPersonas: () => ipcRenderer.invoke('get-tweet-personas'),
+  createTweetPersona: (persona: { name: string; description: string; exampleTweets: string[] }) =>
+    ipcRenderer.invoke('create-tweet-persona', persona),
+  deleteTweetPersona: (id: string) => ipcRenderer.invoke('delete-tweet-persona', id),
 
   // Clipboard
   readClipboard: () => ipcRenderer.sendSync('read-clipboard'),

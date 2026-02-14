@@ -1,10 +1,10 @@
 import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, shell, Notification, clipboard } from 'electron'
 import path from 'path'
-import { initDatabase, getCategories, getTasks, addTask, updateTask, deleteTask, toggleTaskComplete, getDailyNote, saveDailyNote, getRecentNotes, getStats, getTwitterSettings, saveTwitterSettings, getRSSFeeds, addRSSFeed, removeRSSFeed, getClaudeApiKey, saveClaudeApiKey, getActivityLog, getPomodoroState, startPomodoro, completePomodoro, startBreak, stopPomodoro, getMorningBriefing, saveMorningBriefing, dismissMorningBriefing, getBriefingData, getWeeklyReview, saveWeeklyReview, getAllWeeklyReviews, getWeeklyReviewData, checkWeeklyReviewNeeded, getChatConversations, getChatConversation, createChatConversation, addChatMessage, deleteChatConversation, renameChatConversation, getChatSettings, saveChatSettings, addCategory, deleteCategory, getTweetDrafts, getTweetDraft, createTweetDraft, updateTweetDraft, addTweetAIMessage, deleteTweetDraft } from './database'
+import { initDatabase, getCategories, getTasks, addTask, updateTask, deleteTask, toggleTaskComplete, getDailyNote, saveDailyNote, getRecentNotes, getStats, getTwitterSettings, saveTwitterSettings, getRSSFeeds, addRSSFeed, removeRSSFeed, getClaudeApiKey, saveClaudeApiKey, getActivityLog, getPomodoroState, startPomodoro, completePomodoro, startBreak, stopPomodoro, getMorningBriefing, saveMorningBriefing, dismissMorningBriefing, getBriefingData, getWeeklyReview, saveWeeklyReview, getAllWeeklyReviews, getWeeklyReviewData, checkWeeklyReviewNeeded, getChatConversations, getChatConversation, createChatConversation, addChatMessage, deleteChatConversation, renameChatConversation, getChatSettings, saveChatSettings, addCategory, deleteCategory, getTweetDrafts, getTweetDraft, createTweetDraft, updateTweetDraft, addTweetAIMessage, deleteTweetDraft, getTweetPersonas, createTweetPersona, deleteTweetPersona } from './database'
 import { verifyToken, getUserByUsername, getUserLists, fetchAllLists, postTweet, verifyOAuthCredentials } from './twitter'
 import { fetchAllFeeds } from './rss'
 import { summarizeAI, summarizeGeo, verifyClaudeKey, parseVoiceCommand, generateMorningBriefing, generateWeeklyReview } from './summarize'
-import { brainstormTweet, refineTweet, analyzeTweet } from './tweet-ai'
+import { brainstormTweet, brainstormThread, refineTweet, analyzeTweet } from './tweet-ai'
 import { createTerminal, writeTerminal, resizeTerminal, killTerminal } from './terminal'
 import { streamChatMessage, abortChatStream } from './chat'
 import { getCliSessions, getCliSessionMessages, searchCliSessions } from './cli-logs'
@@ -183,12 +183,12 @@ ipcMain.handle('twitter-fetch-feed', async (_, bearerToken: string, lists: { id:
 })
 
 // Tweet posting
-ipcMain.handle('post-tweet', async (_, text: string) => {
+ipcMain.handle('post-tweet', async (_, text: string, replyToTweetId?: string) => {
   const settings = getTwitterSettings()
   if (!settings.apiKey || !settings.apiSecret || !settings.accessToken || !settings.accessTokenSecret) {
     return { success: false, error: 'Twitter OAuth credentials not configured. Set them in Settings.' }
   }
-  return postTweet({ apiKey: settings.apiKey, apiSecret: settings.apiSecret, accessToken: settings.accessToken, accessTokenSecret: settings.accessTokenSecret }, text)
+  return postTweet({ apiKey: settings.apiKey, apiSecret: settings.apiSecret, accessToken: settings.accessToken, accessTokenSecret: settings.accessTokenSecret }, text, replyToTweetId)
 })
 
 ipcMain.handle('verify-twitter-oauth', async () => {
@@ -492,22 +492,41 @@ ipcMain.handle('delete-tweet-draft', (_, id: string) => {
 })
 
 // Tweet AI
-ipcMain.handle('tweet-brainstorm', async (_, topic: string, history: { role: string; content: string }[]) => {
+ipcMain.handle('tweet-brainstorm', async (_, topic: string, history: { role: string; content: string }[], persona?: any) => {
   const apiKey = getClaudeApiKey()
   if (!apiKey) throw new Error('Claude API key not configured')
-  return brainstormTweet(apiKey, topic, history)
+  return brainstormTweet(apiKey, topic, history, persona || undefined)
 })
 
-ipcMain.handle('tweet-refine', async (_, text: string, instruction: string, history: { role: string; content: string }[]) => {
+ipcMain.handle('tweet-brainstorm-thread', async (_, topic: string, history: { role: string; content: string }[], persona?: any) => {
   const apiKey = getClaudeApiKey()
   if (!apiKey) throw new Error('Claude API key not configured')
-  return refineTweet(apiKey, text, instruction, history)
+  return brainstormThread(apiKey, topic, history, persona || undefined)
+})
+
+ipcMain.handle('tweet-refine', async (_, text: string, instruction: string, history: { role: string; content: string }[], persona?: any) => {
+  const apiKey = getClaudeApiKey()
+  if (!apiKey) throw new Error('Claude API key not configured')
+  return refineTweet(apiKey, text, instruction, history, persona || undefined)
 })
 
 ipcMain.handle('tweet-analyze', async (_, text: string) => {
   const apiKey = getClaudeApiKey()
   if (!apiKey) throw new Error('Claude API key not configured')
   return analyzeTweet(apiKey, text)
+})
+
+// Tweet Personas
+ipcMain.handle('get-tweet-personas', () => {
+  return getTweetPersonas()
+})
+
+ipcMain.handle('create-tweet-persona', (_, persona: { name: string; description: string; exampleTweets: string[] }) => {
+  return createTweetPersona(persona)
+})
+
+ipcMain.handle('delete-tweet-persona', (_, id: string) => {
+  return deleteTweetPersona(id)
 })
 
 // Terminal

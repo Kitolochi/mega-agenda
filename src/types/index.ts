@@ -179,6 +179,8 @@ export interface TweetAIMessage {
 export interface TweetDraft {
   id: string
   text: string
+  segments: string[]
+  isThread: boolean
   status: 'draft' | 'refining' | 'ready' | 'posted'
   topic?: string
   aiHistory: TweetAIMessage[]
@@ -186,6 +188,16 @@ export interface TweetDraft {
   updatedAt: string
   postedAt?: string
   tweetId?: string
+  threadTweetIds: string[]
+}
+
+export interface TweetPersona {
+  id: string
+  name: string
+  description: string
+  exampleTweets: string[]
+  isBuiltIn: boolean
+  createdAt: string
 }
 
 export interface ElectronAPI {
@@ -229,7 +241,7 @@ export interface ElectronAPI {
   parseVoiceCommand: (apiKey: string, transcript: string, categoryNames: string[]) => Promise<VoiceCommand>
 
   // Tweet posting
-  postTweet: (text: string) => Promise<{ success: boolean; tweetId?: string; error?: string }>
+  postTweet: (text: string, replyToTweetId?: string) => Promise<{ success: boolean; tweetId?: string; error?: string }>
   verifyTwitterOAuth: () => Promise<{ valid: boolean; username?: string; error?: string }>
 
   // Activity Log
@@ -308,9 +320,15 @@ export interface ElectronAPI {
   deleteTweetDraft: (id: string) => Promise<void>
 
   // Tweet AI
-  tweetBrainstorm: (topic: string, history: { role: string; content: string }[]) => Promise<string>
-  tweetRefine: (text: string, instruction: string, history: { role: string; content: string }[]) => Promise<string>
+  tweetBrainstorm: (topic: string, history: { role: string; content: string }[], persona?: TweetPersona) => Promise<string>
+  tweetBrainstormThread: (topic: string, history: { role: string; content: string }[], persona?: TweetPersona) => Promise<string>
+  tweetRefine: (text: string, instruction: string, history: { role: string; content: string }[], persona?: TweetPersona) => Promise<string>
   tweetAnalyze: (text: string) => Promise<string>
+
+  // Tweet Personas
+  getTweetPersonas: () => Promise<TweetPersona[]>
+  createTweetPersona: (persona: Omit<TweetPersona, 'id' | 'isBuiltIn' | 'createdAt'>) => Promise<TweetPersona>
+  deleteTweetPersona: (id: string) => Promise<void>
 }
 
 declare global {

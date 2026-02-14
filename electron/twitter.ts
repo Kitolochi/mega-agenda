@@ -182,10 +182,10 @@ function buildOAuthHeader(creds: TwitterOAuthCredentials, method: string, url: s
   return 'OAuth ' + headerParts.join(', ')
 }
 
-export async function postTweet(creds: TwitterOAuthCredentials, text: string): Promise<{ success: boolean; tweetId?: string; error?: string }> {
+export async function postTweet(creds: TwitterOAuthCredentials, text: string, replyToTweetId?: string): Promise<{ success: boolean; tweetId?: string; error?: string }> {
   const url = 'https://api.twitter.com/2/tweets'
   const authHeader = buildOAuthHeader(creds, 'POST', url)
-  const body = JSON.stringify({ text })
+  const body = JSON.stringify({ text, ...(replyToTweetId ? { reply: { in_reply_to_tweet_id: replyToTweetId } } : {}) })
 
   return new Promise((resolve) => {
     const parsedUrl = new URL(url)
