@@ -124,6 +124,26 @@ interface ChatSettings {
   customSystemPrompt?: string
 }
 
+interface TweetAIMessage {
+  id: string
+  role: 'user' | 'assistant'
+  type: 'brainstorm' | 'refine' | 'analyze' | 'freeform'
+  content: string
+  timestamp: string
+}
+
+interface TweetDraft {
+  id: string
+  text: string
+  status: 'draft' | 'refining' | 'ready' | 'posted'
+  topic?: string
+  aiHistory: TweetAIMessage[]
+  createdAt: string
+  updatedAt: string
+  postedAt?: string
+  tweetId?: string
+}
+
 interface Database {
   categories: Category[]
   tasks: Task[]
@@ -139,6 +159,7 @@ interface Database {
   weeklyReviews: WeeklyReview[]
   chatConversations: ChatConversation[]
   chatSettings: ChatSettings
+  tweetDrafts: TweetDraft[]
 }
 
 let db: Database
@@ -220,7 +241,8 @@ export function initDatabase(): Database {
         model: 'claude-sonnet-4-5-20250929',
         systemPromptMode: 'default',
         maxTokens: 4096
-      }
+      },
+      tweetDrafts: []
     }
     saveDatabase()
   }
@@ -301,6 +323,12 @@ export function initDatabase(): Database {
       systemPromptMode: 'default',
       maxTokens: 4096
     }
+    saveDatabase()
+  }
+
+  // Initialize tweetDrafts if missing
+  if (!db.tweetDrafts) {
+    db.tweetDrafts = []
     saveDatabase()
   }
 
@@ -869,4 +897,56 @@ export function saveChatSettings(updates: Partial<ChatSettings>): ChatSettings {
   if (updates.customSystemPrompt !== undefined) db.chatSettings.customSystemPrompt = updates.customSystemPrompt
   saveDatabase()
   return db.chatSettings
+}
+
+// Tweet Draft CRUD
+export function getTweetDrafts(): TweetDraft[] {
+  return (db.tweetDrafts || [])
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+}
+
+export function getTweetDraft(id: string): TweetDraft | null {
+  return db.tweetDrafts.find(d => d.id === id) || null
+}
+
+export function createTweetDraft(topic?: string): TweetDraft {
+  const draft: TweetDraft = {
+    id: generateId(),
+    text: '',
+    status: 'draft',
+    topic: topic || undefined,
+    aiHistory: [],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  }
+  db.tweetDrafts.push(draft)
+  saveDatabase()
+  return draft
+}
+
+export function updateTweetDraft(id: string, updates: Partial<TweetDraft>): TweetDraft | null {
+  const draft = db.tweetDrafts.find(d => d.id === id)
+  if (!draft) return null
+  if (updates.text !== undefined) draft.text = updates.text
+  if (updates.status !== undefined) draft.status = updates.status
+  if (updates.topic !== undefined) draft.topic = updates.topic
+  if (updates.postedAt !== undefined) draft.postedAt = updates.postedAt
+  if (updates.tweetId !== undefined) draft.tweetId = updates.tweetId
+  draft.updatedAt = new Date().toISOString()
+  saveDatabase()
+  return draft
+}
+
+export function addTweetAIMessage(draftId: string, msg: TweetAIMessage): TweetDraft | null {
+  const draft = db.tweetDrafts.find(d => d.id === draftId)
+  if (!draft) return null
+  draft.aiHistory.push(msg)
+  draft.updatedAt = new Date().toISOString()
+  saveDatabase()
+  return draft
+}
+
+export function deleteTweetDraft(id: string): void {
+  db.tweetDrafts = db.tweetDrafts.filter(d => d.id !== id)
+  saveDatabase()
 }

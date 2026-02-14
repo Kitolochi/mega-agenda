@@ -168,6 +168,26 @@ export interface CLISessionMessage {
   uuid?: string
 }
 
+export interface TweetAIMessage {
+  id: string
+  role: 'user' | 'assistant'
+  type: 'brainstorm' | 'refine' | 'analyze' | 'freeform'
+  content: string
+  timestamp: string
+}
+
+export interface TweetDraft {
+  id: string
+  text: string
+  status: 'draft' | 'refining' | 'ready' | 'posted'
+  topic?: string
+  aiHistory: TweetAIMessage[]
+  createdAt: string
+  updatedAt: string
+  postedAt?: string
+  tweetId?: string
+}
+
 export interface ElectronAPI {
   // Task operations
   getCategories: () => Promise<Category[]>
@@ -278,6 +298,19 @@ export interface ElectronAPI {
   getCliSessions: () => Promise<CLISession[]>
   getCliSessionMessages: (sessionId: string, offset?: number, limit?: number) => Promise<{ messages: CLISessionMessage[]; hasMore: boolean }>
   searchCliSessions: (query: string) => Promise<{ sessionId: string; firstPrompt: string; matches: string[] }[]>
+
+  // Tweet drafts
+  getTweetDrafts: () => Promise<TweetDraft[]>
+  getTweetDraft: (id: string) => Promise<TweetDraft | null>
+  createTweetDraft: (topic?: string) => Promise<TweetDraft>
+  updateTweetDraft: (id: string, updates: Partial<TweetDraft>) => Promise<TweetDraft | null>
+  addTweetAIMessage: (draftId: string, msg: TweetAIMessage) => Promise<TweetDraft | null>
+  deleteTweetDraft: (id: string) => Promise<void>
+
+  // Tweet AI
+  tweetBrainstorm: (topic: string, history: { role: string; content: string }[]) => Promise<string>
+  tweetRefine: (text: string, instruction: string, history: { role: string; content: string }[]) => Promise<string>
+  tweetAnalyze: (text: string) => Promise<string>
 }
 
 declare global {

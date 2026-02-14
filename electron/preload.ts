@@ -146,6 +146,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('get-cli-session-messages', sessionId, offset, limit),
   searchCliSessions: (query: string) => ipcRenderer.invoke('search-cli-sessions', query),
 
+  // Tweet drafts
+  getTweetDrafts: () => ipcRenderer.invoke('get-tweet-drafts'),
+  getTweetDraft: (id: string) => ipcRenderer.invoke('get-tweet-draft', id),
+  createTweetDraft: (topic?: string) => ipcRenderer.invoke('create-tweet-draft', topic),
+  updateTweetDraft: (id: string, updates: any) => ipcRenderer.invoke('update-tweet-draft', id, updates),
+  addTweetAIMessage: (draftId: string, msg: any) => ipcRenderer.invoke('add-tweet-ai-message', draftId, msg),
+  deleteTweetDraft: (id: string) => ipcRenderer.invoke('delete-tweet-draft', id),
+
+  // Tweet AI
+  tweetBrainstorm: (topic: string, history: { role: string; content: string }[]) =>
+    ipcRenderer.invoke('tweet-brainstorm', topic, history),
+  tweetRefine: (text: string, instruction: string, history: { role: string; content: string }[]) =>
+    ipcRenderer.invoke('tweet-refine', text, instruction, history),
+  tweetAnalyze: (text: string) => ipcRenderer.invoke('tweet-analyze', text),
+
   // Clipboard
   readClipboard: () => ipcRenderer.sendSync('read-clipboard'),
   writeClipboard: (text: string) => ipcRenderer.send('write-clipboard', text),
