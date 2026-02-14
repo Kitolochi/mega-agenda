@@ -4,18 +4,13 @@ import { MorningBriefing as MorningBriefingType } from '../types'
 export default function MorningBriefing() {
   const [briefing, setBriefing] = useState<MorningBriefingType | null>(null)
   const [loading, setLoading] = useState(true)
-  const [dismissed, setDismissed] = useState(false)
+  const [collapsed, setCollapsed] = useState(false)
 
   useEffect(() => {
     const today = new Date().toISOString().split('T')[0]
 
-    // Check if already dismissed or cached
+    // Check for existing briefing (ignore dismissed state — always show)
     window.electronAPI.getMorningBriefing(today).then(existing => {
-      if (existing?.dismissed) {
-        setDismissed(true)
-        setLoading(false)
-        return
-      }
       if (existing) {
         setBriefing(existing)
         setLoading(false)
@@ -28,15 +23,6 @@ export default function MorningBriefing() {
       }).catch(() => setLoading(false))
     })
   }, [])
-
-  const handleDismiss = async () => {
-    if (briefing) {
-      await window.electronAPI.dismissMorningBriefing(briefing.date)
-    }
-    setDismissed(true)
-  }
-
-  if (dismissed) return null
 
   if (loading) {
     return (
@@ -63,27 +49,28 @@ export default function MorningBriefing() {
     <div className="glass-card rounded-xl overflow-hidden animate-fade-in">
       <div className="h-[3px] bg-gradient-to-r from-accent-blue via-accent-purple to-accent-emerald" />
       <div className="p-4">
-        <div className="flex items-center justify-between mb-2.5">
+        <div className="flex items-center justify-between mb-2.5 cursor-pointer" onClick={() => setCollapsed(!collapsed)}>
           <div className="flex items-center gap-2">
             <span className="text-sm">✨</span>
-            <span className="text-[10px] uppercase tracking-widest text-muted font-display font-medium">Morning Briefing</span>
+            <span className="text-[10px] uppercase tracking-widest text-muted font-display font-medium">Daily Briefing</span>
             {briefing.isAiEnhanced && (
               <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-accent-purple/15 text-accent-purple font-medium">AI</span>
             )}
           </div>
           <button
-            onClick={handleDismiss}
-            className="text-muted hover:text-white/60 transition-colors"
-            title="Dismiss"
+            className="text-muted hover:text-white/60 transition-all"
+            title={collapsed ? 'Expand' : 'Collapse'}
           >
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            <svg className={`w-3.5 h-3.5 transition-transform ${collapsed ? '' : 'rotate-180'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
             </svg>
           </button>
         </div>
-        <div className="text-xs text-white/70 leading-relaxed whitespace-pre-line">
-          {briefing.content}
-        </div>
+        {!collapsed && (
+          <div className="text-xs text-white/70 leading-relaxed whitespace-pre-line">
+            {briefing.content}
+          </div>
+        )}
       </div>
     </div>
   )
