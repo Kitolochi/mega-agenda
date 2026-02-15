@@ -407,8 +407,31 @@ function saveDatabase() {
   fs.writeFileSync(dbPath, JSON.stringify(db, null, 2), 'utf-8')
 }
 
+/** Get the current date string in EST/EDT (America/New_York) */
+function getESTDate(date: Date = new Date()): string {
+  return date.toLocaleDateString('en-CA', { timeZone: 'America/New_York' }) // 'en-CA' gives YYYY-MM-DD
+}
+
+/** Get EST date parts for month-based comparisons */
+function getESTParts(date: Date = new Date()): { year: number; month: number; day: string } {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(date)
+  const year = parseInt(parts.find(p => p.type === 'year')!.value)
+  const month = parseInt(parts.find(p => p.type === 'month')!.value)
+  const day = parts.map(p => p.value).join('')
+  return { year, month, day }
+}
+
+/** Count calendar days between two dates in EST */
+function estDaysBetween(a: Date, b: Date): number {
+  const dateA = getESTDate(a)
+  const dateB = getESTDate(b)
+  const msA = new Date(dateA + 'T00:00:00').getTime()
+  const msB = new Date(dateB + 'T00:00:00').getTime()
+  return Math.floor((msB - msA) / (1000 * 60 * 60 * 24))
+}
+
 function checkRecurringTasks() {
-  const today = new Date().toISOString().split('T')[0]
+  let changed = false
 
   db.tasks.forEach(task => {
     if (task.is_recurring && task.completed && task.last_completed) {
@@ -418,28 +441,31 @@ function checkRecurringTasks() {
 
       if (task.recurrence_type === 'daily') {
         const interval = task.recurrence_interval || 1
-        const daysDiff = Math.floor((now.getTime() - lastCompleted.getTime()) / (1000 * 60 * 60 * 24))
-        shouldReset = daysDiff >= interval
+        shouldReset = estDaysBetween(lastCompleted, now) >= interval
       } else if (task.recurrence_type === 'weekly') {
         const interval = task.recurrence_interval || 1
-        const daysDiff = Math.floor((now.getTime() - lastCompleted.getTime()) / (1000 * 60 * 60 * 24))
-        shouldReset = daysDiff >= (interval * 7)
+        shouldReset = estDaysBetween(lastCompleted, now) >= (interval * 7)
       } else if (task.recurrence_type === 'monthly') {
         const interval = task.recurrence_interval || 1
-        const monthsDiff = (now.getFullYear() - lastCompleted.getFullYear()) * 12 +
-                          (now.getMonth() - lastCompleted.getMonth())
+        const lastParts = getESTParts(lastCompleted)
+        const nowParts = getESTParts(now)
+        const monthsDiff = (nowParts.year - lastParts.year) * 12 + (nowParts.month - lastParts.month)
         shouldReset = monthsDiff >= interval
       }
 
       if (shouldReset) {
         task.completed = 0
         task.updated_at = new Date().toISOString()
+        changed = true
       }
     }
   })
 
-  saveDatabase()
+  if (changed) saveDatabase()
 }
+
+// Check recurring tasks every minute so they reset at midnight EST even if the app stays open
+setInterval(checkRecurringTasks, 60 * 1000)
 
 export function getCategories(): Category[] {
   return db.categories.sort((a, b) => a.sort_order - b.sort_order)
