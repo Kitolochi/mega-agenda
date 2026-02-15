@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, shell, Notification, clipboard } from 'electron'
 import path from 'path'
-import { initDatabase, getCategories, getTasks, addTask, updateTask, deleteTask, toggleTaskComplete, getDailyNote, saveDailyNote, getRecentNotes, getStats, getTwitterSettings, saveTwitterSettings, getRSSFeeds, addRSSFeed, removeRSSFeed, getClaudeApiKey, saveClaudeApiKey, getActivityLog, getPomodoroState, startPomodoro, completePomodoro, startBreak, stopPomodoro, getMorningBriefing, saveMorningBriefing, dismissMorningBriefing, getBriefingData, getWeeklyReview, saveWeeklyReview, getAllWeeklyReviews, getWeeklyReviewData, checkWeeklyReviewNeeded, getChatConversations, getChatConversation, createChatConversation, addChatMessage, deleteChatConversation, renameChatConversation, getChatSettings, saveChatSettings, addCategory, deleteCategory, getTweetDrafts, getTweetDraft, createTweetDraft, updateTweetDraft, addTweetAIMessage, deleteTweetDraft, getTweetPersonas, createTweetPersona, deleteTweetPersona } from './database'
+import { initDatabase, getCategories, getTasks, addTask, updateTask, deleteTask, toggleTaskComplete, getDailyNote, saveDailyNote, getRecentNotes, getStats, getTwitterSettings, saveTwitterSettings, getRSSFeeds, addRSSFeed, removeRSSFeed, getClaudeApiKey, saveClaudeApiKey, getActivityLog, getPomodoroState, startPomodoro, completePomodoro, startBreak, stopPomodoro, getMorningBriefing, saveMorningBriefing, dismissMorningBriefing, getBriefingData, getWeeklyReview, saveWeeklyReview, getAllWeeklyReviews, getWeeklyReviewData, checkWeeklyReviewNeeded, getChatConversations, getChatConversation, createChatConversation, addChatMessage, deleteChatConversation, renameChatConversation, getChatSettings, saveChatSettings, addCategory, deleteCategory, getTweetDrafts, getTweetDraft, createTweetDraft, updateTweetDraft, addTweetAIMessage, deleteTweetDraft, getTweetPersonas, createTweetPersona, deleteTweetPersona, getAITasks, createAITask, updateAITask, deleteAITask, moveAITask } from './database'
 import { verifyToken, getUserByUsername, getUserLists, fetchAllLists, postTweet, verifyOAuthCredentials } from './twitter'
 import { fetchAllFeeds } from './rss'
 import { summarizeAI, summarizeGeo, verifyClaudeKey, parseVoiceCommand, generateMorningBriefing, generateWeeklyReview } from './summarize'
@@ -8,6 +8,7 @@ import { brainstormTweet, brainstormThread, refineTweet, analyzeTweet } from './
 import { createTerminal, writeTerminal, resizeTerminal, killTerminal } from './terminal'
 import { streamChatMessage, abortChatStream } from './chat'
 import { getCliSessions, getCliSessionMessages, searchCliSessions } from './cli-logs'
+import { searchGitHubRepos } from './github'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -466,6 +467,10 @@ ipcMain.handle('search-cli-sessions', async (_, query: string) => {
   return searchCliSessions(query)
 })
 
+ipcMain.handle('search-github-repos', async (_, query: string) => {
+  return searchGitHubRepos(query)
+})
+
 // Tweet Drafts
 ipcMain.handle('get-tweet-drafts', () => {
   return getTweetDrafts()
@@ -527,6 +532,27 @@ ipcMain.handle('create-tweet-persona', (_, persona: { name: string; description:
 
 ipcMain.handle('delete-tweet-persona', (_, id: string) => {
   return deleteTweetPersona(id)
+})
+
+// AI Tasks
+ipcMain.handle('get-ai-tasks', () => {
+  return getAITasks()
+})
+
+ipcMain.handle('create-ai-task', (_, task: { title: string; description: string; priority: 'low' | 'medium' | 'high'; tags: string[] }) => {
+  return createAITask(task)
+})
+
+ipcMain.handle('update-ai-task', (_, id: string, updates: any) => {
+  return updateAITask(id, updates)
+})
+
+ipcMain.handle('delete-ai-task', (_, id: string) => {
+  return deleteAITask(id)
+})
+
+ipcMain.handle('move-ai-task', (_, id: string, column: string) => {
+  return moveAITask(id, column as any)
 })
 
 // Terminal

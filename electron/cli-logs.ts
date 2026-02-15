@@ -237,11 +237,11 @@ async function findSessionFile(sessionId: string): Promise<string | null> {
 
 export async function searchCliSessions(
   query: string
-): Promise<{ sessionId: string; firstPrompt: string; matches: string[] }[]> {
+): Promise<{ sessionId: string; firstPrompt: string; matches: string[]; project: string }[]> {
   const projectsDir = getClaudeProjectsDir()
   if (!fs.existsSync(projectsDir)) return []
 
-  const results: { sessionId: string; firstPrompt: string; matches: string[] }[] = []
+  const results: { sessionId: string; firstPrompt: string; matches: string[]; project: string }[] = []
   const lowerQuery = query.toLowerCase()
 
   try {
@@ -256,7 +256,7 @@ export async function searchCliSessions(
         const filePath = path.join(projPath, file)
         const sessionId = file.replace('.jsonl', '')
 
-        const sessionResult = await searchInSession(filePath, sessionId, lowerQuery)
+        const sessionResult = await searchInSession(filePath, sessionId, lowerQuery, projDir.name)
         if (sessionResult) {
           results.push(sessionResult)
         }
@@ -273,8 +273,9 @@ export async function searchCliSessions(
 async function searchInSession(
   filePath: string,
   sessionId: string,
-  lowerQuery: string
-): Promise<{ sessionId: string; firstPrompt: string; matches: string[] } | null> {
+  lowerQuery: string,
+  project: string = ''
+): Promise<{ sessionId: string; firstPrompt: string; matches: string[]; project: string } | null> {
   return new Promise((resolve) => {
     const matches: string[] = []
     let firstPrompt = ''
@@ -306,7 +307,7 @@ async function searchInSession(
 
     rl.on('close', () => {
       if (matches.length > 0) {
-        resolve({ sessionId, firstPrompt, matches: matches.slice(0, 5) })
+        resolve({ sessionId, firstPrompt, matches: matches.slice(0, 5), project })
       } else {
         resolve(null)
       }

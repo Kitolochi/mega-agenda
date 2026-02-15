@@ -145,6 +145,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getCliSessionMessages: (sessionId: string, offset?: number, limit?: number) =>
     ipcRenderer.invoke('get-cli-session-messages', sessionId, offset, limit),
   searchCliSessions: (query: string) => ipcRenderer.invoke('search-cli-sessions', query),
+  searchGitHubRepos: (query: string) => ipcRenderer.invoke('search-github-repos', query),
 
   // Tweet drafts
   getTweetDrafts: () => ipcRenderer.invoke('get-tweet-drafts'),
@@ -168,6 +169,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   createTweetPersona: (persona: { name: string; description: string; exampleTweets: string[] }) =>
     ipcRenderer.invoke('create-tweet-persona', persona),
   deleteTweetPersona: (id: string) => ipcRenderer.invoke('delete-tweet-persona', id),
+
+  // AI Tasks
+  getAITasks: () => ipcRenderer.invoke('get-ai-tasks'),
+  createAITask: (task: { title: string; description: string; priority: 'low' | 'medium' | 'high'; tags: string[] }) =>
+    ipcRenderer.invoke('create-ai-task', task),
+  updateAITask: (id: string, updates: any) => ipcRenderer.invoke('update-ai-task', id, updates),
+  deleteAITask: (id: string) => ipcRenderer.invoke('delete-ai-task', id),
+  moveAITask: (id: string, column: string) => ipcRenderer.invoke('move-ai-task', id, column),
 
   // Clipboard
   readClipboard: () => ipcRenderer.sendSync('read-clipboard'),

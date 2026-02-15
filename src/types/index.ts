@@ -200,6 +200,27 @@ export interface TweetPersona {
   createdAt: string
 }
 
+export interface GitHubRepoResult {
+  name: string
+  fullName: string
+  description: string
+  url: string
+  localPath: string | null
+  language: string
+  updatedAt: string
+}
+
+export interface AITask {
+  id: string
+  title: string
+  description: string
+  column: 'backlog' | 'todo' | 'in_progress' | 'done'
+  priority: 'low' | 'medium' | 'high'
+  tags: string[]
+  createdAt: string
+  updatedAt: string
+}
+
 export interface ElectronAPI {
   // Task operations
   getCategories: () => Promise<Category[]>
@@ -309,7 +330,8 @@ export interface ElectronAPI {
   // CLI logs
   getCliSessions: () => Promise<CLISession[]>
   getCliSessionMessages: (sessionId: string, offset?: number, limit?: number) => Promise<{ messages: CLISessionMessage[]; hasMore: boolean }>
-  searchCliSessions: (query: string) => Promise<{ sessionId: string; firstPrompt: string; matches: string[] }[]>
+  searchCliSessions: (query: string) => Promise<{ sessionId: string; firstPrompt: string; matches: string[]; project: string }[]>
+  searchGitHubRepos: (query: string) => Promise<GitHubRepoResult[]>
 
   // Tweet drafts
   getTweetDrafts: () => Promise<TweetDraft[]>
@@ -329,6 +351,13 @@ export interface ElectronAPI {
   getTweetPersonas: () => Promise<TweetPersona[]>
   createTweetPersona: (persona: Omit<TweetPersona, 'id' | 'isBuiltIn' | 'createdAt'>) => Promise<TweetPersona>
   deleteTweetPersona: (id: string) => Promise<void>
+
+  // AI Tasks
+  getAITasks: () => Promise<AITask[]>
+  createAITask: (task: { title: string; description: string; priority: 'low' | 'medium' | 'high'; tags: string[] }) => Promise<AITask>
+  updateAITask: (id: string, updates: Partial<AITask>) => Promise<AITask | null>
+  deleteAITask: (id: string) => Promise<void>
+  moveAITask: (id: string, column: AITask['column']) => Promise<AITask | null>
 }
 
 declare global {

@@ -156,6 +156,17 @@ interface TweetPersona {
   createdAt: string
 }
 
+interface AITask {
+  id: string
+  title: string
+  description: string
+  column: 'backlog' | 'todo' | 'in_progress' | 'done'
+  priority: 'low' | 'medium' | 'high'
+  tags: string[]
+  createdAt: string
+  updatedAt: string
+}
+
 interface Database {
   categories: Category[]
   tasks: Task[]
@@ -173,6 +184,7 @@ interface Database {
   chatSettings: ChatSettings
   tweetDrafts: TweetDraft[]
   tweetPersonas: TweetPersona[]
+  aiTasks: AITask[]
 }
 
 let db: Database
@@ -256,7 +268,8 @@ export function initDatabase(): Database {
         maxTokens: 4096
       },
       tweetDrafts: [],
-      tweetPersonas: []
+      tweetPersonas: [],
+      aiTasks: []
     }
     saveDatabase()
   }
@@ -360,6 +373,12 @@ export function initDatabase(): Database {
   // Initialize tweetPersonas if missing
   if (!db.tweetPersonas) {
     db.tweetPersonas = []
+    saveDatabase()
+  }
+
+  // Initialize aiTasks if missing
+  if (!db.aiTasks) {
+    db.aiTasks = []
     saveDatabase()
   }
 
@@ -1010,4 +1029,98 @@ export function createTweetPersona(data: { name: string; description: string; ex
 export function deleteTweetPersona(id: string): void {
   db.tweetPersonas = db.tweetPersonas.filter(p => p.id !== id)
   saveDatabase()
+}
+
+// AI Tasks CRUD
+export function getAITasks(): AITask[] {
+  return db.aiTasks || []
+}
+
+export function createAITask(data: { title: string; description: string; priority: 'low' | 'medium' | 'high'; tags: string[] }): AITask {
+  const task: AITask = {
+    id: generateId(),
+    title: data.title,
+    description: data.description,
+    column: 'backlog',
+    priority: data.priority,
+    tags: data.tags,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  }
+  db.aiTasks.push(task)
+  saveDatabase()
+  syncAITasksFile()
+  return task
+}
+
+export function updateAITask(id: string, updates: Partial<AITask>): AITask | null {
+  const task = db.aiTasks.find(t => t.id === id)
+  if (!task) return null
+  if (updates.title !== undefined) task.title = updates.title
+  if (updates.description !== undefined) task.description = updates.description
+  if (updates.priority !== undefined) task.priority = updates.priority
+  if (updates.tags !== undefined) task.tags = updates.tags
+  if (updates.column !== undefined) task.column = updates.column
+  task.updatedAt = new Date().toISOString()
+  saveDatabase()
+  syncAITasksFile()
+  return task
+}
+
+export function deleteAITask(id: string): void {
+  db.aiTasks = db.aiTasks.filter(t => t.id !== id)
+  saveDatabase()
+  syncAITasksFile()
+}
+
+export function moveAITask(id: string, column: AITask['column']): AITask | null {
+  const task = db.aiTasks.find(t => t.id === id)
+  if (!task) return null
+  task.column = column
+  task.updatedAt = new Date().toISOString()
+  saveDatabase()
+  syncAITasksFile()
+  return task
+}
+
+function syncAITasksFile(): void {
+  try {
+    const homeDir = process.env.USERPROFILE || process.env.HOME || ''
+    const claudeDir = path.join(homeDir, '.claude')
+    if (!fs.existsSync(claudeDir)) {
+      fs.mkdirSync(claudeDir, { recursive: true })
+    }
+    const filePath = path.join(claudeDir, 'ai-tasks.md')
+
+    const columns: { key: AITask['column']; label: string }[] = [
+      { key: 'backlog', label: 'Backlog' },
+      { key: 'todo', label: 'Todo' },
+      { key: 'in_progress', label: 'In Progress' },
+      { key: 'done', label: 'Done' }
+    ]
+
+    let content = '# AI Tasks & Ideas\n'
+
+    for (const col of columns) {
+      content += `\n## ${col.label}\n`
+      const tasks = (db.aiTasks || []).filter(t => t.column === col.key)
+      if (tasks.length === 0) {
+        content += '\n_No tasks_\n'
+      } else {
+        for (const task of tasks) {
+          const tags = task.tags.length > 0 ? ' ' + task.tags.map(t => `\`#${t}\``).join(' ') : ''
+          if (col.key === 'done') {
+            const completedDate = task.updatedAt.split('T')[0]
+            content += `- **${task.title}**${task.description ? ' — ' + task.description : ''} (completed ${completedDate})${tags}\n`
+          } else {
+            content += `- [${task.priority}] **${task.title}**${task.description ? ' — ' + task.description : ''}${tags}\n`
+          }
+        }
+      }
+    }
+
+    fs.writeFileSync(filePath, content, 'utf-8')
+  } catch {
+    // Silently fail — file sync is best-effort
+  }
 }
