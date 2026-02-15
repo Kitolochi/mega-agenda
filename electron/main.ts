@@ -50,6 +50,12 @@ function createWindow() {
 }
 
 function createTray() {
+  // Destroy previous tray if it exists (prevents duplicate tray icons on hot-reload)
+  if (tray) {
+    tray.destroy()
+    tray = null
+  }
+
   // Load icon from file - works better on Windows
   const iconPath = path.join(app.getAppPath(), 'public', 'tray-icon.png')
   let trayIcon = nativeImage.createFromPath(iconPath)
@@ -599,6 +605,13 @@ app.whenReady().then(() => {
   initDatabase()
   createWindow()
   createTray()
+})
+
+app.on('before-quit', () => {
+  if (tray) {
+    tray.destroy()
+    tray = null
+  }
 })
 
 app.on('window-all-closed', () => {
