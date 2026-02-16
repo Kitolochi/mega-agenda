@@ -188,5 +188,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onOpenAddModal: (callback: () => void) => {
     ipcRenderer.on('open-add-modal', callback)
     return () => ipcRenderer.removeListener('open-add-modal', callback)
+  },
+  onTasksUpdated: (callback: () => void) => {
+    ipcRenderer.on('tasks-updated', callback)
+    return () => ipcRenderer.removeListener('tasks-updated', callback)
   }
 })

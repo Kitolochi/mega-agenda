@@ -45,6 +45,10 @@ function App() {
       setShowAddModal(true)
     })
 
+    const cleanupTasksUpdated = window.electronAPI.onTasksUpdated(() => {
+      loadData()
+    })
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) {
         return
@@ -77,7 +81,7 @@ function App() {
     }
 
     window.addEventListener('keydown', handleKeyDown)
-    return () => { cleanup(); window.removeEventListener('keydown', handleKeyDown) }
+    return () => { cleanup(); cleanupTasksUpdated(); window.removeEventListener('keydown', handleKeyDown) }
   }, [loadData, showAddModal, selectedCategory, activeTab, categories])
 
   const handleAddTask = async (task: Omit<Task, 'id' | 'created_at' | 'updated_at'>) => {

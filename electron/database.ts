@@ -462,10 +462,10 @@ function checkRecurringTasks() {
   })
 
   if (changed) saveDatabase()
+  return changed
 }
 
-// Check recurring tasks every minute so they reset at midnight EST even if the app stays open
-setInterval(checkRecurringTasks, 60 * 1000)
+export { checkRecurringTasks }
 
 export function getCategories(): Category[] {
   return db.categories.sort((a, b) => a.sort_order - b.sort_order)

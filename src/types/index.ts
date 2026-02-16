@@ -307,6 +307,7 @@ export interface ElectronAPI {
   closeWindow: () => void
   minimizeWindow: () => void
   onOpenAddModal: (callback: () => void) => () => void
+  onTasksUpdated: (callback: () => void) => () => void
 
   // Chat conversations
   getChatConversations: () => Promise<ChatConversation[]>
