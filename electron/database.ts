@@ -432,11 +432,25 @@ function estDaysBetween(a: Date, b: Date): number {
 
 function checkRecurringTasks() {
   let changed = false
+  const now = new Date()
+  const todayEST = getESTDate(now)
 
   db.tasks.forEach(task => {
+    // Daily category tasks always reset at the start of each EST day
+    if (task.category_id === DAILY_CATEGORY_ID && task.completed) {
+      const completedAt = task.last_completed || task.updated_at || task.created_at
+      const completedDateEST = getESTDate(new Date(completedAt))
+      if (completedDateEST !== todayEST) {
+        task.completed = 0
+        task.updated_at = now.toISOString()
+        changed = true
+      }
+      return
+    }
+
+    // Other recurring tasks use interval-based logic
     if (task.is_recurring && task.completed && task.last_completed) {
       const lastCompleted = new Date(task.last_completed)
-      const now = new Date()
       let shouldReset = false
 
       if (task.recurrence_type === 'daily') {
@@ -455,7 +469,7 @@ function checkRecurringTasks() {
 
       if (shouldReset) {
         task.completed = 0
-        task.updated_at = new Date().toISOString()
+        task.updated_at = now.toISOString()
         changed = true
       }
     }
@@ -480,7 +494,11 @@ export function addCategory(name: string, color: string, icon: string): Category
   return cat
 }
 
+const DAILY_CATEGORY_ID = 7
+
 export function deleteCategory(id: number): void {
+  // Never delete the locked Daily category
+  if (id === DAILY_CATEGORY_ID) return
   // Don't delete if tasks exist in this category
   const hasTasks = db.tasks.some(t => t.category_id === id)
   if (hasTasks) return
@@ -579,7 +597,7 @@ export function toggleTaskComplete(id: number): Task | null {
   if (task.completed === 0) {
     // Marking as complete
     task.completed = 1
-    if (task.is_recurring) {
+    if (task.is_recurring || task.category_id === DAILY_CATEGORY_ID) {
       task.last_completed = new Date().toISOString()
     }
     // Update weekly stats
