@@ -128,24 +128,18 @@ export default function AITasksBoard({ onTerminalCommand }: AITasksBoardProps) {
   useEffect(() => { loadTasks() }, [loadTasks])
 
   const handleAutoLaunch = useCallback(async (task: AITask) => {
-    if (!onTerminalCommand) return
     setLaunchingTaskId(task.id)
     try {
       const context = await quickSearch(task)
       const prompt = escapeForCmd(buildRichPrompt(task, context))
-      let command = ''
-      if (context.localPath) {
-        command = `cd "${escapeForCmd(context.localPath)}" && claude "${prompt}"\r`
-      } else {
-        command = `claude "${prompt}"\r`
-      }
+      const cwd = context.localPath || undefined
+      await window.electronAPI.launchExternalTerminal(prompt, cwd)
       await window.electronAPI.moveAITask(task.id, 'in_progress')
       await loadTasks()
-      onTerminalCommand(command)
     } finally {
       setLaunchingTaskId(null)
     }
-  }, [onTerminalCommand, loadTasks])
+  }, [loadTasks])
 
   const handleAdd = async () => {
     if (!newTitle.trim()) return

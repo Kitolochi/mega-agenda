@@ -353,6 +353,9 @@ export interface ElectronAPI {
   createTweetPersona: (persona: Omit<TweetPersona, 'id' | 'isBuiltIn' | 'createdAt'>) => Promise<TweetPersona>
   deleteTweetPersona: (id: string) => Promise<void>
 
+  // Launch external terminal
+  launchExternalTerminal: (prompt: string, cwd?: string) => Promise<void>
+
   // AI Tasks
   getAITasks: () => Promise<AITask[]>
   createAITask: (task: { title: string; description: string; priority: 'low' | 'medium' | 'high'; tags: string[] }) => Promise<AITask>

@@ -170,6 +170,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('create-tweet-persona', persona),
   deleteTweetPersona: (id: string) => ipcRenderer.invoke('delete-tweet-persona', id),
 
+  // Launch external terminal
+  launchExternalTerminal: (prompt: string, cwd?: string) =>
+    ipcRenderer.invoke('launch-external-terminal', prompt, cwd),
+
   // AI Tasks
   getAITasks: () => ipcRenderer.invoke('get-ai-tasks'),
   createAITask: (task: { title: string; description: string; priority: 'low' | 'medium' | 'high'; tags: string[] }) =>

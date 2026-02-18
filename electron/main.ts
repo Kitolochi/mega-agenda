@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, shell, Notification, clipboard } from 'electron'
 import path from 'path'
+import { spawn } from 'child_process'
 import { initDatabase, checkRecurringTasks, getCategories, getTasks, addTask, updateTask, deleteTask, toggleTaskComplete, getDailyNote, saveDailyNote, getRecentNotes, getStats, getTwitterSettings, saveTwitterSettings, getRSSFeeds, addRSSFeed, removeRSSFeed, getClaudeApiKey, saveClaudeApiKey, getActivityLog, getPomodoroState, startPomodoro, completePomodoro, startBreak, stopPomodoro, getMorningBriefing, saveMorningBriefing, dismissMorningBriefing, getBriefingData, getWeeklyReview, saveWeeklyReview, getAllWeeklyReviews, getWeeklyReviewData, checkWeeklyReviewNeeded, getChatConversations, getChatConversation, createChatConversation, addChatMessage, deleteChatConversation, renameChatConversation, getChatSettings, saveChatSettings, addCategory, deleteCategory, getTweetDrafts, getTweetDraft, createTweetDraft, updateTweetDraft, addTweetAIMessage, deleteTweetDraft, getTweetPersonas, createTweetPersona, deleteTweetPersona, getAITasks, createAITask, updateAITask, deleteAITask, moveAITask } from './database'
 import { verifyToken, getUserByUsername, getUserLists, fetchAllLists, postTweet, verifyOAuthCredentials } from './twitter'
 import { fetchAllFeeds } from './rss'
@@ -559,6 +560,44 @@ ipcMain.handle('delete-ai-task', (_, id: string) => {
 
 ipcMain.handle('move-ai-task', (_, id: string, column: string) => {
   return moveAITask(id, column as any)
+})
+
+// Pre-trust a directory in Claude Code's config so the workspace trust prompt is skipped
+function preTrustDirectory(dir: string) {
+  const claudeDir = path.join(process.env.USERPROFILE || '', '.claude')
+  const configPath = path.join(claudeDir, '.claude.json')
+  let config: any = {}
+  try {
+    if (fs.existsSync(configPath)) {
+      config = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
+    }
+  } catch { /* start fresh */ }
+  if (!config.projects) config.projects = {}
+  // Normalize path to forward slashes like Claude Code does internally
+  const normalized = dir.replace(/\\/g, '/')
+  if (!config.projects[normalized]) config.projects[normalized] = {}
+  config.projects[normalized].hasTrustDialogAccepted = true
+  fs.mkdirSync(claudeDir, { recursive: true })
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2))
+}
+
+// Launch external terminal
+ipcMain.handle('launch-external-terminal', async (_, prompt: string, cwd?: string) => {
+  const workingDir = cwd || process.env.USERPROFILE || '.'
+  // Pre-trust the workspace so Claude Code skips the trust prompt
+  preTrustDirectory(workingDir)
+  const env = { ...process.env }
+  delete env.CLAUDECODE
+  const child = spawn('cmd.exe', ['/c', 'start', 'cmd', '/k',
+    `npx --yes @anthropic-ai/claude-code --allowedTools "Bash(*)" "Edit(*)" "Write(*)" "Read(*)" "Glob(*)" "Grep(*)" "WebFetch(*)" "WebSearch(*)" "${prompt}"`
+  ], {
+    cwd: workingDir,
+    shell: true,
+    detached: true,
+    stdio: 'ignore',
+    env,
+  })
+  child.unref()
 })
 
 // Terminal
