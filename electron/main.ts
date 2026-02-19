@@ -563,29 +563,9 @@ ipcMain.handle('move-ai-task', (_, id: string, column: string) => {
   return moveAITask(id, column as any)
 })
 
-// Pre-trust a directory in Claude Code's config so the workspace trust prompt is skipped
-function preTrustDirectory(dir: string) {
-  const claudeDir = path.join(process.env.USERPROFILE || '', '.claude')
-  const configPath = path.join(claudeDir, '.claude.json')
-  let config: any = {}
-  try {
-    if (fs.existsSync(configPath)) {
-      config = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
-    }
-  } catch { /* start fresh */ }
-  if (!config.projects) config.projects = {}
-  // Normalize path to forward slashes like Claude Code does internally
-  const normalized = dir.replace(/\\/g, '/')
-  if (!config.projects[normalized]) config.projects[normalized] = {}
-  config.projects[normalized].hasTrustDialogAccepted = true
-  fs.mkdirSync(claudeDir, { recursive: true })
-  fs.writeFileSync(configPath, JSON.stringify(config, null, 2))
-}
-
 // Launch external terminal
 ipcMain.handle('launch-external-terminal', async (_, prompt: string, cwd?: string) => {
   const workingDir = cwd || process.env.USERPROFILE || '.'
-  preTrustDirectory(workingDir)
   const env = { ...process.env }
   delete env.CLAUDECODE
   // Write prompt directly into a temp batch file to avoid all cmd.exe quoting/escaping issues
@@ -597,7 +577,7 @@ ipcMain.handle('launch-external-terminal', async (_, prompt: string, cwd?: strin
   fs.writeFileSync(batFile, [
     '@echo off',
     `cd /d "${workingDir}"`,
-    `npx --yes @anthropic-ai/claude-code --allowedTools "Bash(*)" "Edit(*)" "Write(*)" "Read(*)" "Glob(*)" "Grep(*)" "WebFetch(*)" "WebSearch(*)" -- "${safePrompt}"`,
+    `npx --yes @anthropic-ai/claude-code --dangerously-skip-permissions --allowedTools "Bash(*)" "Edit(*)" "Write(*)" "Read(*)" "Glob(*)" "Grep(*)" "WebFetch(*)" "WebSearch(*)" -- "${safePrompt}"`,
   ].join('\r\n'))
   const child = spawn('cmd.exe', ['/c', 'start', '""', 'cmd', '/k', batFile], {
     detached: true,

@@ -24,7 +24,6 @@ function buildRichPrompt(
   if (desc) parts.push(`DESCRIPTION: ${desc}`)
   parts.push(`PRIORITY: ${task.priority}`)
   if (task.tags.length > 0) parts.push(`TAGS: ${task.tags.join(', ')}`)
-  if (context.repoFullName) parts.push(`RELEVANT REPO: ${context.repoFullName}`)
   if (context.cliSessionId) parts.push(`PREVIOUS SESSION: ${context.cliSessionId}`)
   parts.push('Please work on this task autonomously. Read the relevant codebase, implement the changes, and verify your work.')
   return parts.join(' -- ')
