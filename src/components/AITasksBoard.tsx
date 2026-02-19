@@ -27,7 +27,7 @@ function buildRichPrompt(
   if (context.repoFullName) parts.push(`RELEVANT REPO: ${context.repoFullName}`)
   if (context.cliSessionId) parts.push(`PREVIOUS SESSION: ${context.cliSessionId}`)
   parts.push('Please work on this task autonomously. Read the relevant codebase, implement the changes, and verify your work.')
-  return parts.join(' | ')
+  return parts.join(' -- ')
 }
 
 /** Quick parallel search for CLI sessions + GitHub repos with a hard timeout */

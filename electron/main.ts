@@ -585,15 +585,21 @@ function preTrustDirectory(dir: string) {
 // Launch external terminal
 ipcMain.handle('launch-external-terminal', async (_, prompt: string, cwd?: string) => {
   const workingDir = cwd || process.env.USERPROFILE || '.'
-  // Pre-trust the workspace so Claude Code skips the trust prompt
   preTrustDirectory(workingDir)
   const env = { ...process.env }
   delete env.CLAUDECODE
-  const child = spawn('cmd.exe', ['/c', 'start', 'cmd', '/k',
-    `npx --yes @anthropic-ai/claude-code --allowedTools "Bash(*)" "Edit(*)" "Write(*)" "Read(*)" "Glob(*)" "Grep(*)" "WebFetch(*)" "WebSearch(*)" "${prompt}"`
-  ], {
-    cwd: workingDir,
-    shell: true,
+  // Write prompt directly into a temp batch file to avoid all cmd.exe quoting/escaping issues
+  const tmpDir = path.join(app.getPath('temp'), 'mega-agenda')
+  fs.mkdirSync(tmpDir, { recursive: true })
+  const batFile = path.join(tmpDir, `launch-${Date.now()}.bat`)
+  // Escape for batch: % -> %%, " -> ' (prompt already has " -> ' from renderer, but double-check)
+  const safePrompt = prompt.replace(/%/g, '%%').replace(/"/g, "'")
+  fs.writeFileSync(batFile, [
+    '@echo off',
+    `cd /d "${workingDir}"`,
+    `npx --yes @anthropic-ai/claude-code --allowedTools "Bash(*)" "Edit(*)" "Write(*)" "Read(*)" "Glob(*)" "Grep(*)" "WebFetch(*)" "WebSearch(*)" -- "${safePrompt}"`,
+  ].join('\r\n'))
+  const child = spawn('cmd.exe', ['/c', 'start', '""', 'cmd', '/k', batFile], {
     detached: true,
     stdio: 'ignore',
     env,
