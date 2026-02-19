@@ -221,6 +221,34 @@ export interface AITask {
   updatedAt: string
 }
 
+export interface Memory {
+  id: string
+  title: string
+  content: string
+  topics: string[]
+  sourceType: 'chat' | 'cli_session' | 'journal' | 'task' | 'ai_task' | 'manual'
+  sourceId: string | null
+  sourcePreview: string
+  importance: 1 | 2 | 3
+  createdAt: string
+  updatedAt: string
+  isPinned: boolean
+  isArchived: boolean
+  relatedMemoryIds: string[]
+}
+
+export interface MemoryTopic {
+  name: string
+  color: string
+  memoryCount: number
+}
+
+export interface MemorySettings {
+  autoGenerate: boolean
+  maxMemoriesInContext: number
+  tokenBudget: number
+}
+
 export interface ElectronAPI {
   // Task operations
   getCategories: () => Promise<Category[]>
@@ -324,6 +352,7 @@ export interface ElectronAPI {
   // Chat streaming
   chatSendMessage: (conversationId: string, messages: { role: string; content: string }[], systemPrompt?: string) => Promise<void>
   chatAbort: () => Promise<void>
+  getMemoryCountForChat: (messages: { role: string; content: string }[]) => Promise<number>
   onChatStreamChunk: (callback: (data: { conversationId: string; text: string }) => void) => () => void
   onChatStreamEnd: (callback: (data: { conversationId: string; model: string; usage: { input: number; output: number } }) => void) => () => void
   onChatStreamError: (callback: (data: { conversationId: string; error: string }) => void) => () => void
@@ -362,6 +391,22 @@ export interface ElectronAPI {
   updateAITask: (id: string, updates: Partial<AITask>) => Promise<AITask | null>
   deleteAITask: (id: string) => Promise<void>
   moveAITask: (id: string, column: AITask['column']) => Promise<AITask | null>
+
+  // Memory
+  getMemories: () => Promise<Memory[]>
+  createMemory: (memory: Omit<Memory, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Memory>
+  updateMemory: (id: string, updates: Partial<Memory>) => Promise<Memory | null>
+  deleteMemory: (id: string) => Promise<void>
+  archiveMemory: (id: string) => Promise<Memory | null>
+  pinMemory: (id: string) => Promise<Memory | null>
+  getMemoryTopics: () => Promise<MemoryTopic[]>
+  updateMemoryTopics: (topics: MemoryTopic[]) => Promise<MemoryTopic[]>
+  getMemorySettings: () => Promise<MemorySettings>
+  saveMemorySettings: (settings: Partial<MemorySettings>) => Promise<MemorySettings>
+  extractMemoriesFromChat: (conversationId: string) => Promise<Memory[]>
+  extractMemoriesFromCli: (sessionId: string) => Promise<Memory[]>
+  extractMemoriesFromJournal: (date: string) => Promise<Memory[]>
+  batchExtractMemories: () => Promise<Memory[]>
 }
 
 declare global {

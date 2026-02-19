@@ -22,6 +22,7 @@ export default function ChatView() {
   const [showSettings, setShowSettings] = useState(false)
   const [renameId, setRenameId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
+  const [memoryCount, setMemoryCount] = useState(0)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const streamTextRef = useRef('')
@@ -138,6 +139,12 @@ export default function ChatView() {
     }
 
     const messages = (conv?.messages || []).map(m => ({ role: m.role, content: m.content }))
+
+    // Get memory count for context indicator
+    try {
+      const count = await window.electronAPI.getMemoryCountForChat(messages)
+      setMemoryCount(count)
+    } catch { /* ignore */ }
 
     setInput('')
     setStreaming(true)
@@ -449,6 +456,9 @@ export default function ChatView() {
                 </select>
                 {settings.systemPromptMode === 'context' && (
                   <span className="text-[9px] text-muted/40">· Context</span>
+                )}
+                {memoryCount > 0 && settings.systemPromptMode === 'context' && (
+                  <span className="text-[9px] text-accent-purple/60">· {memoryCount} {memoryCount === 1 ? 'memory' : 'memories'}</span>
                 )}
               </div>
               <span className="text-[9px] text-muted/40">Shift+Enter for newline</span>

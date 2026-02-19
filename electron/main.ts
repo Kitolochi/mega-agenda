@@ -2,15 +2,16 @@ import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, shell, Notificati
 import path from 'path'
 import fs from 'fs'
 import { spawn } from 'child_process'
-import { initDatabase, checkRecurringTasks, getCategories, getTasks, addTask, updateTask, deleteTask, toggleTaskComplete, getDailyNote, saveDailyNote, getRecentNotes, getStats, getTwitterSettings, saveTwitterSettings, getRSSFeeds, addRSSFeed, removeRSSFeed, getClaudeApiKey, saveClaudeApiKey, getActivityLog, getPomodoroState, startPomodoro, completePomodoro, startBreak, stopPomodoro, getMorningBriefing, saveMorningBriefing, dismissMorningBriefing, getBriefingData, getWeeklyReview, saveWeeklyReview, getAllWeeklyReviews, getWeeklyReviewData, checkWeeklyReviewNeeded, getChatConversations, getChatConversation, createChatConversation, addChatMessage, deleteChatConversation, renameChatConversation, getChatSettings, saveChatSettings, addCategory, deleteCategory, getTweetDrafts, getTweetDraft, createTweetDraft, updateTweetDraft, addTweetAIMessage, deleteTweetDraft, getTweetPersonas, createTweetPersona, deleteTweetPersona, getAITasks, createAITask, updateAITask, deleteAITask, moveAITask } from './database'
+import { initDatabase, checkRecurringTasks, getCategories, getTasks, addTask, updateTask, deleteTask, toggleTaskComplete, getDailyNote, saveDailyNote, getRecentNotes, getStats, getTwitterSettings, saveTwitterSettings, getRSSFeeds, addRSSFeed, removeRSSFeed, getClaudeApiKey, saveClaudeApiKey, getActivityLog, getPomodoroState, startPomodoro, completePomodoro, startBreak, stopPomodoro, getMorningBriefing, saveMorningBriefing, dismissMorningBriefing, getBriefingData, getWeeklyReview, saveWeeklyReview, getAllWeeklyReviews, getWeeklyReviewData, checkWeeklyReviewNeeded, getChatConversations, getChatConversation, createChatConversation, addChatMessage, deleteChatConversation, renameChatConversation, getChatSettings, saveChatSettings, addCategory, deleteCategory, getTweetDrafts, getTweetDraft, createTweetDraft, updateTweetDraft, addTweetAIMessage, deleteTweetDraft, getTweetPersonas, createTweetPersona, deleteTweetPersona, getAITasks, createAITask, updateAITask, deleteAITask, moveAITask, getMemories, getAllMemories, createMemory, updateMemory, deleteMemory, archiveMemory, pinMemory, getMemoryTopics, updateMemoryTopics, getMemorySettings, saveMemorySettings } from './database'
 import { verifyToken, getUserByUsername, getUserLists, fetchAllLists, postTweet, verifyOAuthCredentials } from './twitter'
 import { fetchAllFeeds } from './rss'
 import { summarizeAI, summarizeGeo, verifyClaudeKey, parseVoiceCommand, generateMorningBriefing, generateWeeklyReview } from './summarize'
 import { brainstormTweet, brainstormThread, refineTweet, analyzeTweet } from './tweet-ai'
 import { createTerminal, writeTerminal, resizeTerminal, killTerminal } from './terminal'
-import { streamChatMessage, abortChatStream } from './chat'
+import { streamChatMessage, abortChatStream, getMemoryCountForChat } from './chat'
 import { getCliSessions, getCliSessionMessages, searchCliSessions } from './cli-logs'
 import { searchGitHubRepos } from './github'
+import { extractMemoriesFromChat, extractMemoriesFromCli, extractMemoriesFromJournal, batchExtractMemories } from './memory'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -455,6 +456,10 @@ ipcMain.handle('chat-abort', () => {
   abortChatStream()
 })
 
+ipcMain.handle('get-memory-count-for-chat', (_, messages: { role: string; content: string }[]) => {
+  return getMemoryCountForChat(messages)
+})
+
 // CLI logs
 ipcMain.handle('get-cli-sessions', async () => {
   return getCliSessions()
@@ -554,6 +559,63 @@ ipcMain.handle('delete-ai-task', (_, id: string) => {
 
 ipcMain.handle('move-ai-task', (_, id: string, column: string) => {
   return moveAITask(id, column as any)
+})
+
+// Memory
+ipcMain.handle('get-memories', () => {
+  return getMemories()
+})
+
+ipcMain.handle('create-memory', (_, memory: any) => {
+  return createMemory(memory)
+})
+
+ipcMain.handle('update-memory', (_, id: string, updates: any) => {
+  return updateMemory(id, updates)
+})
+
+ipcMain.handle('delete-memory', (_, id: string) => {
+  return deleteMemory(id)
+})
+
+ipcMain.handle('archive-memory', (_, id: string) => {
+  return archiveMemory(id)
+})
+
+ipcMain.handle('pin-memory', (_, id: string) => {
+  return pinMemory(id)
+})
+
+ipcMain.handle('get-memory-topics', () => {
+  return getMemoryTopics()
+})
+
+ipcMain.handle('update-memory-topics', (_, topics: any[]) => {
+  return updateMemoryTopics(topics)
+})
+
+ipcMain.handle('get-memory-settings', () => {
+  return getMemorySettings()
+})
+
+ipcMain.handle('save-memory-settings', (_, settings: any) => {
+  return saveMemorySettings(settings)
+})
+
+ipcMain.handle('extract-memories-from-chat', async (_, conversationId: string) => {
+  return extractMemoriesFromChat(conversationId)
+})
+
+ipcMain.handle('extract-memories-from-cli', async (_, sessionId: string) => {
+  return extractMemoriesFromCli(sessionId)
+})
+
+ipcMain.handle('extract-memories-from-journal', async (_, date: string) => {
+  return extractMemoriesFromJournal(date)
+})
+
+ipcMain.handle('batch-extract-memories', async () => {
+  return batchExtractMemories()
 })
 
 // Launch external terminal

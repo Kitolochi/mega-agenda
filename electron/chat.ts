@@ -1,10 +1,11 @@
 import https from 'https'
 import { BrowserWindow } from 'electron'
 import { getBriefingData, getClaudeApiKey, getChatSettings } from './database'
+import { getRelevantMemories } from './memory'
 
 let activeRequest: ReturnType<typeof https.request> | null = null
 
-export function buildContextSystemPrompt(): string {
+export function buildContextSystemPrompt(messages?: { role: string; content: string }[]): string {
   const data = getBriefingData()
   const today = new Date().toISOString().split('T')[0]
   const parts: string[] = [
@@ -30,6 +31,19 @@ export function buildContextSystemPrompt(): string {
     parts.push(`Recent journal notes: ${data.recentNotes.map(n => `${n.date}: ${n.content.slice(0, 100)}`).join('; ')}`)
   }
 
+  // Inject relevant memories
+  if (messages && messages.length > 0) {
+    const lastUserMessage = [...messages].reverse().find(m => m.role === 'user')?.content || ''
+    const relevant = getRelevantMemories(lastUserMessage, messages)
+    if (relevant.length > 0) {
+      parts.push('')
+      parts.push('Relevant context from your memory bank:')
+      relevant.forEach(mem => {
+        parts.push(`- [${mem.topics.join(', ')}] ${mem.title}: ${mem.content}`)
+      })
+    }
+  }
+
   return parts.join('\n')
 }
 
@@ -50,7 +64,7 @@ export function streamChatMessage(
 
   const settings = getChatSettings()
   const resolvedSystemPrompt = systemPrompt ||
-    (settings.systemPromptMode === 'context' ? buildContextSystemPrompt() :
+    (settings.systemPromptMode === 'context' ? buildContextSystemPrompt(messages) :
      settings.systemPromptMode === 'custom' ? (settings.customSystemPrompt || '') :
      'You are a helpful assistant.')
 
@@ -170,6 +184,12 @@ export function streamChatMessage(
   activeRequest = req
   req.write(body)
   req.end()
+}
+
+export function getMemoryCountForChat(messages: { role: string; content: string }[]): number {
+  if (messages.length === 0) return 0
+  const lastUserMessage = [...messages].reverse().find(m => m.role === 'user')?.content || ''
+  return getRelevantMemories(lastUserMessage, messages).length
 }
 
 export function abortChatStream(): void {

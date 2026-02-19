@@ -167,6 +167,34 @@ interface AITask {
   updatedAt: string
 }
 
+interface Memory {
+  id: string
+  title: string
+  content: string
+  topics: string[]
+  sourceType: 'chat' | 'cli_session' | 'journal' | 'task' | 'ai_task' | 'manual'
+  sourceId: string | null
+  sourcePreview: string
+  importance: 1 | 2 | 3
+  createdAt: string
+  updatedAt: string
+  isPinned: boolean
+  isArchived: boolean
+  relatedMemoryIds: string[]
+}
+
+interface MemoryTopic {
+  name: string
+  color: string
+  memoryCount: number
+}
+
+interface MemorySettings {
+  autoGenerate: boolean
+  maxMemoriesInContext: number
+  tokenBudget: number
+}
+
 interface Database {
   categories: Category[]
   tasks: Task[]
@@ -185,6 +213,9 @@ interface Database {
   tweetDrafts: TweetDraft[]
   tweetPersonas: TweetPersona[]
   aiTasks: AITask[]
+  memories: Memory[]
+  memoryTopics: MemoryTopic[]
+  memorySettings: MemorySettings
 }
 
 let db: Database
@@ -379,6 +410,24 @@ export function initDatabase(): Database {
   // Initialize aiTasks if missing
   if (!db.aiTasks) {
     db.aiTasks = []
+    saveDatabase()
+  }
+
+  // Initialize memories if missing
+  if (!db.memories) {
+    db.memories = []
+    saveDatabase()
+  }
+
+  // Initialize memoryTopics if missing
+  if (!db.memoryTopics) {
+    db.memoryTopics = []
+    saveDatabase()
+  }
+
+  // Initialize memorySettings if missing
+  if (!db.memorySettings) {
+    db.memorySettings = { autoGenerate: false, maxMemoriesInContext: 5, tokenBudget: 800 }
     saveDatabase()
   }
 
@@ -1125,6 +1174,117 @@ export function moveAITask(id: string, column: AITask['column']): AITask | null 
   saveDatabase()
   syncAITasksFile()
   return task
+}
+
+// Memory CRUD
+export function getMemories(): Memory[] {
+  return (db.memories || [])
+    .filter(m => !m.isArchived)
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+}
+
+export function getAllMemories(): Memory[] {
+  return db.memories || []
+}
+
+export function createMemory(data: Omit<Memory, 'id' | 'createdAt' | 'updatedAt'>): Memory {
+  const memory: Memory = {
+    ...data,
+    id: generateId(),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  }
+  db.memories.push(memory)
+  updateTopicCounts()
+  saveDatabase()
+  return memory
+}
+
+export function updateMemory(id: string, updates: Partial<Memory>): Memory | null {
+  const mem = db.memories.find(m => m.id === id)
+  if (!mem) return null
+  if (updates.title !== undefined) mem.title = updates.title
+  if (updates.content !== undefined) mem.content = updates.content
+  if (updates.topics !== undefined) mem.topics = updates.topics
+  if (updates.importance !== undefined) mem.importance = updates.importance
+  if (updates.isPinned !== undefined) mem.isPinned = updates.isPinned
+  if (updates.isArchived !== undefined) mem.isArchived = updates.isArchived
+  if (updates.relatedMemoryIds !== undefined) mem.relatedMemoryIds = updates.relatedMemoryIds
+  if (updates.sourcePreview !== undefined) mem.sourcePreview = updates.sourcePreview
+  mem.updatedAt = new Date().toISOString()
+  updateTopicCounts()
+  saveDatabase()
+  return mem
+}
+
+export function deleteMemory(id: string): void {
+  db.memories = db.memories.filter(m => m.id !== id)
+  // Remove from relatedMemoryIds of other memories
+  db.memories.forEach(m => {
+    m.relatedMemoryIds = m.relatedMemoryIds.filter(rid => rid !== id)
+  })
+  updateTopicCounts()
+  saveDatabase()
+}
+
+export function archiveMemory(id: string): Memory | null {
+  const mem = db.memories.find(m => m.id === id)
+  if (!mem) return null
+  mem.isArchived = !mem.isArchived
+  mem.updatedAt = new Date().toISOString()
+  updateTopicCounts()
+  saveDatabase()
+  return mem
+}
+
+export function pinMemory(id: string): Memory | null {
+  const mem = db.memories.find(m => m.id === id)
+  if (!mem) return null
+  mem.isPinned = !mem.isPinned
+  mem.updatedAt = new Date().toISOString()
+  saveDatabase()
+  return mem
+}
+
+export function getMemoryTopics(): MemoryTopic[] {
+  return db.memoryTopics || []
+}
+
+export function updateMemoryTopics(topics: MemoryTopic[]): MemoryTopic[] {
+  db.memoryTopics = topics
+  saveDatabase()
+  return db.memoryTopics
+}
+
+export function getMemorySettings(): MemorySettings {
+  return db.memorySettings
+}
+
+export function saveMemorySettings(updates: Partial<MemorySettings>): MemorySettings {
+  if (updates.autoGenerate !== undefined) db.memorySettings.autoGenerate = updates.autoGenerate
+  if (updates.maxMemoriesInContext !== undefined) db.memorySettings.maxMemoriesInContext = updates.maxMemoriesInContext
+  if (updates.tokenBudget !== undefined) db.memorySettings.tokenBudget = updates.tokenBudget
+  saveDatabase()
+  return db.memorySettings
+}
+
+function updateTopicCounts(): void {
+  const topicMap = new Map<string, number>()
+  const activeMemories = db.memories.filter(m => !m.isArchived)
+  activeMemories.forEach(m => {
+    m.topics.forEach(t => {
+      topicMap.set(t, (topicMap.get(t) || 0) + 1)
+    })
+  })
+  // Merge with existing topic colors
+  const existingTopics = new Map(db.memoryTopics.map(t => [t.name, t.color]))
+  const defaultColors = ['#a78bfa', '#60a5fa', '#34d399', '#fbbf24', '#f87171', '#c084fc', '#22d3ee', '#fb923c']
+  let colorIdx = 0
+  db.memoryTopics = Array.from(topicMap.entries()).map(([name, count]) => ({
+    name,
+    color: existingTopics.get(name) || defaultColors[colorIdx++ % defaultColors.length],
+    memoryCount: count
+  }))
 }
 
 function syncAITasksFile(): void {

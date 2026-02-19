@@ -124,6 +124,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   chatSendMessage: (conversationId: string, messages: { role: string; content: string }[], systemPrompt?: string) =>
     ipcRenderer.invoke('chat-send-message', conversationId, messages, systemPrompt),
   chatAbort: () => ipcRenderer.invoke('chat-abort'),
+  getMemoryCountForChat: (messages: { role: string; content: string }[]) => ipcRenderer.invoke('get-memory-count-for-chat', messages),
   onChatStreamChunk: (callback: (data: { conversationId: string; text: string }) => void) => {
     const handler = (_: any, data: { conversationId: string; text: string }) => callback(data)
     ipcRenderer.on('chat-stream-chunk', handler)
@@ -181,6 +182,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateAITask: (id: string, updates: any) => ipcRenderer.invoke('update-ai-task', id, updates),
   deleteAITask: (id: string) => ipcRenderer.invoke('delete-ai-task', id),
   moveAITask: (id: string, column: string) => ipcRenderer.invoke('move-ai-task', id, column),
+
+  // Memory
+  getMemories: () => ipcRenderer.invoke('get-memories'),
+  createMemory: (memory: any) => ipcRenderer.invoke('create-memory', memory),
+  updateMemory: (id: string, updates: any) => ipcRenderer.invoke('update-memory', id, updates),
+  deleteMemory: (id: string) => ipcRenderer.invoke('delete-memory', id),
+  archiveMemory: (id: string) => ipcRenderer.invoke('archive-memory', id),
+  pinMemory: (id: string) => ipcRenderer.invoke('pin-memory', id),
+  getMemoryTopics: () => ipcRenderer.invoke('get-memory-topics'),
+  updateMemoryTopics: (topics: any[]) => ipcRenderer.invoke('update-memory-topics', topics),
+  getMemorySettings: () => ipcRenderer.invoke('get-memory-settings'),
+  saveMemorySettings: (settings: any) => ipcRenderer.invoke('save-memory-settings', settings),
+  extractMemoriesFromChat: (conversationId: string) => ipcRenderer.invoke('extract-memories-from-chat', conversationId),
+  extractMemoriesFromCli: (sessionId: string) => ipcRenderer.invoke('extract-memories-from-cli', sessionId),
+  extractMemoriesFromJournal: (date: string) => ipcRenderer.invoke('extract-memories-from-journal', date),
+  batchExtractMemories: () => ipcRenderer.invoke('batch-extract-memories'),
 
   // Clipboard
   readClipboard: () => ipcRenderer.sendSync('read-clipboard'),
