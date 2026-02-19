@@ -19,8 +19,8 @@ const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 480,
-    height: 700,
+    width: 900,
+    height: 800,
     show: false,
     frame: false,
     resizable: true,
@@ -103,14 +103,7 @@ function createTray() {
 function showWindow() {
   if (!mainWindow) return
 
-  const trayBounds = tray?.getBounds()
-  if (trayBounds) {
-    const windowBounds = mainWindow.getBounds()
-    const x = Math.round(trayBounds.x + (trayBounds.width / 2) - (windowBounds.width / 2))
-    const y = Math.round(trayBounds.y - windowBounds.height - 10)
-    mainWindow.setPosition(x, y, false)
-  }
-
+  mainWindow.center()
   mainWindow.show()
   mainWindow.focus()
 }
