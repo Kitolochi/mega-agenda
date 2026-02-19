@@ -620,6 +620,20 @@ ipcMain.on('minimize-window', () => {
   mainWindow?.hide()
 })
 
+// Enforce single instance — quit if another is already running
+const gotTheLock = app.requestSingleInstanceLock()
+if (!gotTheLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      mainWindow.center()
+      mainWindow.show()
+      mainWindow.focus()
+    }
+  })
+}
+
 app.whenReady().then(() => {
   initDatabase()
   createWindow()
