@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, shell, Notificati
 import path from 'path'
 import fs from 'fs'
 import { spawn } from 'child_process'
-import { initDatabase, checkRecurringTasks, getCategories, getTasks, addTask, updateTask, deleteTask, toggleTaskComplete, getDailyNote, saveDailyNote, getRecentNotes, getStats, getTwitterSettings, saveTwitterSettings, getRSSFeeds, addRSSFeed, removeRSSFeed, getClaudeApiKey, saveClaudeApiKey, getActivityLog, getPomodoroState, startPomodoro, completePomodoro, startBreak, stopPomodoro, getMorningBriefing, saveMorningBriefing, dismissMorningBriefing, getBriefingData, getWeeklyReview, saveWeeklyReview, getAllWeeklyReviews, getWeeklyReviewData, checkWeeklyReviewNeeded, getChatConversations, getChatConversation, createChatConversation, addChatMessage, deleteChatConversation, renameChatConversation, getChatSettings, saveChatSettings, addCategory, deleteCategory, getTweetDrafts, getTweetDraft, createTweetDraft, updateTweetDraft, addTweetAIMessage, deleteTweetDraft, getTweetPersonas, createTweetPersona, deleteTweetPersona, getAITasks, createAITask, updateAITask, deleteAITask, moveAITask, getRoadmapGoals, createRoadmapGoal, updateRoadmapGoal, deleteRoadmapGoal, getMemories, getAllMemories, createMemory, updateMemory, deleteMemory, archiveMemory, pinMemory, getMemoryTopics, updateMemoryTopics, getMemorySettings, saveMemorySettings } from './database'
+import { initDatabase, checkRecurringTasks, getCategories, getTasks, addTask, updateTask, deleteTask, toggleTaskComplete, getDailyNote, saveDailyNote, getRecentNotes, getStats, getTwitterSettings, saveTwitterSettings, getRSSFeeds, addRSSFeed, removeRSSFeed, getClaudeApiKey, saveClaudeApiKey, getTavilyApiKey, saveTavilyApiKey, getActivityLog, getPomodoroState, startPomodoro, completePomodoro, startBreak, stopPomodoro, getMorningBriefing, saveMorningBriefing, dismissMorningBriefing, getBriefingData, getWeeklyReview, saveWeeklyReview, getAllWeeklyReviews, getWeeklyReviewData, checkWeeklyReviewNeeded, getChatConversations, getChatConversation, createChatConversation, addChatMessage, deleteChatConversation, renameChatConversation, getChatSettings, saveChatSettings, addCategory, deleteCategory, getTweetDrafts, getTweetDraft, createTweetDraft, updateTweetDraft, addTweetAIMessage, deleteTweetDraft, getTweetPersonas, createTweetPersona, deleteTweetPersona, getAITasks, createAITask, updateAITask, deleteAITask, moveAITask, getRoadmapGoals, createRoadmapGoal, updateRoadmapGoal, deleteRoadmapGoal, getMemories, getAllMemories, createMemory, updateMemory, deleteMemory, archiveMemory, pinMemory, getMemoryTopics, updateMemoryTopics, getMemorySettings, saveMemorySettings } from './database'
 import { verifyToken, getUserByUsername, getUserLists, fetchAllLists, postTweet, verifyOAuthCredentials } from './twitter'
 import { fetchAllFeeds } from './rss'
 import { summarizeAI, summarizeGeo, verifyClaudeKey, parseVoiceCommand, generateMorningBriefing, generateWeeklyReview } from './summarize'
@@ -12,6 +12,7 @@ import { streamChatMessage, abortChatStream, getMemoryCountForChat } from './cha
 import { getCliSessions, getCliSessionMessages, searchCliSessions } from './cli-logs'
 import { searchGitHubRepos } from './github'
 import { extractMemoriesFromChat, extractMemoriesFromCli, extractMemoriesFromJournal, batchExtractMemories } from './memory'
+import { researchGoal } from './research'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -242,6 +243,31 @@ ipcMain.handle('summarize-feed', async (_, apiKey: string, articles: { title: st
 // Voice command parsing
 ipcMain.handle('parse-voice-command', async (_, apiKey: string, transcript: string, categoryNames: string[]) => {
   return parseVoiceCommand(apiKey, transcript, categoryNames)
+})
+
+// Tavily API Key
+ipcMain.handle('get-tavily-api-key', () => {
+  return getTavilyApiKey()
+})
+
+ipcMain.handle('save-tavily-api-key', (_, key: string) => {
+  saveTavilyApiKey(key)
+  return true
+})
+
+// Research Roadmap Goal
+ipcMain.handle('research-roadmap-goal', async (_, goalId: string) => {
+  const goals = getRoadmapGoals()
+  const goal = goals.find(g => g.id === goalId)
+  if (!goal) throw new Error('Goal not found')
+
+  const claudeApiKey = getClaudeApiKey()
+  if (!claudeApiKey) throw new Error('Claude API key not configured. Set it in Settings.')
+
+  const tavilyApiKey = getTavilyApiKey()
+  if (!tavilyApiKey) throw new Error('Tavily API key not configured. Set it in Settings.')
+
+  return researchGoal(goal, claudeApiKey, tavilyApiKey)
 })
 
 // Activity Log

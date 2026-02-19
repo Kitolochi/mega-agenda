@@ -229,6 +229,7 @@ interface Database {
   twitter: TwitterSettings
   rssFeeds: RSSFeed[]
   claudeApiKey: string
+  tavilyApiKey: string
   activityLog: ActivityEntry[]
   pomodoroState: PomodoroState
   morningBriefings: MorningBriefing[]
@@ -308,6 +309,7 @@ export function initDatabase(): Database {
       twitter: { bearerToken: '', username: '', userId: '', listIds: [], apiKey: '', apiSecret: '', accessToken: '', accessTokenSecret: '' },
       rssFeeds: [],
       claudeApiKey: '',
+      tavilyApiKey: '',
       activityLog: [],
       pomodoroState: {
         isRunning: false,
@@ -362,6 +364,12 @@ export function initDatabase(): Database {
   // Initialize claudeApiKey if missing
   if (db.claudeApiKey === undefined) {
     db.claudeApiKey = ''
+    saveDatabase()
+  }
+
+  // Initialize tavilyApiKey if missing
+  if ((db as any).tavilyApiKey === undefined) {
+    db.tavilyApiKey = ''
     saveDatabase()
   }
 
@@ -809,6 +817,15 @@ export function getClaudeApiKey(): string {
 
 export function saveClaudeApiKey(key: string): void {
   db.claudeApiKey = key
+  saveDatabase()
+}
+
+export function getTavilyApiKey(): string {
+  return db.tavilyApiKey || ''
+}
+
+export function saveTavilyApiKey(key: string): void {
+  db.tavilyApiKey = key
   saveDatabase()
 }
 

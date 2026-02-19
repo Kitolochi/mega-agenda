@@ -65,6 +65,23 @@ export default function RoadmapTab() {
   const [filterCategory, setFilterCategory] = useState<RoadmapGoalCategory | null>(null)
   const [filterStatus, setFilterStatus] = useState<RoadmapGoalStatus | null>(null)
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+  const [researchingId, setResearchingId] = useState<string | null>(null)
+  const [researchResult, setResearchResult] = useState<{ goalId: string; report: string; filePath: string } | null>(null)
+  const [researchError, setResearchError] = useState<string | null>(null)
+
+  const handleResearch = async (goalId: string) => {
+    setResearchingId(goalId)
+    setResearchError(null)
+    setResearchResult(null)
+    try {
+      const result = await window.electronAPI.researchRoadmapGoal(goalId)
+      setResearchResult({ goalId, report: result.report, filePath: result.filePath })
+    } catch (err: any) {
+      setResearchError(err.message || 'Research failed')
+    } finally {
+      setResearchingId(null)
+    }
+  }
 
   const loadGoals = useCallback(async () => {
     const data = await window.electronAPI.getRoadmapGoals()
@@ -241,6 +258,10 @@ export default function RoadmapTab() {
                                 }
                               }}
                               deleteConfirm={deleteConfirmId === g.id}
+                              onResearch={() => handleResearch(g.id)}
+                              isResearching={researchingId === g.id}
+                              researchResult={researchResult?.goalId === g.id ? researchResult : null}
+                              researchError={researchingId === null && researchError && researchResult === null ? researchError : null}
                             />
                           ))}
                           {qGoals.length === 0 && (
@@ -289,6 +310,10 @@ export default function RoadmapTab() {
                       }
                     }}
                     deleteConfirm={deleteConfirmId === g.id}
+                    onResearch={() => handleResearch(g.id)}
+                    isResearching={researchingId === g.id}
+                    researchResult={researchResult?.goalId === g.id ? researchResult : null}
+                    researchError={researchingId === null && researchError && researchResult === null ? researchError : null}
                   />
                 ))}
               </div>
@@ -308,9 +333,13 @@ interface GoalCardProps {
   onUpdate: (updates: Partial<RoadmapGoal>) => void
   onDelete: () => void
   deleteConfirm: boolean
+  onResearch?: () => void
+  isResearching?: boolean
+  researchResult?: { report: string; filePath: string } | null
+  researchError?: string | null
 }
 
-function GoalCard({ goal, expanded, onToggle, onUpdate, onDelete, deleteConfirm }: GoalCardProps) {
+function GoalCard({ goal, expanded, onToggle, onUpdate, onDelete, deleteConfirm, onResearch, isResearching, researchResult, researchError }: GoalCardProps) {
   const color = catColor(goal.category)
   const doneCount = goal.sub_goals.filter(s => s.status === 'completed').length
   const totalSubs = goal.sub_goals.length
@@ -339,38 +368,77 @@ function GoalCard({ goal, expanded, onToggle, onUpdate, onDelete, deleteConfirm 
     )
   }
 
+  const hasResearchNeeds = goal.research_questions.length > 0 || goal.guidance_needed.length > 0
+
   return (
-    <button
-      onClick={onToggle}
+    <div
       className="w-full text-left rounded-lg border border-white/[0.06] bg-surface-2/60 hover:bg-surface-2/80 transition-all group overflow-hidden"
       style={{ borderLeftWidth: 3, borderLeftColor: color }}
     >
-      <div className="px-2.5 py-2">
-        <div className="flex items-center gap-1.5 mb-1">
-          <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: PRIORITY_COLORS[goal.priority] }} />
-          <span className="text-[11px] font-medium text-white/90 truncate flex-1">{goal.title || 'Untitled'}</span>
+      <button onClick={onToggle} className="w-full text-left">
+        <div className="px-2.5 py-2">
+          <div className="flex items-center gap-1.5 mb-1">
+            <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: PRIORITY_COLORS[goal.priority] }} />
+            <span className="text-[11px] font-medium text-white/90 truncate flex-1">{goal.title || 'Untitled'}</span>
+          </div>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[9px] px-1.5 py-0.5 rounded-full font-medium" style={{ backgroundColor: color + '20', color }}>
+              {goal.category}
+            </span>
+            <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${
+              goal.status === 'in_progress' ? 'bg-accent-blue/20 text-accent-blue' :
+              goal.status === 'completed' ? 'bg-green-500/20 text-green-400' :
+              goal.status === 'on_hold' ? 'bg-yellow-500/20 text-yellow-400' :
+              'bg-white/[0.06] text-muted'
+            }`}>
+              [{statusIcon(goal.status)}] {goal.status.replace('_', ' ')}
+            </span>
+            {totalSubs > 0 && (
+              <span className="text-[9px] text-muted">{doneCount}/{totalSubs}</span>
+            )}
+            {goal.research_questions.length > 0 && (
+              <span className="text-[9px] text-muted" title="Research questions">?{goal.research_questions.length}</span>
+            )}
+          </div>
         </div>
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-[9px] px-1.5 py-0.5 rounded-full font-medium" style={{ backgroundColor: color + '20', color }}>
-            {goal.category}
-          </span>
-          <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${
-            goal.status === 'in_progress' ? 'bg-accent-blue/20 text-accent-blue' :
-            goal.status === 'completed' ? 'bg-green-500/20 text-green-400' :
-            goal.status === 'on_hold' ? 'bg-yellow-500/20 text-yellow-400' :
-            'bg-white/[0.06] text-muted'
-          }`}>
-            [{statusIcon(goal.status)}] {goal.status.replace('_', ' ')}
-          </span>
-          {totalSubs > 0 && (
-            <span className="text-[9px] text-muted">{doneCount}/{totalSubs}</span>
+      </button>
+      {/* Research button row */}
+      {hasResearchNeeds && (
+        <div className="px-2.5 pb-2 flex items-center gap-1.5">
+          <button
+            onClick={(e) => { e.stopPropagation(); onResearch?.() }}
+            disabled={isResearching}
+            className="flex items-center gap-1 px-2 py-1 rounded-md bg-accent-purple/15 text-accent-purple text-[9px] font-medium hover:bg-accent-purple/25 transition-all disabled:opacity-50"
+            title="Research this goal with Tavily + Claude"
+          >
+            {isResearching ? (
+              <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+            ) : (
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+            )}
+            {isResearching ? 'Researching...' : 'Research'}
+          </button>
+          {researchResult && (
+            <span className="text-[9px] text-accent-emerald font-medium">Report saved</span>
           )}
-          {goal.research_questions.length > 0 && (
-            <span className="text-[9px] text-muted" title="Research questions">?{goal.research_questions.length}</span>
+          {researchError && (
+            <span className="text-[9px] text-accent-red font-medium truncate" title={researchError}>{researchError}</span>
           )}
         </div>
-      </div>
-    </button>
+      )}
+      {/* Inline research report preview */}
+      {researchResult && (
+        <div className="px-2.5 pb-2">
+          <div className="rounded-md bg-surface-3/50 border border-white/[0.06] p-2 max-h-40 overflow-auto">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[9px] text-accent-purple font-medium uppercase tracking-wider">Research Report</span>
+              <span className="text-[8px] text-muted truncate ml-2" title={researchResult.filePath}>{researchResult.filePath.split(/[/\\]/).pop()}</span>
+            </div>
+            <div className="text-[10px] text-white/70 whitespace-pre-wrap leading-relaxed">{researchResult.report.slice(0, 600)}{researchResult.report.length > 600 ? '...' : ''}</div>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 

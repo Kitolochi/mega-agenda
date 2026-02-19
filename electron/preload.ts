@@ -70,6 +70,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   summarizeFeed: (apiKey: string, articles: { title: string; description: string }[], section: string) => ipcRenderer.invoke('summarize-feed', apiKey, articles, section),
   parseVoiceCommand: (apiKey: string, transcript: string, categoryNames: string[]) => ipcRenderer.invoke('parse-voice-command', apiKey, transcript, categoryNames),
 
+  // Tavily / Research
+  getTavilyApiKey: () => ipcRenderer.invoke('get-tavily-api-key'),
+  saveTavilyApiKey: (key: string) => ipcRenderer.invoke('save-tavily-api-key', key),
+  researchRoadmapGoal: (goalId: string) => ipcRenderer.invoke('research-roadmap-goal', goalId),
+
   // Activity Log
   getActivityLog: (days?: number) => ipcRenderer.invoke('get-activity-log', days),
 

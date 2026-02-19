@@ -63,6 +63,10 @@ export default function Settings() {
   const [keyInput, setKeyInput] = useState('')
   const [keyVerifying, setKeyVerifying] = useState(false)
   const [keyError, setKeyError] = useState<string | null>(null)
+  // Tavily
+  const [tavilyKey, setTavilyKey] = useState('')
+  const [tavilyInput, setTavilyInput] = useState('')
+  const [tavilySaved, setTavilySaved] = useState(false)
   const [feeds, setFeeds] = useState<RSSFeed[]>([])
   const [newUrl, setNewUrl] = useState('')
   const [newName, setNewName] = useState('')
@@ -83,16 +87,18 @@ export default function Settings() {
   const [twUsername, setTwUsername] = useState<string | null>(null)
 
   const loadData = useCallback(async () => {
-    const [key, saved, tw, cats] = await Promise.all([
+    const [key, saved, tw, cats, tvKey] = await Promise.all([
       window.electronAPI.getClaudeApiKey(),
       window.electronAPI.getRSSFeeds(),
       window.electronAPI.getTwitterSettings(),
-      window.electronAPI.getCategories()
+      window.electronAPI.getCategories(),
+      window.electronAPI.getTavilyApiKey()
     ])
     setApiKey(key)
     setFeeds(saved)
     setTwitterSettings(tw)
     setCategories(cats)
+    setTavilyKey(tvKey)
     if (tw.apiKey) setTwUsername('connected')
   }, [])
 
@@ -287,6 +293,43 @@ export default function Settings() {
           </div>
         )}
         <p className="text-[10px] text-muted/50 mt-1.5">Used for feed summaries and voice commands</p>
+      </div>
+
+      {/* Tavily API Key */}
+      <div className="mb-6">
+        <label className="block text-[10px] uppercase tracking-widest text-muted font-display font-medium mb-2">Tavily API Key</label>
+        {tavilyKey ? (
+          <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl glass-card">
+            <svg className="w-3.5 h-3.5 text-accent-emerald shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+            <span className="text-[11px] text-white/60 flex-1">Key saved</span>
+            <button onClick={() => { setTavilyKey(''); window.electronAPI.saveTavilyApiKey(''); setTavilyInput('') }} className="text-[10px] text-muted hover:text-accent-red transition-colors">Remove</button>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <input
+              type="password"
+              value={tavilyInput}
+              onChange={e => setTavilyInput(e.target.value)}
+              placeholder="tvly-..."
+              className={inputClass}
+            />
+            {tavilySaved && <p className="text-[10px] text-accent-emerald">Key saved</p>}
+            <button
+              onClick={async () => {
+                if (!tavilyInput.trim()) return
+                await window.electronAPI.saveTavilyApiKey(tavilyInput.trim())
+                setTavilyKey(tavilyInput.trim())
+                setTavilySaved(true)
+                setTimeout(() => setTavilySaved(false), 2000)
+              }}
+              disabled={!tavilyInput.trim()}
+              className="w-full py-2 bg-accent-blue/20 hover:bg-accent-blue/30 disabled:opacity-30 rounded-lg text-xs text-accent-blue font-medium transition-all"
+            >Save Key</button>
+          </div>
+        )}
+        <p className="text-[10px] text-muted/50 mt-1.5">Used for roadmap goal research (web search). Get a key at tavily.com</p>
       </div>
 
       {/* Twitter / X Integration */}

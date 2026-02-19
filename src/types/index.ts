@@ -317,6 +317,11 @@ export interface ElectronAPI {
   summarizeFeed: (apiKey: string, articles: { title: string; description: string }[], section: string) => Promise<string>
   parseVoiceCommand: (apiKey: string, transcript: string, categoryNames: string[]) => Promise<VoiceCommand>
 
+  // Tavily / Research
+  getTavilyApiKey: () => Promise<string>
+  saveTavilyApiKey: (key: string) => Promise<boolean>
+  researchRoadmapGoal: (goalId: string) => Promise<{ report: string; filePath: string }>
+
   // Tweet posting
   postTweet: (text: string, replyToTweetId?: string) => Promise<{ success: boolean; tweetId?: string; error?: string }>
   verifyTwitterOAuth: () => Promise<{ valid: boolean; username?: string; error?: string }>
