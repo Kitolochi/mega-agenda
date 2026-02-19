@@ -23,6 +23,8 @@ export default function ChatView() {
   const [renameId, setRenameId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [memoryCount, setMemoryCount] = useState(0)
+  const [extractingMemories, setExtractingMemories] = useState(false)
+  const [extractedCount, setExtractedCount] = useState<number | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const streamTextRef = useRef('')
@@ -180,6 +182,20 @@ export default function ChatView() {
     setSettings(s)
   }
 
+  const handleExtractMemories = async () => {
+    if (!activeConvId || extractingMemories) return
+    setExtractingMemories(true)
+    setExtractedCount(null)
+    try {
+      const created = await window.electronAPI.extractMemoriesFromChat(activeConvId)
+      setExtractedCount(created.length)
+      setTimeout(() => setExtractedCount(null), 3000)
+    } catch { /* ignore */ }
+    setExtractingMemories(false)
+  }
+
+  const canExtractMemories = activeConvId && activeConv && activeConv.messages.length >= 2
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -325,6 +341,30 @@ export default function ChatView() {
           <span className="flex-1 text-[11px] text-white/70 truncate">
             {activeConv?.title || 'New chat'}
           </span>
+          {/* Extract memories from this chat */}
+          {canExtractMemories && (
+            <button
+              onClick={handleExtractMemories}
+              disabled={extractingMemories}
+              className="p-1 rounded hover:bg-surface-3 text-muted hover:text-accent-purple transition-all relative disabled:opacity-50"
+              title="Extract memories from this conversation"
+            >
+              {extractingMemories ? (
+                <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              ) : (
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" />
+                </svg>
+              )}
+              {extractedCount !== null && (
+                <span className="absolute -top-1 -right-1 px-1 py-0.5 rounded-full bg-accent-purple text-[7px] text-white font-bold min-w-[14px] text-center leading-none">
+                  {extractedCount}
+                </span>
+              )}
+            </button>
+          )}
           <button
             onClick={() => setShowSettings(true)}
             className="p-1 rounded hover:bg-surface-3 text-muted hover:text-white transition-all"

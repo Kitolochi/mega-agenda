@@ -22,6 +22,17 @@ const IMPORTANCE_COLORS: Record<number, string> = {
   3: 'bg-accent-red',
 }
 
+const IMPORTANCE_LABELS: Record<number, string> = {
+  1: 'Low',
+  2: 'Normal',
+  3: 'High',
+}
+
+const TOPIC_PRESET_COLORS = [
+  '#a78bfa', '#60a5fa', '#34d399', '#fbbf24', '#f87171',
+  '#c084fc', '#fb923c', '#38bdf8', '#4ade80', '#f472b6',
+]
+
 export default function MemoryTab() {
   const [memories, setMemories] = useState<Memory[]>([])
   const [topics, setTopics] = useState<MemoryTopic[]>([])
@@ -35,6 +46,11 @@ export default function MemoryTab() {
   const [showSettings, setShowSettings] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [extracting, setExtracting] = useState(false)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [showTopicManager, setShowTopicManager] = useState(false)
+  const [editingTopicName, setEditingTopicName] = useState<string | null>(null)
+  const [topicRenameValue, setTopicRenameValue] = useState('')
+  const [mergeSelections, setMergeSelections] = useState<Set<string>>(new Set())
 
   // Add/edit form state
   const [formTitle, setFormTitle] = useState('')
@@ -122,6 +138,7 @@ export default function MemoryTab() {
 
   const handleDelete = async (id: string) => {
     await window.electronAPI.deleteMemory(id)
+    if (expandedId === id) setExpandedId(null)
     await loadData()
   }
 
@@ -132,6 +149,7 @@ export default function MemoryTab() {
 
   const handleArchive = async (id: string) => {
     await window.electronAPI.archiveMemory(id)
+    if (expandedId === id) setExpandedId(null)
     await loadData()
   }
 
@@ -147,6 +165,77 @@ export default function MemoryTab() {
       await loadData()
     } catch { /* ignore */ }
     setExtracting(false)
+  }
+
+  // Topic management handlers
+  const handleTopicRename = async (oldName: string, newName: string) => {
+    if (!newName.trim() || newName === oldName) {
+      setEditingTopicName(null)
+      return
+    }
+    // Update all memories that reference the old topic name
+    const affectedMemories = memories.filter(m => m.topics.includes(oldName))
+    for (const mem of affectedMemories) {
+      const updatedTopics = mem.topics.map(t => t === oldName ? newName.trim() : t)
+      await window.electronAPI.updateMemory(mem.id, { topics: updatedTopics })
+    }
+    // Update topic itself
+    const updatedTopics = topics.map(t =>
+      t.name === oldName ? { ...t, name: newName.trim() } : t
+    )
+    await window.electronAPI.updateMemoryTopics(updatedTopics)
+    setEditingTopicName(null)
+    await loadData()
+  }
+
+  const handleTopicDelete = async (topicName: string) => {
+    // Remove topic from all memories
+    const affectedMemories = memories.filter(m => m.topics.includes(topicName))
+    for (const mem of affectedMemories) {
+      const updatedTopics = mem.topics.filter(t => t !== topicName)
+      await window.electronAPI.updateMemory(mem.id, { topics: updatedTopics })
+    }
+    // Remove topic from list
+    const updatedTopics = topics.filter(t => t.name !== topicName)
+    await window.electronAPI.updateMemoryTopics(updatedTopics)
+    setMergeSelections(prev => { const next = new Set(prev); next.delete(topicName); return next })
+    await loadData()
+  }
+
+  const handleTopicRecolor = async (topicName: string) => {
+    const topic = topics.find(t => t.name === topicName)
+    if (!topic) return
+    const currentIdx = TOPIC_PRESET_COLORS.indexOf(topic.color)
+    const nextColor = TOPIC_PRESET_COLORS[(currentIdx + 1) % TOPIC_PRESET_COLORS.length]
+    const updatedTopics = topics.map(t =>
+      t.name === topicName ? { ...t, color: nextColor } : t
+    )
+    await window.electronAPI.updateMemoryTopics(updatedTopics)
+    await loadData()
+  }
+
+  const handleTopicMerge = async () => {
+    const selected = Array.from(mergeSelections)
+    if (selected.length < 2) return
+    const targetName = selected[0]
+    const toMerge = selected.slice(1)
+
+    // Update all memories referencing merged topics
+    for (const mem of memories) {
+      const hasTarget = mem.topics.includes(targetName)
+      const hasMerged = mem.topics.some(t => toMerge.includes(t))
+      if (hasMerged) {
+        let updatedTopics = mem.topics.filter(t => !toMerge.includes(t))
+        if (!hasTarget) updatedTopics = [targetName, ...updatedTopics]
+        await window.electronAPI.updateMemory(mem.id, { topics: updatedTopics })
+      }
+    }
+
+    // Remove merged topics
+    const updatedTopics = topics.filter(t => !toMerge.includes(t.name))
+    await window.electronAPI.updateMemoryTopics(updatedTopics)
+    setMergeSelections(new Set())
+    await loadData()
   }
 
   return (
@@ -247,6 +336,111 @@ export default function MemoryTab() {
         </div>
       )}
 
+      {/* Topic Manager */}
+      {showTopicManager && (
+        <div className="mb-4 p-3 bg-surface-2 rounded-xl border border-white/[0.06]">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-medium text-white/80">Manage Topics</span>
+            <button onClick={() => { setShowTopicManager(false); setMergeSelections(new Set()) }} className="text-muted hover:text-white">
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          {topics.length === 0 ? (
+            <p className="text-[10px] text-muted/60">No topics yet. Topics are created automatically when memories are added.</p>
+          ) : (
+            <>
+              <div className="space-y-1.5 max-h-48 overflow-auto">
+                {topics.map(t => (
+                  <div key={t.name} className="flex items-center gap-2 group">
+                    {/* Merge checkbox */}
+                    <input
+                      type="checkbox"
+                      checked={mergeSelections.has(t.name)}
+                      onChange={e => {
+                        setMergeSelections(prev => {
+                          const next = new Set(prev)
+                          if (e.target.checked) next.add(t.name)
+                          else next.delete(t.name)
+                          return next
+                        })
+                      }}
+                      className="w-3 h-3 rounded bg-surface-3 border-white/10"
+                    />
+                    {/* Color swatch */}
+                    <button
+                      onClick={() => handleTopicRecolor(t.name)}
+                      className="w-4 h-4 rounded-full shrink-0 border border-white/10 hover:border-white/30 transition-all"
+                      style={{ backgroundColor: t.color }}
+                      title="Click to change color"
+                    />
+                    {/* Name */}
+                    {editingTopicName === t.name ? (
+                      <input
+                        autoFocus
+                        value={topicRenameValue}
+                        onChange={e => setTopicRenameValue(e.target.value)}
+                        onBlur={() => handleTopicRename(t.name, topicRenameValue)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') handleTopicRename(t.name, topicRenameValue)
+                          if (e.key === 'Escape') setEditingTopicName(null)
+                        }}
+                        className="flex-1 bg-surface-3 border border-white/10 rounded px-1.5 py-0.5 text-[10px] text-white/90 outline-none"
+                      />
+                    ) : (
+                      <button
+                        onClick={() => { setEditingTopicName(t.name); setTopicRenameValue(t.name) }}
+                        className="flex-1 text-left text-[10px] text-white/80 hover:text-white truncate"
+                        title="Click to rename"
+                      >
+                        {t.name}
+                      </button>
+                    )}
+                    {/* Memory count badge */}
+                    <span className="px-1.5 py-0.5 rounded-md bg-surface-3 text-[8px] text-muted font-medium shrink-0">
+                      {t.memoryCount}
+                    </span>
+                    {/* Delete */}
+                    <button
+                      onClick={() => handleTopicDelete(t.name)}
+                      className="p-0.5 rounded hover:bg-surface-4 text-muted/50 hover:text-accent-red opacity-0 group-hover:opacity-100 transition-all"
+                      title="Delete topic"
+                    >
+                      <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              {/* Merge action */}
+              {mergeSelections.size >= 2 && (
+                <div className="mt-2 pt-2 border-t border-white/[0.06] flex items-center gap-2">
+                  <span className="text-[9px] text-muted">
+                    Merge {mergeSelections.size} topics into "{Array.from(mergeSelections)[0]}"
+                  </span>
+                  <button
+                    onClick={handleTopicMerge}
+                    className="px-2 py-1 rounded-md bg-accent-purple/20 hover:bg-accent-purple/30 text-[9px] font-medium text-accent-purple transition-all"
+                  >
+                    Merge
+                  </button>
+                  <button
+                    onClick={() => setMergeSelections(new Set())}
+                    className="px-2 py-1 rounded-md bg-surface-3 hover:bg-surface-4 text-[9px] text-muted hover:text-white transition-all"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       {/* Add/Edit form */}
       {showAddForm && (
         <div className="mb-4 p-3 bg-surface-2 rounded-xl border border-white/[0.06]">
@@ -334,16 +528,24 @@ export default function MemoryTab() {
 
         {/* Topic filter */}
         {topics.length > 0 && (
-          <select
-            value={topicFilter || ''}
-            onChange={e => setTopicFilter(e.target.value || null)}
-            className="bg-surface-2 border border-white/[0.06] rounded-lg px-2 py-1.5 text-[10px] text-white/80 outline-none cursor-pointer [&>option]:bg-surface-2"
-          >
-            <option value="">All topics</option>
-            {topics.map(t => (
-              <option key={t.name} value={t.name}>{t.name} ({t.memoryCount})</option>
-            ))}
-          </select>
+          <div className="flex items-center gap-1">
+            <select
+              value={topicFilter || ''}
+              onChange={e => setTopicFilter(e.target.value || null)}
+              className="bg-surface-2 border border-white/[0.06] rounded-lg px-2 py-1.5 text-[10px] text-white/80 outline-none cursor-pointer [&>option]:bg-surface-2"
+            >
+              <option value="">All topics</option>
+              {topics.map(t => (
+                <option key={t.name} value={t.name}>{t.name} ({t.memoryCount})</option>
+              ))}
+            </select>
+            <button
+              onClick={() => setShowTopicManager(!showTopicManager)}
+              className="text-[9px] text-accent-purple/60 hover:text-accent-purple transition-all whitespace-nowrap"
+            >
+              Manage
+            </button>
+          </div>
         )}
 
         {/* Sort */}
@@ -393,79 +595,113 @@ export default function MemoryTab() {
         ) : (
           /* Card grid */
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-            {filtered.map(mem => (
-              <div
-                key={mem.id}
-                className="group bg-surface-2 rounded-xl border border-white/[0.04] p-3 hover:border-accent-purple/20 transition-all relative"
-              >
-                {/* Pin indicator */}
-                {mem.isPinned && (
-                  <div className="absolute top-2 right-2 text-[10px] text-accent-purple">📌</div>
-                )}
+            {filtered.map(mem => {
+              const isExpanded = expandedId === mem.id
+              return (
+                <div
+                  key={mem.id}
+                  onClick={() => setExpandedId(isExpanded ? null : mem.id)}
+                  className={`group bg-surface-2 rounded-xl border p-3 transition-all duration-200 cursor-pointer relative ${
+                    isExpanded
+                      ? 'border-accent-purple/20 bg-surface-2/90'
+                      : 'border-white/[0.04] hover:border-accent-purple/20'
+                  }`}
+                >
+                  {/* Pin indicator */}
+                  {mem.isPinned && (
+                    <div className="absolute top-2 right-2 text-[10px] text-accent-purple">📌</div>
+                  )}
 
-                {/* Header */}
-                <div className="flex items-start gap-2 mb-1.5">
-                  <span className="text-sm shrink-0">{SOURCE_ICONS[mem.sourceType] || '📎'}</span>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-[11px] font-medium text-white/90 truncate pr-4">{mem.title}</h3>
+                  {/* Header */}
+                  <div className="flex items-start gap-2 mb-1.5">
+                    <span className="text-sm shrink-0">{SOURCE_ICONS[mem.sourceType] || '📎'}</span>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-[11px] font-medium text-white/90 truncate pr-4">{mem.title}</h3>
+                    </div>
+                    <div className={`w-2 h-2 rounded-full shrink-0 mt-1 ${IMPORTANCE_COLORS[mem.importance]}`} title={`Importance: ${mem.importance}`} />
                   </div>
-                  <div className={`w-2 h-2 rounded-full shrink-0 mt-1 ${IMPORTANCE_COLORS[mem.importance]}`} title={`Importance: ${mem.importance}`} />
+
+                  {/* Content — expanded shows full, collapsed shows 2-line clamp */}
+                  <p className={`text-[10px] text-muted leading-relaxed mb-2 ${isExpanded ? '' : 'line-clamp-2'}`}>
+                    {mem.content}
+                  </p>
+
+                  {/* Topics */}
+                  {mem.topics.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mb-2">
+                      {mem.topics.map(t => {
+                        const topic = topics.find(tp => tp.name === t)
+                        return (
+                          <span
+                            key={t}
+                            className="px-1.5 py-0.5 rounded-md text-[8px] font-medium"
+                            style={{
+                              backgroundColor: (topic?.color || '#a78bfa') + '20',
+                              color: topic?.color || '#a78bfa'
+                            }}
+                          >
+                            {t}
+                          </span>
+                        )
+                      })}
+                    </div>
+                  )}
+
+                  {/* Expanded details */}
+                  {isExpanded && (
+                    <div className="mb-2 pt-1 border-t border-white/[0.04]">
+                      <div className="flex items-center gap-2 text-[9px] text-muted/60 mb-1.5">
+                        <span>{mem.sourceType === 'cli_session' ? 'CLI Session' : mem.sourceType.charAt(0).toUpperCase() + mem.sourceType.slice(1)}</span>
+                        <span>·</span>
+                        <span>{new Date(mem.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                        <span>·</span>
+                        <span>{IMPORTANCE_LABELS[mem.importance]} importance</span>
+                      </div>
+                      {mem.relatedMemoryIds.length > 0 && (
+                        <div className="mb-1.5">
+                          <span className="text-[8px] text-muted/50 uppercase tracking-wider">Related</span>
+                          {mem.relatedMemoryIds.map(rid => {
+                            const rel = memories.find(m => m.id === rid)
+                            return rel ? (
+                              <div key={rid} className="text-[9px] text-accent-blue/60 truncate">{rel.title}</div>
+                            ) : null
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Footer with action buttons */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-[9px] text-muted/50">
+                      {new Date(mem.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    </span>
+                    <div className={`flex gap-0.5 ${isExpanded ? '' : 'hidden group-hover:flex'}`}>
+                      <button onClick={e => { e.stopPropagation(); handlePin(mem.id) }} className="p-1 rounded hover:bg-surface-3 text-muted hover:text-accent-purple transition-all" title="Pin">
+                        <svg className="w-2.5 h-2.5" fill={mem.isPinned ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                        </svg>
+                      </button>
+                      <button onClick={e => { e.stopPropagation(); handleEdit(mem.id) }} className="p-1 rounded hover:bg-surface-3 text-muted hover:text-white transition-all" title="Edit">
+                        <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
+                      <button onClick={e => { e.stopPropagation(); handleArchive(mem.id) }} className="p-1 rounded hover:bg-surface-3 text-muted hover:text-white transition-all" title="Archive">
+                        <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                        </svg>
+                      </button>
+                      <button onClick={e => { e.stopPropagation(); handleDelete(mem.id) }} className="p-1 rounded hover:bg-surface-3 text-muted hover:text-accent-red transition-all" title="Delete">
+                        <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
                 </div>
-
-                {/* Content preview (2-line clamp) */}
-                <p className="text-[10px] text-muted leading-relaxed mb-2 line-clamp-2">{mem.content}</p>
-
-                {/* Topics */}
-                {mem.topics.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mb-2">
-                    {mem.topics.map(t => {
-                      const topic = topics.find(tp => tp.name === t)
-                      return (
-                        <span
-                          key={t}
-                          className="px-1.5 py-0.5 rounded-md text-[8px] font-medium"
-                          style={{
-                            backgroundColor: (topic?.color || '#a78bfa') + '20',
-                            color: topic?.color || '#a78bfa'
-                          }}
-                        >
-                          {t}
-                        </span>
-                      )
-                    })}
-                  </div>
-                )}
-
-                {/* Footer */}
-                <div className="flex items-center justify-between">
-                  <span className="text-[9px] text-muted/50">
-                    {new Date(mem.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                  </span>
-                  <div className="hidden group-hover:flex gap-0.5">
-                    <button onClick={() => handlePin(mem.id)} className="p-1 rounded hover:bg-surface-3 text-muted hover:text-accent-purple transition-all" title="Pin">
-                      <svg className="w-2.5 h-2.5" fill={mem.isPinned ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-                      </svg>
-                    </button>
-                    <button onClick={() => handleEdit(mem.id)} className="p-1 rounded hover:bg-surface-3 text-muted hover:text-white transition-all" title="Edit">
-                      <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                      </svg>
-                    </button>
-                    <button onClick={() => handleArchive(mem.id)} className="p-1 rounded hover:bg-surface-3 text-muted hover:text-white transition-all" title="Archive">
-                      <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-                      </svg>
-                    </button>
-                    <button onClick={() => handleDelete(mem.id)} className="p-1 rounded hover:bg-surface-3 text-muted hover:text-accent-red transition-all" title="Delete">
-                      <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>

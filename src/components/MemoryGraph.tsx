@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { Memory, MemoryTopic } from '../types'
 
 interface Props {
@@ -14,11 +14,12 @@ interface GraphNode {
   color: string
   x: number
   y: number
-  vx: number
-  vy: number
+  targetX: number
+  targetY: number
   radius: number
   sourceType?: string
   memoryId?: string
+  topicName?: string
 }
 
 interface GraphEdge {
@@ -35,19 +36,54 @@ const SOURCE_COLORS: Record<string, string> = {
   manual: '#c084fc',
 }
 
+function toScreen(
+  wx: number, wy: number,
+  scale: number, offsetX: number, offsetY: number
+): [number, number] {
+  return [wx * scale + offsetX, wy * scale + offsetY]
+}
+
+function toWorld(
+  sx: number, sy: number,
+  scale: number, offsetX: number, offsetY: number
+): [number, number] {
+  return [(sx - offsetX) / scale, (sy - offsetY) / scale]
+}
+
 export default function MemoryGraph({ memories, topics, onSelectMemory }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const nodesRef = useRef<GraphNode[]>([])
   const edgesRef = useRef<GraphEdge[]>([])
   const animFrameRef = useRef<number>(0)
-  const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null)
-  const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null)
+  const scaleRef = useRef(1)
+  const offsetRef = useRef({ x: 0, y: 0 })
+  const animProgressRef = useRef(1) // Start at 1 (complete) — only animate on real data changes
+  const pulseRef = useRef(0)
+  const hoveredRef = useRef<GraphNode | null>(null)
+  const selectedRef = useRef<GraphNode | null>(null)
+  const highlightedTopicRef = useRef<string | null>(null)
   const dragRef = useRef<{ node: GraphNode; offsetX: number; offsetY: number } | null>(null)
+  const panRef = useRef<{ startX: number; startY: number; startOffsetX: number; startOffsetY: number } | null>(null)
+  const lastFingerprintRef = useRef('')
 
-  // Build graph data
+  // State only for side panel (needs re-render)
+  const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null)
+
+  // Stable fingerprint to detect actual data changes
+  const fingerprint = useMemo(() => {
+    return memories.map(m => m.id).join(',') + '|' + topics.map(t => t.name + t.color).join(',')
+  }, [memories, topics])
+
+  // Build graph data with radial layout — only when data actually changes
   useEffect(() => {
-    if (memories.length === 0) return
+    if (memories.length === 0) {
+      nodesRef.current = []
+      edgesRef.current = []
+      return
+    }
+    if (fingerprint === lastFingerprintRef.current) return
+    lastFingerprintRef.current = fingerprint
 
     const nodes: GraphNode[] = []
     const edges: GraphEdge[] = []
@@ -56,52 +92,78 @@ export default function MemoryGraph({ memories, topics, onSelectMemory }: Props)
     const cx = width / 2
     const cy = height / 2
 
-    // Topic nodes (hubs)
+    const topicRadius = Math.min(width, height) * 0.28
+    const memoryOrbitRadius = Math.min(width, height) * 0.1
+
+    // Topic nodes arranged in a circle
     const topicMap = new Map<string, GraphNode>()
     topics.forEach((t, i) => {
-      const angle = (2 * Math.PI * i) / Math.max(topics.length, 1)
-      const dist = Math.min(width, height) * 0.25
+      const angle = (2 * Math.PI * i) / Math.max(topics.length, 1) - Math.PI / 2
       const node: GraphNode = {
         id: `topic-${t.name}`,
         label: t.name,
         type: 'topic',
         color: t.color,
-        x: cx + Math.cos(angle) * dist + (Math.random() - 0.5) * 20,
-        y: cy + Math.sin(angle) * dist + (Math.random() - 0.5) * 20,
-        vx: 0, vy: 0,
-        radius: Math.min(8 + t.memoryCount * 2, 20),
+        x: cx,
+        y: cy,
+        targetX: cx + Math.cos(angle) * topicRadius,
+        targetY: cy + Math.sin(angle) * topicRadius,
+        radius: Math.min(10 + t.memoryCount * 2, 22),
+        topicName: t.name,
       }
       nodes.push(node)
       topicMap.set(t.name, node)
     })
 
-    // Memory nodes
-    memories.forEach((m, i) => {
-      const angle = (2 * Math.PI * i) / Math.max(memories.length, 1)
-      const dist = Math.min(width, height) * 0.35 + (Math.random() - 0.5) * 40
+    // Group memories by primary topic
+    const topicGroups = new Map<string, Memory[]>()
+    memories.forEach(m => {
+      const primary = m.topics[0] || '__orphan'
+      if (!topicGroups.has(primary)) topicGroups.set(primary, [])
+      topicGroups.get(primary)!.push(m)
+    })
+
+    // Memory nodes orbit their primary topic
+    memories.forEach(m => {
+      const primary = m.topics[0] || '__orphan'
+      const topicNode = topicMap.get(primary)
+      const group = topicGroups.get(primary) || []
+      const indexInGroup = group.indexOf(m)
+      const groupSize = group.length
+
+      let targetX: number, targetY: number
+      if (topicNode) {
+        const memAngle = (2 * Math.PI * indexInGroup) / Math.max(groupSize, 1)
+        const orbitDist = memoryOrbitRadius + groupSize * 2
+        targetX = topicNode.targetX + Math.cos(memAngle) * orbitDist
+        targetY = topicNode.targetY + Math.sin(memAngle) * orbitDist
+      } else {
+        const angle = (2 * Math.PI * indexInGroup) / Math.max(groupSize, 1)
+        targetX = cx + Math.cos(angle) * 40
+        targetY = cy + Math.sin(angle) * 40
+      }
+
       const node: GraphNode = {
         id: `mem-${m.id}`,
-        label: m.title.length > 25 ? m.title.slice(0, 22) + '...' : m.title,
+        label: m.title.length > 28 ? m.title.slice(0, 25) + '...' : m.title,
         type: 'memory',
         color: SOURCE_COLORS[m.sourceType] || '#a78bfa',
-        x: cx + Math.cos(angle) * dist,
-        y: cy + Math.sin(angle) * dist,
-        vx: 0, vy: 0,
-        radius: 4 + m.importance,
+        x: cx,
+        y: cy,
+        targetX,
+        targetY,
+        radius: 4 + m.importance * 1.5,
         sourceType: m.sourceType,
         memoryId: m.id,
       }
       nodes.push(node)
 
-      // Connect to topics
       m.topics.forEach(t => {
-        const topicNode = topicMap.get(t)
-        if (topicNode) {
-          edges.push({ source: node.id, target: topicNode.id })
+        if (topicMap.has(t)) {
+          edges.push({ source: node.id, target: `topic-${t}` })
         }
       })
 
-      // Connect related memories
       m.relatedMemoryIds.forEach(rid => {
         edges.push({ source: node.id, target: `mem-${rid}` })
       })
@@ -109,9 +171,12 @@ export default function MemoryGraph({ memories, topics, onSelectMemory }: Props)
 
     nodesRef.current = nodes
     edgesRef.current = edges
-  }, [memories, topics])
+    animProgressRef.current = 0 // Trigger entrance animation
+    scaleRef.current = 1
+    offsetRef.current = { x: 0, y: 0 }
+  }, [fingerprint, memories, topics])
 
-  // Force simulation + render
+  // Single stable render loop — no state dependencies
   useEffect(() => {
     const canvas = canvasRef.current
     const container = containerRef.current
@@ -121,155 +186,238 @@ export default function MemoryGraph({ memories, topics, onSelectMemory }: Props)
     if (!maybeCtx) return
     const ctx: CanvasRenderingContext2D = maybeCtx
 
+    let width = container.clientWidth
+    let height = container.clientHeight
+
     const resize = () => {
-      canvas.width = container.clientWidth * window.devicePixelRatio
-      canvas.height = container.clientHeight * window.devicePixelRatio
-      canvas.style.width = container.clientWidth + 'px'
-      canvas.style.height = container.clientHeight + 'px'
-      ctx.scale(window.devicePixelRatio, window.devicePixelRatio)
+      width = container.clientWidth
+      height = container.clientHeight
+      canvas.width = width * window.devicePixelRatio
+      canvas.height = height * window.devicePixelRatio
+      canvas.style.width = width + 'px'
+      canvas.style.height = height + 'px'
+      ctx.setTransform(window.devicePixelRatio, 0, 0, window.devicePixelRatio, 0, 0)
     }
     resize()
 
-    const width = container.clientWidth
-    const height = container.clientHeight
+    const resizeObs = new ResizeObserver(resize)
+    resizeObs.observe(container)
 
-    let ticks = 0
-    const maxTicks = 200
+    let running = true
 
-    function simulate() {
+    function render() {
+      if (!running) return
+
       const nodes = nodesRef.current
       const edges = edgesRef.current
-      if (nodes.length === 0) return
+      const scale = scaleRef.current
+      const offset = offsetRef.current
+      const hovered = hoveredRef.current
+      const selected = selectedRef.current
+      const highlightedTopic = highlightedTopicRef.current
 
-      if (ticks < maxTicks) {
-        const alpha = 1 - ticks / maxTicks
-
-        // Repulsion between all nodes
-        for (let i = 0; i < nodes.length; i++) {
-          for (let j = i + 1; j < nodes.length; j++) {
-            const dx = nodes[j].x - nodes[i].x
-            const dy = nodes[j].y - nodes[i].y
-            const dist = Math.sqrt(dx * dx + dy * dy) || 1
-            const force = (alpha * 500) / (dist * dist)
-            const fx = (dx / dist) * force
-            const fy = (dy / dist) * force
-            nodes[i].vx -= fx
-            nodes[i].vy -= fy
-            nodes[j].vx += fx
-            nodes[j].vy += fy
-          }
-        }
-
-        // Attraction along edges
-        const nodeMap = new Map(nodes.map(n => [n.id, n]))
-        for (const edge of edges) {
-          const src = nodeMap.get(edge.source)
-          const tgt = nodeMap.get(edge.target)
-          if (!src || !tgt) continue
-          const dx = tgt.x - src.x
-          const dy = tgt.y - src.y
-          const dist = Math.sqrt(dx * dx + dy * dy) || 1
-          const force = alpha * (dist - 80) * 0.01
-          const fx = (dx / dist) * force
-          const fy = (dy / dist) * force
-          src.vx += fx
-          src.vy += fy
-          tgt.vx -= fx
-          tgt.vy -= fy
-        }
-
-        // Center gravity
-        for (const node of nodes) {
-          node.vx += (width / 2 - node.x) * alpha * 0.005
-          node.vy += (height / 2 - node.y) * alpha * 0.005
-        }
-
-        // Apply velocity with damping
-        for (const node of nodes) {
-          if (dragRef.current && dragRef.current.node === node) continue
-          node.vx *= 0.8
-          node.vy *= 0.8
-          node.x += node.vx
-          node.y += node.vy
-          // Bounds
-          node.x = Math.max(node.radius, Math.min(width - node.radius, node.x))
-          node.y = Math.max(node.radius, Math.min(height - node.radius, node.y))
-        }
-
-        ticks++
-      }
-
-      // Render
       ctx.clearRect(0, 0, width, height)
 
-      // Draw edges
+      if (nodes.length === 0) {
+        animFrameRef.current = requestAnimationFrame(render)
+        return
+      }
+
+      // Entrance animation: spiral outward from center
+      if (animProgressRef.current < 1) {
+        animProgressRef.current = Math.min(1, animProgressRef.current + 0.04)
+        const t = animProgressRef.current
+        const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2
+        for (const node of nodes) {
+          if (dragRef.current?.node === node) continue
+          const startX = width / 2
+          const startY = height / 2
+          node.x = startX + (node.targetX - startX) * ease
+          node.y = startY + (node.targetY - startY) * ease
+        }
+      }
+
+      pulseRef.current += 0.04
+
       const nodeMap = new Map(nodes.map(n => [n.id, n]))
-      ctx.strokeStyle = 'rgba(255,255,255,0.06)'
-      ctx.lineWidth = 1
+
+      // Draw edges as bezier curves
       for (const edge of edges) {
         const src = nodeMap.get(edge.source)
         const tgt = nodeMap.get(edge.target)
         if (!src || !tgt) continue
+
+        const [sx, sy] = toScreen(src.x, src.y, scale, offset.x, offset.y)
+        const [tx, ty] = toScreen(tgt.x, tgt.y, scale, offset.x, offset.y)
+
+        const mx = (sx + tx) / 2
+        const my = (sy + ty) / 2
+        const dx = tx - sx
+        const dy = ty - sy
+        const len = Math.sqrt(dx * dx + dy * dy) || 1
+        const curvature = len * 0.15
+        const cpx = mx + (-dy / len) * curvature
+        const cpy = my + (dx / len) * curvature
+
+        const isHighlighted = highlightedTopic && (
+          src.topicName === highlightedTopic || tgt.topicName === highlightedTopic ||
+          edge.source === `topic-${highlightedTopic}` || edge.target === `topic-${highlightedTopic}`
+        )
+
+        const alpha = isHighlighted ? 0.25 : 0.08
         ctx.beginPath()
-        ctx.moveTo(src.x, src.y)
-        ctx.lineTo(tgt.x, tgt.y)
+        ctx.moveTo(sx, sy)
+        ctx.quadraticCurveTo(cpx, cpy, tx, ty)
+        ctx.strokeStyle = `rgba(255,255,255,${alpha})`
+        ctx.lineWidth = isHighlighted ? 1.5 : 0.8
         ctx.stroke()
       }
 
       // Draw nodes
       for (const node of nodes) {
-        ctx.beginPath()
-        ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2)
+        const [sx, sy] = toScreen(node.x, node.y, scale, offset.x, offset.y)
+        const r = node.radius * scale
+        const isHovered = hovered?.id === node.id
+        const isSelected = selected?.id === node.id
+        const isTopicHighlighted = highlightedTopic && node.topicName === highlightedTopic
 
         if (node.type === 'topic') {
-          ctx.fillStyle = node.color + '40'
+          // Glowing ring
+          const gradient = ctx.createRadialGradient(sx, sy, r * 0.3, sx, sy, r * 1.5)
+          gradient.addColorStop(0, node.color + '30')
+          gradient.addColorStop(0.6, node.color + '15')
+          gradient.addColorStop(1, node.color + '00')
+          ctx.beginPath()
+          ctx.arc(sx, sy, r * 1.5, 0, Math.PI * 2)
+          ctx.fillStyle = gradient
           ctx.fill()
-          ctx.strokeStyle = node.color
-          ctx.lineWidth = 2
+
+          ctx.beginPath()
+          ctx.arc(sx, sy, r, 0, Math.PI * 2)
+          ctx.fillStyle = node.color + '25'
+          ctx.fill()
+          ctx.strokeStyle = isTopicHighlighted || isHovered ? node.color : node.color + 'aa'
+          ctx.lineWidth = isTopicHighlighted || isHovered ? 2.5 : 1.8
           ctx.stroke()
-          // Label
-          ctx.fillStyle = node.color
-          ctx.font = 'bold 10px system-ui'
-          ctx.textAlign = 'center'
-          ctx.fillText(node.label, node.x, node.y + node.radius + 12)
-        } else {
-          ctx.fillStyle = node.color + '80'
+
+          // Inner dot
+          ctx.beginPath()
+          ctx.arc(sx, sy, r * 0.3, 0, Math.PI * 2)
+          ctx.fillStyle = node.color + '60'
           ctx.fill()
-          const isHovered = hoveredNode?.id === node.id
-          const isSelected = selectedNode?.id === node.id
+
+          // Label with background pill
+          const fontSize = Math.max(9, 10 * scale)
+          ctx.font = `bold ${fontSize}px system-ui`
+          ctx.textAlign = 'center'
+          const textWidth = ctx.measureText(node.label).width
+          const pillY = sy + r + 10 * scale
+          const pillPad = 4 * scale
+
+          ctx.fillStyle = 'rgba(0,0,0,0.6)'
+          roundRect(ctx, sx - textWidth / 2 - pillPad, pillY - 7 * scale, textWidth + pillPad * 2, 14 * scale, 4 * scale)
+          ctx.fill()
+
+          ctx.fillStyle = node.color
+          ctx.fillText(node.label, sx, pillY + 3 * scale)
+        } else {
+          // Memory node with soft glow
+          ctx.save()
+          ctx.shadowColor = node.color
+          ctx.shadowBlur = isHovered || isSelected ? 12 : 6
+          ctx.beginPath()
+          ctx.arc(sx, sy, r, 0, Math.PI * 2)
+          ctx.fillStyle = node.color + '90'
+          ctx.fill()
+          ctx.restore()
+
+          // Pulse ring on hover/selected
           if (isHovered || isSelected) {
-            ctx.strokeStyle = '#fff'
-            ctx.lineWidth = 1.5
+            const pulse = Math.sin(pulseRef.current) * 0.3 + 0.7
+            ctx.beginPath()
+            ctx.arc(sx, sy, r + 3 * scale * pulse, 0, Math.PI * 2)
+            ctx.strokeStyle = `rgba(255,255,255,${0.4 * pulse})`
+            ctx.lineWidth = 1.2
             ctx.stroke()
-            // Show label on hover
-            ctx.fillStyle = 'rgba(255,255,255,0.8)'
-            ctx.font = '9px system-ui'
+
+            // Label with contrast pill
+            const fontSize = Math.max(8, 9 * scale)
+            ctx.font = `${fontSize}px system-ui`
             ctx.textAlign = 'center'
-            ctx.fillText(node.label, node.x, node.y - node.radius - 4)
+            const tw = ctx.measureText(node.label).width
+            const ly = sy - r - 8 * scale
+            const pp = 3 * scale
+
+            ctx.fillStyle = 'rgba(0,0,0,0.7)'
+            roundRect(ctx, sx - tw / 2 - pp, ly - 6 * scale, tw + pp * 2, 12 * scale, 3 * scale)
+            ctx.fill()
+
+            ctx.fillStyle = 'rgba(255,255,255,0.9)'
+            ctx.fillText(node.label, sx, ly + 3 * scale)
           }
         }
       }
 
-      animFrameRef.current = requestAnimationFrame(simulate)
+      animFrameRef.current = requestAnimationFrame(render)
     }
 
-    simulate()
+    render()
 
     return () => {
+      running = false
       cancelAnimationFrame(animFrameRef.current)
+      resizeObs.disconnect()
     }
-  }, [memories, topics, hoveredNode, selectedNode])
+  }, []) // No dependencies — runs once, reads all state from refs
 
-  // Mouse interactions
-  const getNodeAtPos = useCallback((x: number, y: number): GraphNode | null => {
+  // Helper: rounded rect path
+  function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+    ctx.beginPath()
+    ctx.moveTo(x + r, y)
+    ctx.lineTo(x + w - r, y)
+    ctx.arcTo(x + w, y, x + w, y + r, r)
+    ctx.lineTo(x + w, y + h - r)
+    ctx.arcTo(x + w, y + h, x + w - r, y + h, r)
+    ctx.lineTo(x + r, y + h)
+    ctx.arcTo(x, y + h, x, y + h - r, r)
+    ctx.lineTo(x, y + r)
+    ctx.arcTo(x, y, x + r, y, r)
+    ctx.closePath()
+  }
+
+  // Hit test in world coordinates
+  const getNodeAtPos = useCallback((screenX: number, screenY: number): GraphNode | null => {
+    const scale = scaleRef.current
+    const offset = offsetRef.current
+    const [wx, wy] = toWorld(screenX, screenY, scale, offset.x, offset.y)
     for (const node of [...nodesRef.current].reverse()) {
-      const dx = x - node.x
-      const dy = y - node.y
-      if (dx * dx + dy * dy <= (node.radius + 4) * (node.radius + 4)) {
+      const dx = wx - node.x
+      const dy = wy - node.y
+      const hitRadius = node.radius + 6 / scale
+      if (dx * dx + dy * dy <= hitRadius * hitRadius) {
         return node
       }
     }
     return null
+  }, [])
+
+  // Zoom
+  const handleWheel = useCallback((e: React.WheelEvent<HTMLCanvasElement>) => {
+    e.preventDefault()
+    const rect = canvasRef.current?.getBoundingClientRect()
+    if (!rect) return
+
+    const mouseX = e.clientX - rect.left
+    const mouseY = e.clientY - rect.top
+    const oldScale = scaleRef.current
+    const delta = e.deltaY > 0 ? 0.9 : 1.1
+    const newScale = Math.max(0.3, Math.min(3, oldScale * delta))
+
+    offsetRef.current = {
+      x: mouseX - (mouseX - offsetRef.current.x) * (newScale / oldScale),
+      y: mouseY - (mouseY - offsetRef.current.y) * (newScale / oldScale),
+    }
+    scaleRef.current = newScale
   }, [])
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -278,16 +426,27 @@ export default function MemoryGraph({ memories, topics, onSelectMemory }: Props)
     const x = e.clientX - rect.left
     const y = e.clientY - rect.top
 
+    if (panRef.current) {
+      offsetRef.current = {
+        x: panRef.current.startOffsetX + (x - panRef.current.startX),
+        y: panRef.current.startOffsetY + (y - panRef.current.startY),
+      }
+      return
+    }
+
     if (dragRef.current) {
-      dragRef.current.node.x = x - dragRef.current.offsetX
-      dragRef.current.node.y = y - dragRef.current.offsetY
+      const [wx, wy] = toWorld(x, y, scaleRef.current, offsetRef.current.x, offsetRef.current.y)
+      dragRef.current.node.x = wx - dragRef.current.offsetX
+      dragRef.current.node.y = wy - dragRef.current.offsetY
+      dragRef.current.node.targetX = dragRef.current.node.x
+      dragRef.current.node.targetY = dragRef.current.node.y
       return
     }
 
     const node = getNodeAtPos(x, y)
-    setHoveredNode(node)
+    hoveredRef.current = node
     if (canvasRef.current) {
-      canvasRef.current.style.cursor = node ? 'pointer' : 'default'
+      canvasRef.current.style.cursor = node ? 'pointer' : 'grab'
     }
   }, [getNodeAtPos])
 
@@ -298,19 +457,24 @@ export default function MemoryGraph({ memories, topics, onSelectMemory }: Props)
     const y = e.clientY - rect.top
     const node = getNodeAtPos(x, y)
     if (node) {
-      dragRef.current = { node, offsetX: x - node.x, offsetY: y - node.y }
+      const [wx, wy] = toWorld(x, y, scaleRef.current, offsetRef.current.x, offsetRef.current.y)
+      dragRef.current = { node, offsetX: wx - node.x, offsetY: wy - node.y }
+      if (canvasRef.current) canvasRef.current.style.cursor = 'grabbing'
+    } else {
+      panRef.current = {
+        startX: x,
+        startY: y,
+        startOffsetX: offsetRef.current.x,
+        startOffsetY: offsetRef.current.y,
+      }
+      if (canvasRef.current) canvasRef.current.style.cursor = 'grabbing'
     }
   }, [getNodeAtPos])
 
   const handleMouseUp = useCallback(() => {
-    if (dragRef.current) {
-      const node = dragRef.current.node
-      dragRef.current = null
-      // If barely moved, treat as click
-      if (node.type === 'memory' && node.memoryId) {
-        setSelectedNode(node)
-      }
-    }
+    dragRef.current = null
+    panRef.current = null
+    if (canvasRef.current) canvasRef.current.style.cursor = 'grab'
   }, [])
 
   const handleClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -319,12 +483,32 @@ export default function MemoryGraph({ memories, topics, onSelectMemory }: Props)
     const x = e.clientX - rect.left
     const y = e.clientY - rect.top
     const node = getNodeAtPos(x, y)
+
     if (node?.type === 'memory' && node.memoryId) {
-      setSelectedNode(node)
-    } else {
+      selectedRef.current = node
+      setSelectedNode(node) // Trigger re-render for side panel
+      highlightedTopicRef.current = null
+    } else if (node?.type === 'topic' && node.topicName) {
+      highlightedTopicRef.current = highlightedTopicRef.current === node.topicName ? null : node.topicName
+      selectedRef.current = null
       setSelectedNode(null)
+    } else {
+      selectedRef.current = null
+      setSelectedNode(null)
+      highlightedTopicRef.current = null
     }
   }, [getNodeAtPos])
+
+  const handleDoubleClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    const rect = canvasRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const x = e.clientX - rect.left
+    const y = e.clientY - rect.top
+    const node = getNodeAtPos(x, y)
+    if (node?.type === 'memory' && node.memoryId) {
+      onSelectMemory(node.memoryId)
+    }
+  }, [getNodeAtPos, onSelectMemory])
 
   if (memories.length === 0) {
     return (
@@ -346,9 +530,29 @@ export default function MemoryGraph({ memories, topics, onSelectMemory }: Props)
           onMouseMove={handleMouseMove}
           onMouseDown={handleMouseDown}
           onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
           onClick={handleClick}
+          onDoubleClick={handleDoubleClick}
+          onWheel={handleWheel}
           className="w-full h-full"
+          style={{ cursor: 'grab' }}
         />
+        {/* Zoom controls */}
+        <div className="absolute top-2 right-2 flex flex-col gap-1">
+          <button
+            onClick={() => { scaleRef.current = Math.min(3, scaleRef.current * 1.2) }}
+            className="w-6 h-6 rounded-md bg-surface-2/80 hover:bg-surface-3 text-muted hover:text-white text-[13px] flex items-center justify-center transition-all"
+          >+</button>
+          <button
+            onClick={() => { scaleRef.current = Math.max(0.3, scaleRef.current * 0.8) }}
+            className="w-6 h-6 rounded-md bg-surface-2/80 hover:bg-surface-3 text-muted hover:text-white text-[13px] flex items-center justify-center transition-all"
+          >-</button>
+          <button
+            onClick={() => { scaleRef.current = 1; offsetRef.current = { x: 0, y: 0 } }}
+            className="w-6 h-6 rounded-md bg-surface-2/80 hover:bg-surface-3 text-muted hover:text-white text-[9px] flex items-center justify-center transition-all"
+            title="Reset view"
+          >1:1</button>
+        </div>
         {/* Legend */}
         <div className="absolute bottom-2 left-2 flex gap-2 bg-surface-1/80 rounded-lg px-2 py-1">
           <span className="flex items-center gap-1 text-[8px] text-muted">
@@ -361,6 +565,10 @@ export default function MemoryGraph({ memories, topics, onSelectMemory }: Props)
             </span>
           ))}
         </div>
+        {/* Hint */}
+        <div className="absolute bottom-2 right-2 text-[8px] text-muted/40">
+          Scroll to zoom · Drag to pan · Click topic to highlight
+        </div>
       </div>
 
       {/* Side panel */}
@@ -368,7 +576,7 @@ export default function MemoryGraph({ memories, topics, onSelectMemory }: Props)
         <div className="w-56 bg-surface-1 border-l border-white/[0.06] p-3 overflow-auto">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[10px] text-muted uppercase tracking-wider">Memory Detail</span>
-            <button onClick={() => setSelectedNode(null)} className="text-muted hover:text-white">
+            <button onClick={() => { selectedRef.current = null; setSelectedNode(null) }} className="text-muted hover:text-white">
               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
@@ -378,14 +586,44 @@ export default function MemoryGraph({ memories, topics, onSelectMemory }: Props)
           <p className="text-[10px] text-muted leading-relaxed mb-2">{selectedMemory.content}</p>
           {selectedMemory.topics.length > 0 && (
             <div className="flex flex-wrap gap-1 mb-2">
-              {selectedMemory.topics.map(t => (
-                <span key={t} className="px-1.5 py-0.5 rounded-md bg-accent-purple/10 text-accent-purple text-[8px] font-medium">{t}</span>
-              ))}
+              {selectedMemory.topics.map(t => {
+                const topic = topics.find(tp => tp.name === t)
+                return (
+                  <span
+                    key={t}
+                    className="px-1.5 py-0.5 rounded-md text-[8px] font-medium"
+                    style={{
+                      backgroundColor: (topic?.color || '#a78bfa') + '20',
+                      color: topic?.color || '#a78bfa'
+                    }}
+                  >{t}</span>
+                )
+              })}
             </div>
           )}
           <div className="text-[9px] text-muted/50 mb-2">
             {selectedMemory.sourceType} · {new Date(selectedMemory.createdAt).toLocaleDateString()}
+            {selectedMemory.importance === 3 && ' · High importance'}
+            {selectedMemory.importance === 1 && ' · Low importance'}
           </div>
+          {selectedMemory.relatedMemoryIds.length > 0 && (
+            <div className="mb-2">
+              <span className="text-[9px] text-muted/60 block mb-1">Related ({selectedMemory.relatedMemoryIds.length})</span>
+              {selectedMemory.relatedMemoryIds.map(rid => {
+                const rel = memories.find(m => m.id === rid)
+                return rel ? (
+                  <button
+                    key={rid}
+                    onClick={() => {
+                      const n = nodesRef.current.find(n => n.memoryId === rid)
+                      if (n) { selectedRef.current = n; setSelectedNode(n) }
+                    }}
+                    className="block w-full text-left text-[9px] text-accent-blue/70 hover:text-accent-blue truncate mb-0.5"
+                  >{rel.title}</button>
+                ) : null
+              })}
+            </div>
+          )}
           <button
             onClick={() => onSelectMemory(selectedMemory.id)}
             className="w-full px-2 py-1.5 rounded-lg bg-surface-3 hover:bg-surface-4 text-[10px] text-muted hover:text-white transition-all"
