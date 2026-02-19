@@ -175,6 +175,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   launchExternalTerminal: (prompt: string, cwd?: string) =>
     ipcRenderer.invoke('launch-external-terminal', prompt, cwd),
 
+  // Roadmap Goals
+  getRoadmapGoals: () => ipcRenderer.invoke('get-roadmap-goals'),
+  createRoadmapGoal: (goal: any) => ipcRenderer.invoke('create-roadmap-goal', goal),
+  updateRoadmapGoal: (id: string, updates: any) => ipcRenderer.invoke('update-roadmap-goal', id, updates),
+  deleteRoadmapGoal: (id: string) => ipcRenderer.invoke('delete-roadmap-goal', id),
+
   // AI Tasks
   getAITasks: () => ipcRenderer.invoke('get-ai-tasks'),
   createAITask: (task: { title: string; description: string; priority: 'low' | 'medium' | 'high'; tags: string[] }) =>

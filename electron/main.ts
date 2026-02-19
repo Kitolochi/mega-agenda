@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, shell, Notificati
 import path from 'path'
 import fs from 'fs'
 import { spawn } from 'child_process'
-import { initDatabase, checkRecurringTasks, getCategories, getTasks, addTask, updateTask, deleteTask, toggleTaskComplete, getDailyNote, saveDailyNote, getRecentNotes, getStats, getTwitterSettings, saveTwitterSettings, getRSSFeeds, addRSSFeed, removeRSSFeed, getClaudeApiKey, saveClaudeApiKey, getActivityLog, getPomodoroState, startPomodoro, completePomodoro, startBreak, stopPomodoro, getMorningBriefing, saveMorningBriefing, dismissMorningBriefing, getBriefingData, getWeeklyReview, saveWeeklyReview, getAllWeeklyReviews, getWeeklyReviewData, checkWeeklyReviewNeeded, getChatConversations, getChatConversation, createChatConversation, addChatMessage, deleteChatConversation, renameChatConversation, getChatSettings, saveChatSettings, addCategory, deleteCategory, getTweetDrafts, getTweetDraft, createTweetDraft, updateTweetDraft, addTweetAIMessage, deleteTweetDraft, getTweetPersonas, createTweetPersona, deleteTweetPersona, getAITasks, createAITask, updateAITask, deleteAITask, moveAITask, getMemories, getAllMemories, createMemory, updateMemory, deleteMemory, archiveMemory, pinMemory, getMemoryTopics, updateMemoryTopics, getMemorySettings, saveMemorySettings } from './database'
+import { initDatabase, checkRecurringTasks, getCategories, getTasks, addTask, updateTask, deleteTask, toggleTaskComplete, getDailyNote, saveDailyNote, getRecentNotes, getStats, getTwitterSettings, saveTwitterSettings, getRSSFeeds, addRSSFeed, removeRSSFeed, getClaudeApiKey, saveClaudeApiKey, getActivityLog, getPomodoroState, startPomodoro, completePomodoro, startBreak, stopPomodoro, getMorningBriefing, saveMorningBriefing, dismissMorningBriefing, getBriefingData, getWeeklyReview, saveWeeklyReview, getAllWeeklyReviews, getWeeklyReviewData, checkWeeklyReviewNeeded, getChatConversations, getChatConversation, createChatConversation, addChatMessage, deleteChatConversation, renameChatConversation, getChatSettings, saveChatSettings, addCategory, deleteCategory, getTweetDrafts, getTweetDraft, createTweetDraft, updateTweetDraft, addTweetAIMessage, deleteTweetDraft, getTweetPersonas, createTweetPersona, deleteTweetPersona, getAITasks, createAITask, updateAITask, deleteAITask, moveAITask, getRoadmapGoals, createRoadmapGoal, updateRoadmapGoal, deleteRoadmapGoal, getMemories, getAllMemories, createMemory, updateMemory, deleteMemory, archiveMemory, pinMemory, getMemoryTopics, updateMemoryTopics, getMemorySettings, saveMemorySettings } from './database'
 import { verifyToken, getUserByUsername, getUserLists, fetchAllLists, postTweet, verifyOAuthCredentials } from './twitter'
 import { fetchAllFeeds } from './rss'
 import { summarizeAI, summarizeGeo, verifyClaudeKey, parseVoiceCommand, generateMorningBriefing, generateWeeklyReview } from './summarize'
@@ -559,6 +559,23 @@ ipcMain.handle('delete-ai-task', (_, id: string) => {
 
 ipcMain.handle('move-ai-task', (_, id: string, column: string) => {
   return moveAITask(id, column as any)
+})
+
+// Roadmap Goals
+ipcMain.handle('get-roadmap-goals', () => {
+  return getRoadmapGoals()
+})
+
+ipcMain.handle('create-roadmap-goal', (_, goal: any) => {
+  return createRoadmapGoal(goal)
+})
+
+ipcMain.handle('update-roadmap-goal', (_, id: string, updates: any) => {
+  return updateRoadmapGoal(id, updates)
+})
+
+ipcMain.handle('delete-roadmap-goal', (_, id: string) => {
+  return deleteRoadmapGoal(id)
 })
 
 // Memory

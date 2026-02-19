@@ -249,6 +249,34 @@ export interface MemorySettings {
   tokenBudget: number
 }
 
+export type RoadmapGoalCategory = 'career' | 'health' | 'financial' | 'relationships' | 'learning' | 'projects' | 'personal' | 'creative'
+export type RoadmapGoalStatus = 'not_started' | 'in_progress' | 'completed' | 'on_hold'
+
+export interface RoadmapSubGoal {
+  id: string
+  title: string
+  status: RoadmapGoalStatus
+  notes?: string
+}
+
+export interface RoadmapGoal {
+  id: string
+  title: string
+  description: string
+  category: RoadmapGoalCategory
+  targetQuarter: 1 | 2 | 3 | 4
+  targetYear: number
+  priority: 'low' | 'medium' | 'high' | 'critical'
+  status: RoadmapGoalStatus
+  research_questions: string[]
+  guidance_needed: string[]
+  notes: string
+  sub_goals: RoadmapSubGoal[]
+  tags: string[]
+  createdAt: string
+  updatedAt: string
+}
+
 export interface ElectronAPI {
   // Task operations
   getCategories: () => Promise<Category[]>
@@ -391,6 +419,12 @@ export interface ElectronAPI {
   updateAITask: (id: string, updates: Partial<AITask>) => Promise<AITask | null>
   deleteAITask: (id: string) => Promise<void>
   moveAITask: (id: string, column: AITask['column']) => Promise<AITask | null>
+
+  // Roadmap
+  getRoadmapGoals: () => Promise<RoadmapGoal[]>
+  createRoadmapGoal: (goal: Omit<RoadmapGoal, 'id' | 'createdAt' | 'updatedAt'>) => Promise<RoadmapGoal>
+  updateRoadmapGoal: (id: string, updates: Partial<RoadmapGoal>) => Promise<RoadmapGoal | null>
+  deleteRoadmapGoal: (id: string) => Promise<void>
 
   // Memory
   getMemories: () => Promise<Memory[]>

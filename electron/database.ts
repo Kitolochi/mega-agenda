@@ -167,6 +167,31 @@ interface AITask {
   updatedAt: string
 }
 
+interface RoadmapSubGoal {
+  id: string
+  title: string
+  status: 'not_started' | 'in_progress' | 'completed' | 'on_hold'
+  notes?: string
+}
+
+interface RoadmapGoal {
+  id: string
+  title: string
+  description: string
+  category: 'career' | 'health' | 'financial' | 'relationships' | 'learning' | 'projects' | 'personal' | 'creative'
+  targetQuarter: 1 | 2 | 3 | 4
+  targetYear: number
+  priority: 'low' | 'medium' | 'high' | 'critical'
+  status: 'not_started' | 'in_progress' | 'completed' | 'on_hold'
+  research_questions: string[]
+  guidance_needed: string[]
+  notes: string
+  sub_goals: RoadmapSubGoal[]
+  tags: string[]
+  createdAt: string
+  updatedAt: string
+}
+
 interface Memory {
   id: string
   title: string
@@ -213,6 +238,7 @@ interface Database {
   tweetDrafts: TweetDraft[]
   tweetPersonas: TweetPersona[]
   aiTasks: AITask[]
+  roadmapGoals: RoadmapGoal[]
   memories: Memory[]
   memoryTopics: MemoryTopic[]
   memorySettings: MemorySettings
@@ -300,7 +326,8 @@ export function initDatabase(): Database {
       },
       tweetDrafts: [],
       tweetPersonas: [],
-      aiTasks: []
+      aiTasks: [],
+      roadmapGoals: []
     }
     saveDatabase()
   }
@@ -410,6 +437,12 @@ export function initDatabase(): Database {
   // Initialize aiTasks if missing
   if (!db.aiTasks) {
     db.aiTasks = []
+    saveDatabase()
+  }
+
+  // Initialize roadmapGoals if missing
+  if (!db.roadmapGoals) {
+    db.roadmapGoals = []
     saveDatabase()
   }
 
@@ -1324,6 +1357,160 @@ function syncAITasksFile(): void {
     }
 
     fs.writeFileSync(filePath, content, 'utf-8')
+  } catch {
+    // Silently fail — file sync is best-effort
+  }
+}
+
+// Roadmap Goals CRUD
+export function getRoadmapGoals(): RoadmapGoal[] {
+  const priorityOrder = { critical: 0, high: 1, medium: 2, low: 3 }
+  return (db.roadmapGoals || []).sort((a, b) => {
+    if (a.targetYear !== b.targetYear) return a.targetYear - b.targetYear
+    if (a.targetQuarter !== b.targetQuarter) return a.targetQuarter - b.targetQuarter
+    return priorityOrder[a.priority] - priorityOrder[b.priority]
+  })
+}
+
+export function createRoadmapGoal(data: Omit<RoadmapGoal, 'id' | 'createdAt' | 'updatedAt'>): RoadmapGoal {
+  const goal: RoadmapGoal = {
+    ...data,
+    id: generateId(),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  }
+  db.roadmapGoals.push(goal)
+  saveDatabase()
+  syncRoadmapFiles()
+  return goal
+}
+
+export function updateRoadmapGoal(id: string, updates: Partial<RoadmapGoal>): RoadmapGoal | null {
+  const goal = db.roadmapGoals.find(g => g.id === id)
+  if (!goal) return null
+  if (updates.title !== undefined) goal.title = updates.title
+  if (updates.description !== undefined) goal.description = updates.description
+  if (updates.category !== undefined) goal.category = updates.category
+  if (updates.targetQuarter !== undefined) goal.targetQuarter = updates.targetQuarter
+  if (updates.targetYear !== undefined) goal.targetYear = updates.targetYear
+  if (updates.priority !== undefined) goal.priority = updates.priority
+  if (updates.status !== undefined) goal.status = updates.status
+  if (updates.research_questions !== undefined) goal.research_questions = updates.research_questions
+  if (updates.guidance_needed !== undefined) goal.guidance_needed = updates.guidance_needed
+  if (updates.notes !== undefined) goal.notes = updates.notes
+  if (updates.sub_goals !== undefined) goal.sub_goals = updates.sub_goals
+  if (updates.tags !== undefined) goal.tags = updates.tags
+  goal.updatedAt = new Date().toISOString()
+  saveDatabase()
+  syncRoadmapFiles()
+  return goal
+}
+
+export function deleteRoadmapGoal(id: string): void {
+  db.roadmapGoals = db.roadmapGoals.filter(g => g.id !== id)
+  saveDatabase()
+  syncRoadmapFiles()
+}
+
+function escapeYaml(str: string): string {
+  if (!str) return '""'
+  if (/[:\-#{}\[\],&*?|>!%@`"']/.test(str) || str.includes('\n') || str.startsWith(' ') || str.endsWith(' ')) {
+    return '"' + str.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n') + '"'
+  }
+  return str
+}
+
+function syncRoadmapFiles(): void {
+  try {
+    const homeDir = process.env.USERPROFILE || process.env.HOME || ''
+    const claudeDir = path.join(homeDir, '.claude')
+    if (!fs.existsSync(claudeDir)) {
+      fs.mkdirSync(claudeDir, { recursive: true })
+    }
+
+    const goals = getRoadmapGoals()
+
+    // Write YAML
+    let yaml = 'goals:\n'
+    for (const g of goals) {
+      yaml += `  - id: ${escapeYaml(g.id)}\n`
+      yaml += `    title: ${escapeYaml(g.title)}\n`
+      yaml += `    category: ${g.category}\n`
+      yaml += `    target: Q${g.targetQuarter} ${g.targetYear}\n`
+      yaml += `    priority: ${g.priority}\n`
+      yaml += `    status: ${g.status}\n`
+      if (g.description) {
+        yaml += `    description: ${escapeYaml(g.description)}\n`
+      }
+      if (g.research_questions.length > 0) {
+        yaml += `    research_questions:\n`
+        for (const q of g.research_questions) {
+          yaml += `      - ${escapeYaml(q)}\n`
+        }
+      }
+      if (g.guidance_needed.length > 0) {
+        yaml += `    guidance_needed:\n`
+        for (const gn of g.guidance_needed) {
+          yaml += `      - ${escapeYaml(gn)}\n`
+        }
+      }
+      if (g.sub_goals.length > 0) {
+        yaml += `    sub_goals:\n`
+        for (const sg of g.sub_goals) {
+          yaml += `      - title: ${escapeYaml(sg.title)}\n`
+          yaml += `        status: ${sg.status}\n`
+        }
+      }
+      if (g.tags.length > 0) {
+        yaml += `    tags: [${g.tags.map(t => escapeYaml(t)).join(', ')}]\n`
+      }
+      if (g.notes) {
+        yaml += `    notes: ${escapeYaml(g.notes)}\n`
+      }
+    }
+    fs.writeFileSync(path.join(claudeDir, 'roadmap.yaml'), yaml, 'utf-8')
+
+    // Write Markdown
+    const statusIcon: Record<string, string> = { not_started: ' ', in_progress: '~', completed: 'x', on_hold: '-' }
+    let md = '# Life Roadmap\n'
+    const byYear = new Map<number, RoadmapGoal[]>()
+    for (const g of goals) {
+      if (!byYear.has(g.targetYear)) byYear.set(g.targetYear, [])
+      byYear.get(g.targetYear)!.push(g)
+    }
+    for (const [year, yearGoals] of [...byYear.entries()].sort((a, b) => a[0] - b[0])) {
+      md += `\n## ${year}\n`
+      const byQ = new Map<number, RoadmapGoal[]>()
+      for (const g of yearGoals) {
+        if (!byQ.has(g.targetQuarter)) byQ.set(g.targetQuarter, [])
+        byQ.get(g.targetQuarter)!.push(g)
+      }
+      for (const [q, qGoals] of [...byQ.entries()].sort((a, b) => a[0] - b[0])) {
+        md += `\n### Q${q} ${year}\n\n`
+        for (const g of qGoals) {
+          md += `- [${statusIcon[g.status] || ' '}] **${g.title}** _(${g.category}, ${g.priority} priority)_\n`
+          if (g.description) {
+            md += `  ${g.description}\n`
+          }
+          for (const sg of g.sub_goals) {
+            md += `  - [${statusIcon[sg.status] || ' '}] ${sg.title}\n`
+          }
+          if (g.research_questions.length > 0) {
+            md += `  - **Research needed:**\n`
+            for (const rq of g.research_questions) {
+              md += `    - ${rq}\n`
+            }
+          }
+          if (g.guidance_needed.length > 0) {
+            md += `  - **Guidance needed:**\n`
+            for (const gn of g.guidance_needed) {
+              md += `    - ${gn}\n`
+            }
+          }
+        }
+      }
+    }
+    fs.writeFileSync(path.join(claudeDir, 'roadmap.md'), md, 'utf-8')
   } catch {
     // Silently fail — file sync is best-effort
   }
