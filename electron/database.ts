@@ -174,6 +174,13 @@ interface RoadmapSubGoal {
   notes?: string
 }
 
+interface TopicReport {
+  topic: string
+  type: 'question' | 'guidance'
+  report: string
+  generatedAt: string
+}
+
 interface RoadmapGoal {
   id: string
   title: string
@@ -188,6 +195,7 @@ interface RoadmapGoal {
   notes: string
   sub_goals: RoadmapSubGoal[]
   tags: string[]
+  topicReports: TopicReport[]
   createdAt: string
   updatedAt: string
 }
@@ -453,6 +461,17 @@ export function initDatabase(): Database {
     db.roadmapGoals = []
     saveDatabase()
   }
+
+  // Migrate roadmapGoals: add topicReports if missing
+  let goalsNeedMigration = false
+  db.roadmapGoals = db.roadmapGoals.map(g => {
+    if ((g as any).topicReports === undefined) {
+      goalsNeedMigration = true
+      return { ...g, topicReports: [] }
+    }
+    return g
+  })
+  if (goalsNeedMigration) saveDatabase()
 
   // Initialize memories if missing
   if (!db.memories) {
@@ -1417,6 +1436,7 @@ export function updateRoadmapGoal(id: string, updates: Partial<RoadmapGoal>): Ro
   if (updates.notes !== undefined) goal.notes = updates.notes
   if (updates.sub_goals !== undefined) goal.sub_goals = updates.sub_goals
   if (updates.tags !== undefined) goal.tags = updates.tags
+  if (updates.topicReports !== undefined) goal.topicReports = updates.topicReports
   goal.updatedAt = new Date().toISOString()
   saveDatabase()
   syncRoadmapFiles()

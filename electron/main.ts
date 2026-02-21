@@ -12,7 +12,7 @@ import { streamChatMessage, abortChatStream, getMemoryCountForChat } from './cha
 import { getCliSessions, getCliSessionMessages, searchCliSessions } from './cli-logs'
 import { searchGitHubRepos } from './github'
 import { extractMemoriesFromChat, extractMemoriesFromCli, extractMemoriesFromJournal, batchExtractMemories } from './memory'
-import { researchGoal } from './research'
+import { researchGoal, researchTopic } from './research'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -268,6 +268,37 @@ ipcMain.handle('research-roadmap-goal', async (_, goalId: string) => {
   if (!tavilyApiKey) throw new Error('Tavily API key not configured. Set it in Settings.')
 
   return researchGoal(goal, claudeApiKey, tavilyApiKey)
+})
+
+// Research Roadmap Topic (per-topic)
+ipcMain.handle('research-roadmap-topic', async (_, goalId: string, topicIndex: number, topicType: 'question' | 'guidance') => {
+  const goals = getRoadmapGoals()
+  const goal = goals.find(g => g.id === goalId)
+  if (!goal) throw new Error('Goal not found')
+
+  const claudeApiKey = getClaudeApiKey()
+  if (!claudeApiKey) throw new Error('Claude API key not configured. Set it in Settings.')
+
+  const tavilyApiKey = getTavilyApiKey()
+  if (!tavilyApiKey) throw new Error('Tavily API key not configured. Set it in Settings.')
+
+  const result = await researchTopic(goal, topicIndex, topicType, claudeApiKey, tavilyApiKey)
+
+  // Save to goal's topicReports (dedup by topic text + type)
+  const items = topicType === 'question' ? goal.research_questions : goal.guidance_needed
+  const topicText = items[topicIndex]
+  const generatedAt = new Date().toISOString()
+  const topicReports = [...(goal.topicReports || [])]
+  const existingIdx = topicReports.findIndex(r => r.topic === topicText && r.type === topicType)
+  const newReport = { topic: topicText, type: topicType, report: result.report, generatedAt }
+  if (existingIdx >= 0) {
+    topicReports[existingIdx] = newReport
+  } else {
+    topicReports.push(newReport)
+  }
+  updateRoadmapGoal(goalId, { topicReports } as any)
+
+  return { report: result.report, generatedAt }
 })
 
 // Activity Log

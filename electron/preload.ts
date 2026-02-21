@@ -74,6 +74,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getTavilyApiKey: () => ipcRenderer.invoke('get-tavily-api-key'),
   saveTavilyApiKey: (key: string) => ipcRenderer.invoke('save-tavily-api-key', key),
   researchRoadmapGoal: (goalId: string) => ipcRenderer.invoke('research-roadmap-goal', goalId),
+  researchRoadmapTopic: (goalId: string, topicIndex: number, topicType: 'question' | 'guidance') =>
+    ipcRenderer.invoke('research-roadmap-topic', goalId, topicIndex, topicType),
 
   // Activity Log
   getActivityLog: (days?: number) => ipcRenderer.invoke('get-activity-log', days),

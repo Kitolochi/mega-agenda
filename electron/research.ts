@@ -143,6 +143,86 @@ Be specific, cite sources where possible, and focus on actionable insights.`
   return { report, filePath }
 }
 
+export async function researchTopic(
+  goal: RoadmapGoal,
+  topicIndex: number,
+  topicType: 'question' | 'guidance',
+  claudeApiKey: string,
+  tavilyApiKey: string
+): Promise<{ report: string }> {
+  const client = tavily({ apiKey: tavilyApiKey })
+
+  const items = topicType === 'question' ? goal.research_questions : goal.guidance_needed
+  if (topicIndex < 0 || topicIndex >= items.length) {
+    throw new Error(`Topic index ${topicIndex} out of range`)
+  }
+
+  const topicText = items[topicIndex]
+  const searchQuery = topicType === 'guidance' ? `How to: ${topicText}` : topicText
+
+  let contextParts: string[] = []
+
+  try {
+    const searchResult = await client.search(searchQuery, {
+      searchDepth: 'advanced',
+      maxResults: 10,
+    })
+
+    if (searchResult.results && searchResult.results.length > 0) {
+      const resultSummary = searchResult.results.slice(0, 8).map((r: any, i: number) =>
+        `[${i + 1}] ${r.title}\n    URL: ${r.url}\n    ${r.content?.slice(0, 300) || ''}`
+      ).join('\n\n')
+      contextParts.push(`### Search Results\n\n${resultSummary}`)
+    }
+
+    const topUrls = searchResult.results?.slice(0, 5).map((r: any) => r.url).filter(Boolean) || []
+    if (topUrls.length > 0) {
+      try {
+        const extracted = await client.extract(topUrls)
+        if (extracted.results && extracted.results.length > 0) {
+          const extractSummary = extracted.results.map((r: any) =>
+            `[Extracted from ${r.url}]\n${(r.rawContent || '').slice(0, 500)}`
+          ).join('\n\n')
+          contextParts.push(`### Extracted Content\n\n${extractSummary}`)
+        }
+      } catch {
+        // Extract can fail for some URLs
+      }
+    }
+  } catch (err: any) {
+    contextParts.push(`### Search Results\n\n_Search failed: ${err.message}_`)
+  }
+
+  const fullContext = contextParts.join('\n\n---\n\n')
+
+  const analysisPrompt = `You are a research analyst helping someone achieve a life goal. Focus specifically on the single topic below.
+
+## Parent Goal: ${goal.title}
+${goal.description ? `Description: ${goal.description}` : ''}
+Category: ${goal.category}
+
+## Topic to Research (${topicType === 'question' ? 'Research Question' : 'Guidance Need'}):
+${topicText}
+
+## Search Results & Extracted Content:
+
+${fullContext}
+
+---
+
+Please provide a focused research report on this specific topic with:
+1. **Summary** — 2-3 sentence overview of findings
+2. **Key Findings** — Detailed answer with evidence from search results
+3. **Practical Recommendations** — Actionable advice
+4. **Key Resources** — Most useful links found
+5. **Next Steps** — Concrete action items
+
+Be specific, cite sources where possible, and focus on actionable insights for this single topic.`
+
+  const report = await callClaudeResearch(claudeApiKey, analysisPrompt)
+  return { report }
+}
+
 function appendToResearchReport(goalTitle: string, report: string): string {
   const homeDir = process.env.USERPROFILE || process.env.HOME || ''
   const claudeDir = path.join(homeDir, '.claude')

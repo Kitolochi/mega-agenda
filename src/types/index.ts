@@ -252,6 +252,13 @@ export interface MemorySettings {
 export type RoadmapGoalCategory = 'career' | 'health' | 'financial' | 'relationships' | 'learning' | 'projects' | 'personal' | 'creative'
 export type RoadmapGoalStatus = 'not_started' | 'in_progress' | 'completed' | 'on_hold'
 
+export interface TopicReport {
+  topic: string
+  type: 'question' | 'guidance'
+  report: string
+  generatedAt: string
+}
+
 export interface RoadmapSubGoal {
   id: string
   title: string
@@ -273,6 +280,7 @@ export interface RoadmapGoal {
   notes: string
   sub_goals: RoadmapSubGoal[]
   tags: string[]
+  topicReports: TopicReport[]
   createdAt: string
   updatedAt: string
 }
@@ -321,6 +329,7 @@ export interface ElectronAPI {
   getTavilyApiKey: () => Promise<string>
   saveTavilyApiKey: (key: string) => Promise<boolean>
   researchRoadmapGoal: (goalId: string) => Promise<{ report: string; filePath: string }>
+  researchRoadmapTopic: (goalId: string, topicIndex: number, topicType: 'question' | 'guidance') => Promise<{ report: string; generatedAt: string }>
 
   // Tweet posting
   postTweet: (text: string, replyToTweetId?: string) => Promise<{ success: boolean; tweetId?: string; error?: string }>
