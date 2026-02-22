@@ -329,6 +329,10 @@ ipcMain.handle('research-roadmap-goal', async (_, goalId: string) => {
     updateRoadmapGoal(goalId, { topicReports } as any)
   }
 
+  // Write goal context file with all accumulated research
+  const finalGoal = getRoadmapGoals().find(g => g.id === goalId)
+  if (finalGoal) writeGoalContextFile(finalGoal)
+
   return { researched, total: allTopics.length }
 })
 
@@ -356,6 +360,10 @@ ipcMain.handle('research-roadmap-topic', async (_, goalId: string, topicIndex: n
   else topicReports.push(newReport)
   updateRoadmapGoal(goalId, { topicReports } as any)
 
+  // Write goal context file with updated research
+  const freshGoal = getRoadmapGoals().find(g => g.id === goalId)
+  if (freshGoal) writeGoalContextFile(freshGoal)
+
   return { report, generatedAt }
 })
 
@@ -381,6 +389,10 @@ ipcMain.handle('generate-action-plan', async (_, goalId: string) => {
     topicReports.push(planReport)
   }
   updateRoadmapGoal(goalId, { topicReports } as any)
+
+  // Write goal context file with action plan
+  const freshGoal = getRoadmapGoals().find(g => g.id === goalId)
+  if (freshGoal) writeGoalContextFile(freshGoal)
 
   return { report: result.report, generatedAt }
 })
@@ -856,6 +868,91 @@ function getMemoryDir(): string {
   return path.join(homeDir, '.claude', 'memory')
 }
 
+function slugify(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+}
+
+function writeGoalContextFile(goal: any): void {
+  try {
+    const memoryDir = getMemoryDir()
+    const goalSlug = slugify(goal.title)
+    const goalDir = path.join(memoryDir, 'goals', goalSlug)
+    if (!fs.existsSync(goalDir)) fs.mkdirSync(goalDir, { recursive: true })
+
+    const now = new Date().toISOString()
+
+    // Write _overview.md with goal metadata
+    const overview: string[] = []
+    overview.push(`# ${goal.title}`)
+    overview.push('')
+    if (goal.description) { overview.push(`> ${goal.description}`); overview.push('') }
+    const meta: string[] = []
+    if (goal.category) meta.push(`**Category:** ${goal.category}`)
+    if (goal.priority) meta.push(`**Priority:** ${goal.priority}`)
+    if (goal.status) meta.push(`**Status:** ${goal.status}`)
+    if (goal.target_date) meta.push(`**Target Date:** ${goal.target_date}`)
+    if (meta.length > 0) { overview.push(meta.join(' | ')); overview.push('') }
+    if (goal.personal_context) {
+      overview.push('## Personal Context')
+      overview.push('')
+      overview.push(goal.personal_context)
+      overview.push('')
+    }
+
+    // List all topic files in the overview
+    const reports = (goal.topicReports || []).filter((r: any) => r.type !== 'action_plan')
+    if (reports.length > 0) {
+      overview.push('## Research Topics')
+      overview.push('')
+      for (const r of reports) {
+        overview.push(`- [${r.topic}](./${slugify(r.topic)}.md) *(${r.type})*`)
+      }
+      overview.push('')
+    }
+
+    const actionPlan = (goal.topicReports || []).find((r: any) => r.type === 'action_plan')
+    if (actionPlan) {
+      overview.push(`- [Action Plan](./_action-plan.md)`)
+      overview.push('')
+    }
+
+    overview.push('---')
+    overview.push(`*Last updated: ${now}*`)
+    fs.writeFileSync(path.join(goalDir, '_overview.md'), overview.join('\n'), 'utf-8')
+
+    // Write individual topic files
+    for (const r of (goal.topicReports || [])) {
+      const topicSlug = r.type === 'action_plan' ? '_action-plan' : slugify(r.topic)
+      const topicLines: string[] = []
+      topicLines.push(`# ${r.topic}`)
+      topicLines.push('')
+      topicLines.push(`**Goal:** ${goal.title} | **Type:** ${r.type} | **Generated:** ${r.generatedAt || 'unknown'}`)
+      topicLines.push('')
+      topicLines.push(r.report)
+      topicLines.push('')
+      topicLines.push('---')
+      topicLines.push(`*Last updated: ${now}*`)
+      fs.writeFileSync(path.join(goalDir, `${topicSlug}.md`), topicLines.join('\n'), 'utf-8')
+    }
+  } catch (err) {
+    console.error(`Failed to write goal context files for "${goal.title}":`, err)
+  }
+}
+
+function syncAllGoalContextFiles(): void {
+  try {
+    const goals = getRoadmapGoals()
+    for (const goal of goals) {
+      if ((goal.topicReports || []).length > 0) {
+        writeGoalContextFile(goal)
+      }
+    }
+    console.log(`Synced ${goals.filter(g => (g.topicReports || []).length > 0).length} goal context files`)
+  } catch (err) {
+    console.error('Failed to sync goal context files:', err)
+  }
+}
+
 function scanDirectory(dir: string, memoryRoot: string): any[] {
   const results: any[] = []
   if (!fs.existsSync(dir)) return results
@@ -1137,6 +1234,20 @@ app.whenReady().then(() => {
       mainWindow?.webContents.send('tasks-updated')
     }
   }, 60 * 1000)
+
+  // Sync goal context files on startup
+  syncAllGoalContextFiles()
+
+  // Check once per hour if a new day has started; if so, re-sync goal context files
+  let lastSyncDate = new Date().toISOString().split('T')[0]
+  setInterval(() => {
+    const today = new Date().toISOString().split('T')[0]
+    if (today !== lastSyncDate) {
+      lastSyncDate = today
+      console.log('New day detected — syncing goal context files')
+      syncAllGoalContextFiles()
+    }
+  }, 60 * 60 * 1000)
 })
 
 app.on('before-quit', () => {

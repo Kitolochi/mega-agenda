@@ -15,9 +15,10 @@ import CodeTerminal from './components/CodeTerminal'
 import ChatTab from './components/ChatTab'
 import AITasksBoard from './components/AITasksBoard'
 import MemoryTab from './components/MemoryTab'
+import MemoriesTab from './components/MemoriesTab'
 import RoadmapTab from './components/RoadmapTab'
 
-type Tab = 'dashboard' | 'tasks' | 'list' | 'notes' | 'feed' | 'social' | 'chat' | 'code' | 'ai-tasks' | 'memory' | 'roadmap' | 'settings'
+type Tab = 'dashboard' | 'tasks' | 'list' | 'notes' | 'feed' | 'social' | 'chat' | 'code' | 'ai-tasks' | 'memory' | 'memories' | 'roadmap' | 'settings'
 
 const TAB_GROUPS: { id: string; label: string; icon: React.ReactNode; tabs: { id: Tab; label: string; icon: React.ReactNode }[] }[] = [
   {
@@ -44,7 +45,8 @@ const TAB_GROUPS: { id: string; label: string; icon: React.ReactNode; tabs: { id
     icon: <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>,
     tabs: [
       { id: 'code', label: 'Code', icon: <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg> },
-      { id: 'memory', label: 'Memory', icon: <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" /></svg> },
+      { id: 'memory', label: 'Context', icon: <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg> },
+      { id: 'memories', label: 'Memories', icon: <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" /></svg> },
       { id: 'roadmap', label: 'Roadmap', icon: <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" /></svg> },
       { id: 'ai-tasks', label: 'AI', icon: <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" /></svg> },
     ]
@@ -171,7 +173,7 @@ function App() {
   const handleVoiceCommand = useCallback(async (command: VoiceCommand) => {
     switch (command.action) {
       case 'switch_tab': {
-        const tabMap: Record<string, Tab> = { dashboard: 'dashboard', tasks: 'tasks', list: 'list', notes: 'notes', feed: 'feed', social: 'social', chat: 'chat', code: 'code', 'ai-tasks': 'ai-tasks', memory: 'memory', roadmap: 'roadmap', settings: 'settings' }
+        const tabMap: Record<string, Tab> = { dashboard: 'dashboard', tasks: 'tasks', list: 'list', notes: 'notes', feed: 'feed', social: 'social', chat: 'chat', code: 'code', 'ai-tasks': 'ai-tasks', memory: 'memory', memories: 'memories', roadmap: 'roadmap', settings: 'settings' }
         const tab = tabMap[command.tab || '']
         if (tab) { setActiveTab(tab); setSelectedCategory(null) }
         break
@@ -336,6 +338,8 @@ function App() {
           <RoadmapTab />
         ) : activeTab === 'memory' ? (
           <MemoryTab />
+        ) : activeTab === 'memories' ? (
+          <MemoriesTab />
         ) : activeTab === 'ai-tasks' ? (
           <AITasksBoard onTerminalCommand={handleTerminalCommand} />
         ) : activeTab === 'social' ? (
