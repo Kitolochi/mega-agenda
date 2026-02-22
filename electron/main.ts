@@ -934,6 +934,37 @@ function writeGoalContextFile(goal: any): void {
       topicLines.push(`*Last updated: ${now}*`)
       fs.writeFileSync(path.join(goalDir, `${topicSlug}.md`), topicLines.join('\n'), 'utf-8')
     }
+
+    // Write _context.md with placeholder prompts (only if it doesn't already exist)
+    const contextFilePath = path.join(goalDir, '_context.md')
+    if (!fs.existsSync(contextFilePath)) {
+      const contextContent = `# Context: ${goal.title}
+
+Fill in any of these to help the master plan generator personalize your plan.
+Delete questions that aren't relevant.
+
+## What have you already done toward this goal?
+
+(your answer here)
+
+## What is your current budget or resources?
+
+(your answer here)
+
+## Are there any blockers or constraints?
+
+(your answer here)
+
+## How urgent is this — what's driving the timeline?
+
+(your answer here)
+
+## Any other context?
+
+(your answer here)
+`
+      fs.writeFileSync(contextFilePath, contextContent, 'utf-8')
+    }
   } catch (err) {
     console.error(`Failed to write goal context files for "${goal.title}":`, err)
   }

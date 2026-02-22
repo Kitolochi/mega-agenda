@@ -342,12 +342,21 @@ function buildMasterPlanPrompt(goals: RoadmapGoal[]): string {
     console.log(`Master plan: included ${includedCount}/${allContextFiles.length} context files (${truncatedCount} omitted, ${Math.round((CONTEXT_CHAR_BUDGET - charBudgetRemaining) / 1000)}K chars used of ${CONTEXT_CHAR_BUDGET / 1000}K budget)`)
   }
 
+  const homeDir = process.env.USERPROFILE || process.env.HOME || ''
   let goalsContext = ''
   for (const goal of goals) {
     goalsContext += `\n## Goal: ${goal.title}\n`
     goalsContext += `Category: ${goal.category}\n`
     if (goal.description) goalsContext += `Description: ${goal.description}\n`
     if (goal.personalContext) goalsContext += `\n### Personal Context (from user):\n${goal.personalContext}\n`
+
+    // Read _context.md file if it exists
+    const goalSlug = goal.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+    const contextFilePath = path.join(homeDir, '.claude', 'memory', 'goals', goalSlug, '_context.md')
+    if (fs.existsSync(contextFilePath)) {
+      const fileContext = fs.readFileSync(contextFilePath, 'utf-8')
+      goalsContext += `\n### Personal Context (from file):\n${fileContext}\n`
+    }
 
     // Note which context files are specifically attached to this goal
     if (goal.contextFiles && goal.contextFiles.length > 0) {

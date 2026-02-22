@@ -57,11 +57,7 @@ export default function MasterPlanView({ onBack }: MasterPlanViewProps) {
   }
 
   const handleGenerateClick = () => {
-    if (goals.length > 0) {
-      setShowQuestionnaire(true)
-    } else {
-      handleGenerate()
-    }
+    handleGenerate()  // Skip questionnaire, go directly to generation
   }
 
   const handleQuestionnaireComplete = () => {
