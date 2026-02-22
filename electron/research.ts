@@ -263,18 +263,33 @@ IMPORTANT: Respond with ONLY a JSON object, no other text:
 
 // --- Master Plan (Cross-Goal Synthesis) ---
 
+const READABLE_EXTENSIONS = new Set(['.md', '.txt', '.json', '.yaml', '.yml', '.toml', '.csv', '.xml', '.html', '.css', '.js', '.ts', '.py', '.sh', '.bat', '.ps1', '.log', '.env', '.cfg', '.ini', '.conf'])
+
 function readAllContextFiles(): { name: string; content: string }[] {
   try {
     const homeDir = process.env.USERPROFILE || process.env.HOME || ''
     const memoryDir = path.join(homeDir, '.claude', 'memory')
     if (!fs.existsSync(memoryDir)) return []
-    return fs.readdirSync(memoryDir)
-      .filter(f => f.endsWith('.md'))
-      .map(name => ({
-        name,
-        content: fs.readFileSync(path.join(memoryDir, name), 'utf-8')
-      }))
-      .sort((a, b) => a.name.localeCompare(b.name))
+    const results: { name: string; content: string }[] = []
+    function scanDir(dir: string) {
+      const entries = fs.readdirSync(dir, { withFileTypes: true })
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name)
+        if (entry.isDirectory()) {
+          scanDir(fullPath)
+        } else {
+          const ext = path.extname(entry.name).toLowerCase()
+          if (READABLE_EXTENSIONS.has(ext)) {
+            const relativePath = path.relative(memoryDir, fullPath).replace(/\\/g, '/')
+            try {
+              results.push({ name: relativePath, content: fs.readFileSync(fullPath, 'utf-8') })
+            } catch {}
+          }
+        }
+      }
+    }
+    scanDir(memoryDir)
+    return results.sort((a, b) => a.name.localeCompare(b.name))
   } catch {}
   return []
 }

@@ -276,10 +276,13 @@ export interface MasterPlanTask {
 }
 
 export interface ContextFile {
-  name: string       // e.g. "learnings.md"
+  name: string       // e.g. "learnings.md" or "data.json"
   path: string       // full path
-  content: string    // file content
+  content: string    // file content (empty string for binary)
   modifiedAt: string // ISO timestamp
+  folder: string     // relative folder path from root, e.g. "" or "research/ai"
+  isDirectory: boolean // true if this entry is a folder
+  size: number       // file size in bytes
 }
 
 export type RoadmapGoalCategory = 'career' | 'health' | 'financial' | 'relationships' | 'learning' | 'projects' | 'personal' | 'creative'
@@ -489,8 +492,11 @@ export interface ElectronAPI {
 
   // Context Files
   getContextFiles: () => Promise<ContextFile[]>
-  saveContextFile: (name: string, content: string) => Promise<ContextFile>
+  saveContextFile: (name: string, content: string, folder?: string) => Promise<ContextFile>
   deleteContextFile: (name: string) => Promise<boolean>
+  createContextFolder: (relativePath: string) => Promise<boolean>
+  deleteContextFolder: (relativePath: string) => Promise<boolean>
+  uploadContextFiles: (targetFolder: string) => Promise<ContextFile[]>
 
   // Memory
   getMemories: () => Promise<Memory[]>

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, shell, Notification, clipboard } from 'electron'
+import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, shell, Notification, clipboard, dialog } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import { spawn } from 'child_process'
@@ -848,49 +848,147 @@ ipcMain.handle('poll-task-sessions', async () => {
   return getMasterPlanTasks()
 })
 
-// Context Files (read ~/.claude/memory/*.md)
-ipcMain.handle('get-context-files', () => {
+// Context Files (read ~/.claude/memory/ recursively)
+const TEXT_EXTENSIONS = new Set(['.md', '.txt', '.json', '.yaml', '.yml', '.toml', '.csv', '.xml', '.html', '.css', '.js', '.ts', '.py', '.sh', '.bat', '.ps1', '.log', '.env', '.cfg', '.ini', '.conf'])
+
+function getMemoryDir(): string {
   const homeDir = process.env.USERPROFILE || process.env.HOME || ''
-  const memoryDir = path.join(homeDir, '.claude', 'memory')
+  return path.join(homeDir, '.claude', 'memory')
+}
+
+function scanDirectory(dir: string, memoryRoot: string): any[] {
+  const results: any[] = []
+  if (!fs.existsSync(dir)) return results
+  const entries = fs.readdirSync(dir, { withFileTypes: true })
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name)
+    const relativePath = path.relative(memoryRoot, dir).replace(/\\/g, '/')
+    const folder = relativePath === '.' ? '' : relativePath
+    const stat = fs.statSync(fullPath)
+    if (entry.isDirectory()) {
+      results.push({
+        name: entry.name,
+        path: fullPath,
+        content: '',
+        modifiedAt: stat.mtime.toISOString(),
+        folder,
+        isDirectory: true,
+        size: 0
+      })
+      results.push(...scanDirectory(fullPath, memoryRoot))
+    } else {
+      const ext = path.extname(entry.name).toLowerCase()
+      const isText = TEXT_EXTENSIONS.has(ext)
+      let content = ''
+      if (isText) {
+        try { content = fs.readFileSync(fullPath, 'utf-8') } catch { content = '' }
+      }
+      results.push({
+        name: entry.name,
+        path: fullPath,
+        content,
+        modifiedAt: stat.mtime.toISOString(),
+        folder,
+        isDirectory: false,
+        size: stat.size
+      })
+    }
+  }
+  return results
+}
+
+ipcMain.handle('get-context-files', () => {
+  const memoryDir = getMemoryDir()
   try {
     if (!fs.existsSync(memoryDir)) return []
-    const files = fs.readdirSync(memoryDir).filter(f => f.endsWith('.md'))
-    return files.map(name => {
-      const filePath = path.join(memoryDir, name)
-      const content = fs.readFileSync(filePath, 'utf-8')
-      const stat = fs.statSync(filePath)
-      return { name, path: filePath, content, modifiedAt: stat.mtime.toISOString() }
-    })
+    return scanDirectory(memoryDir, memoryDir)
   } catch {
     return []
   }
 })
 
-ipcMain.handle('save-context-file', (_, name: string, content: string) => {
-  const homeDir = process.env.USERPROFILE || process.env.HOME || ''
-  const memoryDir = path.join(homeDir, '.claude', 'memory')
+ipcMain.handle('save-context-file', (_, name: string, content: string, folder: string = '') => {
+  const memoryDir = getMemoryDir()
   try {
-    if (!fs.existsSync(memoryDir)) fs.mkdirSync(memoryDir, { recursive: true })
-    const safeName = name.endsWith('.md') ? name : name + '.md'
-    const filePath = path.join(memoryDir, safeName)
+    const targetDir = folder ? path.join(memoryDir, folder) : memoryDir
+    if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true })
+    const filePath = path.join(targetDir, name)
     fs.writeFileSync(filePath, content, 'utf-8')
     const stat = fs.statSync(filePath)
-    return { name: safeName, path: filePath, content, modifiedAt: stat.mtime.toISOString() }
+    return { name, path: filePath, content, modifiedAt: stat.mtime.toISOString(), folder, isDirectory: false, size: stat.size }
   } catch (err: any) {
     throw new Error('Failed to save context file: ' + (err.message || err))
   }
 })
 
-ipcMain.handle('delete-context-file', (_, name: string) => {
-  const homeDir = process.env.USERPROFILE || process.env.HOME || ''
-  const memoryDir = path.join(homeDir, '.claude', 'memory')
+ipcMain.handle('delete-context-file', (_, relativePath: string) => {
+  const memoryDir = getMemoryDir()
   try {
-    const filePath = path.join(memoryDir, name)
+    const filePath = path.join(memoryDir, relativePath)
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
     return true
   } catch {
     return false
   }
+})
+
+ipcMain.handle('create-context-folder', (_, relativePath: string) => {
+  const memoryDir = getMemoryDir()
+  try {
+    const folderPath = path.join(memoryDir, relativePath)
+    fs.mkdirSync(folderPath, { recursive: true })
+    return true
+  } catch {
+    return false
+  }
+})
+
+ipcMain.handle('delete-context-folder', (_, relativePath: string) => {
+  const memoryDir = getMemoryDir()
+  try {
+    const folderPath = path.join(memoryDir, relativePath)
+    if (!fs.existsSync(folderPath)) return false
+    const contents = fs.readdirSync(folderPath)
+    if (contents.length > 0) return false // only delete empty folders
+    fs.rmdirSync(folderPath)
+    return true
+  } catch {
+    return false
+  }
+})
+
+ipcMain.handle('upload-context-files', async (_, targetFolder: string) => {
+  const memoryDir = getMemoryDir()
+  const result = await dialog.showOpenDialog({
+    properties: ['openFile', 'multiSelections'],
+    title: 'Upload files to context'
+  })
+  if (result.canceled || result.filePaths.length === 0) return []
+  const uploaded: any[] = []
+  const destDir = targetFolder ? path.join(memoryDir, targetFolder) : memoryDir
+  if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true })
+  for (const srcPath of result.filePaths) {
+    const fileName = path.basename(srcPath)
+    const destPath = path.join(destDir, fileName)
+    fs.copyFileSync(srcPath, destPath)
+    const stat = fs.statSync(destPath)
+    const ext = path.extname(fileName).toLowerCase()
+    const isText = TEXT_EXTENSIONS.has(ext)
+    let content = ''
+    if (isText) {
+      try { content = fs.readFileSync(destPath, 'utf-8') } catch { content = '' }
+    }
+    uploaded.push({
+      name: fileName,
+      path: destPath,
+      content,
+      modifiedAt: stat.mtime.toISOString(),
+      folder: targetFolder,
+      isDirectory: false,
+      size: stat.size
+    })
+  }
+  return uploaded
 })
 
 // Memory

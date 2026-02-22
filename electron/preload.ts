@@ -210,8 +210,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Context Files
   getContextFiles: () => ipcRenderer.invoke('get-context-files'),
-  saveContextFile: (name: string, content: string) => ipcRenderer.invoke('save-context-file', name, content),
+  saveContextFile: (name: string, content: string, folder?: string) => ipcRenderer.invoke('save-context-file', name, content, folder || ''),
   deleteContextFile: (name: string) => ipcRenderer.invoke('delete-context-file', name),
+  createContextFolder: (relativePath: string) => ipcRenderer.invoke('create-context-folder', relativePath),
+  deleteContextFolder: (relativePath: string) => ipcRenderer.invoke('delete-context-folder', relativePath),
+  uploadContextFiles: (targetFolder: string) => ipcRenderer.invoke('upload-context-files', targetFolder),
 
   // Memory
   getMemories: () => ipcRenderer.invoke('get-memories'),
