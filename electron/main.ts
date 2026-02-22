@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, shell, Notificati
 import path from 'path'
 import fs from 'fs'
 import { spawn } from 'child_process'
-import { initDatabase, checkRecurringTasks, getCategories, getTasks, addTask, updateTask, deleteTask, toggleTaskComplete, getDailyNote, saveDailyNote, getRecentNotes, getStats, getTwitterSettings, saveTwitterSettings, getRSSFeeds, addRSSFeed, removeRSSFeed, getClaudeApiKey, saveClaudeApiKey, getTavilyApiKey, saveTavilyApiKey, getActivityLog, getPomodoroState, startPomodoro, completePomodoro, startBreak, stopPomodoro, getMorningBriefing, saveMorningBriefing, dismissMorningBriefing, getBriefingData, getWeeklyReview, saveWeeklyReview, getAllWeeklyReviews, getWeeklyReviewData, checkWeeklyReviewNeeded, getChatConversations, getChatConversation, createChatConversation, addChatMessage, deleteChatConversation, renameChatConversation, getChatSettings, saveChatSettings, addCategory, deleteCategory, getTweetDrafts, getTweetDraft, createTweetDraft, updateTweetDraft, addTweetAIMessage, deleteTweetDraft, getTweetPersonas, createTweetPersona, deleteTweetPersona, getAITasks, createAITask, updateAITask, deleteAITask, moveAITask, getRoadmapGoals, createRoadmapGoal, updateRoadmapGoal, deleteRoadmapGoal, getMemories, getAllMemories, createMemory, updateMemory, deleteMemory, archiveMemory, pinMemory, getMemoryTopics, updateMemoryTopics, getMemorySettings, saveMemorySettings } from './database'
+import { initDatabase, checkRecurringTasks, getCategories, getTasks, addTask, updateTask, deleteTask, toggleTaskComplete, getDailyNote, saveDailyNote, getRecentNotes, getStats, getTwitterSettings, saveTwitterSettings, getRSSFeeds, addRSSFeed, removeRSSFeed, getClaudeApiKey, saveClaudeApiKey, getActivityLog, getPomodoroState, startPomodoro, completePomodoro, startBreak, stopPomodoro, getMorningBriefing, saveMorningBriefing, dismissMorningBriefing, getBriefingData, getWeeklyReview, saveWeeklyReview, getAllWeeklyReviews, getWeeklyReviewData, checkWeeklyReviewNeeded, getChatConversations, getChatConversation, createChatConversation, addChatMessage, deleteChatConversation, renameChatConversation, getChatSettings, saveChatSettings, addCategory, deleteCategory, getTweetDrafts, getTweetDraft, createTweetDraft, updateTweetDraft, addTweetAIMessage, deleteTweetDraft, getTweetPersonas, createTweetPersona, deleteTweetPersona, getAITasks, createAITask, updateAITask, deleteAITask, moveAITask, getRoadmapGoals, createRoadmapGoal, updateRoadmapGoal, deleteRoadmapGoal, getMasterPlan, saveMasterPlan, clearMasterPlan, getMasterPlanTasks, createMasterPlanTask, updateMasterPlanTask, clearMasterPlanTasks, getMemories, getAllMemories, createMemory, updateMemory, deleteMemory, archiveMemory, pinMemory, getMemoryTopics, updateMemoryTopics, getMemorySettings, saveMemorySettings } from './database'
 import { verifyToken, getUserByUsername, getUserLists, fetchAllLists, postTweet, verifyOAuthCredentials } from './twitter'
 import { fetchAllFeeds } from './rss'
 import { summarizeAI, summarizeGeo, verifyClaudeKey, parseVoiceCommand, generateMorningBriefing, generateWeeklyReview } from './summarize'
@@ -12,7 +12,8 @@ import { streamChatMessage, abortChatStream, getMemoryCountForChat } from './cha
 import { getCliSessions, getCliSessionMessages, searchCliSessions } from './cli-logs'
 import { searchGitHubRepos } from './github'
 import { extractMemoriesFromChat, extractMemoriesFromCli, extractMemoriesFromJournal, batchExtractMemories } from './memory'
-import { researchGoal, researchTopic } from './research'
+import { researchTopicSmart, generateActionPlan, generateTopics, generateMasterPlan, findClaudeCli, generateContextQuestions, extractTasksFromPlan, saveMasterPlanFile } from './research'
+import { findSessionByPromptFragment } from './cli-logs'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -26,7 +27,7 @@ function createWindow() {
     show: false,
     frame: false,
     resizable: true,
-    skipTaskbar: true,
+    skipTaskbar: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -41,11 +42,7 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
   }
 
-  mainWindow.on('blur', () => {
-    if (mainWindow && !mainWindow.webContents.isDevToolsOpened()) {
-      mainWindow.hide()
-    }
-  })
+  // No auto-hide on blur -- app shows in taskbar normally
 
   mainWindow.on('close', (event) => {
     event.preventDefault()
@@ -105,7 +102,7 @@ function createTray() {
 function showWindow() {
   if (!mainWindow) return
 
-  mainWindow.center()
+  if (mainWindow.isMinimized()) mainWindow.restore()
   mainWindow.show()
   mainWindow.focus()
 }
@@ -245,17 +242,35 @@ ipcMain.handle('parse-voice-command', async (_, apiKey: string, transcript: stri
   return parseVoiceCommand(apiKey, transcript, categoryNames)
 })
 
-// Tavily API Key
-ipcMain.handle('get-tavily-api-key', () => {
-  return getTavilyApiKey()
+// Generate Topics for a Goal
+ipcMain.handle('generate-topics', async (_, goalId: string) => {
+  const goals = getRoadmapGoals()
+  const goal = goals.find(g => g.id === goalId)
+  if (!goal) throw new Error('Goal not found')
+
+  const claudeApiKey = getClaudeApiKey()
+  if (!claudeApiKey) throw new Error('Claude API key not configured. Set it in Settings.')
+
+  const result = await generateTopics(goal, claudeApiKey)
+
+  // Merge new topics with existing (no duplicates)
+  const existingQ = new Set(goal.research_questions)
+  const existingG = new Set(goal.guidance_needed)
+  const newQuestions = result.research_questions.filter(q => !existingQ.has(q))
+  const newGuidance = result.guidance_needed.filter(g => !existingG.has(g))
+
+  updateRoadmapGoal(goalId, {
+    research_questions: [...goal.research_questions, ...newQuestions],
+    guidance_needed: [...goal.guidance_needed, ...newGuidance],
+  } as any)
+
+  return {
+    added: { questions: newQuestions.length, guidance: newGuidance.length },
+    total: { questions: goal.research_questions.length + newQuestions.length, guidance: goal.guidance_needed.length + newGuidance.length }
+  }
 })
 
-ipcMain.handle('save-tavily-api-key', (_, key: string) => {
-  saveTavilyApiKey(key)
-  return true
-})
-
-// Research Roadmap Goal
+// Research All Topics for a Goal (parallel batches, CLI first then API fallback)
 ipcMain.handle('research-roadmap-goal', async (_, goalId: string) => {
   const goals = getRoadmapGoals()
   const goal = goals.find(g => g.id === goalId)
@@ -264,13 +279,60 @@ ipcMain.handle('research-roadmap-goal', async (_, goalId: string) => {
   const claudeApiKey = getClaudeApiKey()
   if (!claudeApiKey) throw new Error('Claude API key not configured. Set it in Settings.')
 
-  const tavilyApiKey = getTavilyApiKey()
-  if (!tavilyApiKey) throw new Error('Tavily API key not configured. Set it in Settings.')
+  const allTopics = [
+    ...goal.research_questions.map((q, i) => ({ text: q, type: 'question' as const, index: i })),
+    ...goal.guidance_needed.map((g, i) => ({ text: g, type: 'guidance' as const, index: i })),
+  ]
 
-  return researchGoal(goal, claudeApiKey, tavilyApiKey)
+  // Skip already-researched topics
+  const toResearch = allTopics.filter(t =>
+    !goal.topicReports?.some(r => r.topic === t.text && r.type === t.type)
+  )
+
+  if (toResearch.length === 0) return { researched: 0, total: allTopics.length }
+
+  const usingCli = !!findClaudeCli()
+  console.log(`Researching ${toResearch.length} topics for "${goal.title}" (${usingCli ? 'CLI + API fallback' : 'API only'})`)
+
+  // Process in parallel batches of 3
+  const batchSize = 3
+  let researched = 0
+
+  for (let i = 0; i < toResearch.length; i += batchSize) {
+    const batch = toResearch.slice(i, i + batchSize)
+
+    const results = await Promise.allSettled(
+      batch.map(t => researchTopicSmart(goal, t.text, t.type, claudeApiKey))
+    )
+
+    // Re-read goal for latest state (avoids overwriting concurrent saves)
+    const freshGoal = getRoadmapGoals().find(g => g.id === goalId)
+    if (!freshGoal) break
+
+    const topicReports = [...(freshGoal.topicReports || [])]
+    const now = new Date().toISOString()
+
+    results.forEach((result, j) => {
+      if (result.status === 'fulfilled') {
+        const topic = batch[j]
+        const idx = topicReports.findIndex(r => r.topic === topic.text && r.type === topic.type)
+        const report = { topic: topic.text, type: topic.type, report: result.value, generatedAt: now }
+        if (idx >= 0) topicReports[idx] = report
+        else topicReports.push(report)
+        researched++
+        console.log(`  [${researched}/${toResearch.length}] Completed: ${topic.text.slice(0, 60)}...`)
+      } else {
+        console.error(`  Failed: ${batch[j].text.slice(0, 60)}... - ${result.reason}`)
+      }
+    })
+
+    updateRoadmapGoal(goalId, { topicReports } as any)
+  }
+
+  return { researched, total: allTopics.length }
 })
 
-// Research Roadmap Topic (per-topic)
+// Research Single Topic (CLI first, API fallback)
 ipcMain.handle('research-roadmap-topic', async (_, goalId: string, topicIndex: number, topicType: 'question' | 'guidance') => {
   const goals = getRoadmapGoals()
   const goal = goals.find(g => g.id === goalId)
@@ -279,22 +341,44 @@ ipcMain.handle('research-roadmap-topic', async (_, goalId: string, topicIndex: n
   const claudeApiKey = getClaudeApiKey()
   if (!claudeApiKey) throw new Error('Claude API key not configured. Set it in Settings.')
 
-  const tavilyApiKey = getTavilyApiKey()
-  if (!tavilyApiKey) throw new Error('Tavily API key not configured. Set it in Settings.')
-
-  const result = await researchTopic(goal, topicIndex, topicType, claudeApiKey, tavilyApiKey)
-
-  // Save to goal's topicReports (dedup by topic text + type)
   const items = topicType === 'question' ? goal.research_questions : goal.guidance_needed
+  if (topicIndex < 0 || topicIndex >= items.length) throw new Error('Topic index out of range')
+
   const topicText = items[topicIndex]
+  const report = await researchTopicSmart(goal, topicText, topicType, claudeApiKey)
+
+  // Save to goal's topicReports
   const generatedAt = new Date().toISOString()
   const topicReports = [...(goal.topicReports || [])]
   const existingIdx = topicReports.findIndex(r => r.topic === topicText && r.type === topicType)
-  const newReport = { topic: topicText, type: topicType, report: result.report, generatedAt }
+  const newReport = { topic: topicText, type: topicType, report, generatedAt }
+  if (existingIdx >= 0) topicReports[existingIdx] = newReport
+  else topicReports.push(newReport)
+  updateRoadmapGoal(goalId, { topicReports } as any)
+
+  return { report, generatedAt }
+})
+
+// Generate Action Plan from existing research
+ipcMain.handle('generate-action-plan', async (_, goalId: string) => {
+  const goals = getRoadmapGoals()
+  const goal = goals.find(g => g.id === goalId)
+  if (!goal) throw new Error('Goal not found')
+
+  const claudeApiKey = getClaudeApiKey()
+  if (!claudeApiKey) throw new Error('Claude API key not configured. Set it in Settings.')
+
+  const result = await generateActionPlan(goal, claudeApiKey)
+
+  // Save as a special topic report with type 'action_plan'
+  const generatedAt = new Date().toISOString()
+  const topicReports = [...(goal.topicReports || [])]
+  const existingIdx = topicReports.findIndex(r => (r as any).type === 'action_plan')
+  const planReport = { topic: 'Action Plan', type: 'action_plan' as any, report: result.report, generatedAt }
   if (existingIdx >= 0) {
-    topicReports[existingIdx] = newReport
+    topicReports[existingIdx] = planReport
   } else {
-    topicReports.push(newReport)
+    topicReports.push(planReport)
   }
   updateRoadmapGoal(goalId, { topicReports } as any)
 
@@ -635,6 +719,180 @@ ipcMain.handle('delete-roadmap-goal', (_, id: string) => {
   return deleteRoadmapGoal(id)
 })
 
+// Master Plan
+ipcMain.handle('get-master-plan', () => {
+  return getMasterPlan()
+})
+
+ipcMain.handle('generate-master-plan', async () => {
+  const goals = getRoadmapGoals()
+  const goalsWithResearch = goals.filter(g => (g.topicReports || []).length > 0)
+  if (goalsWithResearch.length === 0) throw new Error('No goals with research reports. Research at least one goal first.')
+
+  const claudeApiKey = getClaudeApiKey()
+  if (!claudeApiKey) throw new Error('Claude API key not configured. Set it in Settings.')
+
+  const content = await generateMasterPlan(goalsWithResearch, claudeApiKey)
+
+  const planDate = new Date().toISOString().split('T')[0]
+  const plan = {
+    content,
+    generatedAt: new Date().toISOString(),
+    goalIds: goalsWithResearch.map(g => g.id),
+    metadata: {
+      totalGoals: goals.length,
+      goalsWithResearch: goalsWithResearch.length,
+    }
+  }
+  const saved = saveMasterPlan(plan)
+
+  // Save plan file to disk
+  try { saveMasterPlanFile(content, planDate) } catch {}
+
+  // Extract tasks from plan
+  try {
+    clearMasterPlanTasks(planDate)
+    const extracted = await extractTasksFromPlan(content, goalsWithResearch, claudeApiKey)
+    for (const t of extracted) {
+      createMasterPlanTask({
+        title: t.title,
+        description: t.description,
+        priority: t.priority,
+        goalId: t.goalId,
+        goalTitle: t.goalTitle,
+        phase: t.phase,
+        status: 'pending',
+        planDate,
+      })
+    }
+  } catch (err) {
+    console.error('Failed to extract tasks from plan:', err)
+  }
+
+  return saved
+})
+
+ipcMain.handle('clear-master-plan', () => {
+  return clearMasterPlan()
+})
+
+// Master Plan Execution
+ipcMain.handle('generate-context-questions', async () => {
+  const goals = getRoadmapGoals()
+  const goalsWithResearch = goals.filter(g => (g.topicReports || []).length > 0)
+  if (goalsWithResearch.length === 0) throw new Error('No goals with research reports.')
+
+  const claudeApiKey = getClaudeApiKey()
+  if (!claudeApiKey) throw new Error('Claude API key not configured.')
+
+  return generateContextQuestions(goalsWithResearch, claudeApiKey)
+})
+
+ipcMain.handle('get-master-plan-tasks', (_, planDate?: string) => {
+  return getMasterPlanTasks(planDate)
+})
+
+ipcMain.handle('update-master-plan-task', (_, id: string, updates: any) => {
+  return updateMasterPlanTask(id, updates)
+})
+
+ipcMain.handle('launch-daily-plan', async (_, taskIds?: string[]) => {
+  const allTasks = getMasterPlanTasks()
+  const tolaunch = taskIds
+    ? allTasks.filter(t => taskIds.includes(t.id) && t.status === 'pending')
+    : allTasks.filter(t => t.status === 'pending').slice(0, 10)
+
+  const launched: string[] = []
+  const workingDir = process.env.USERPROFILE || '.'
+  const env = { ...process.env }
+  delete env.CLAUDECODE
+
+  const tmpDir = path.join(app.getPath('temp'), 'mega-agenda')
+  fs.mkdirSync(tmpDir, { recursive: true })
+
+  for (const task of tolaunch.slice(0, 10)) {
+    const safePrompt = `[Master Plan Task] ${task.title}: ${task.description}`.replace(/%/g, '%%').replace(/"/g, "'")
+    const batFile = path.join(tmpDir, `plan-${task.id}-${Date.now()}.bat`)
+    fs.writeFileSync(batFile, [
+      '@echo off',
+      `cd /d "${workingDir}"`,
+      `npx --yes @anthropic-ai/claude-code --dangerously-skip-permissions --allowedTools "Bash(*)" "Edit(*)" "Write(*)" "Read(*)" "Glob(*)" "Grep(*)" "WebFetch(*)" "WebSearch(*)" -- "${safePrompt}"`,
+    ].join('\r\n'))
+    const child = spawn('cmd.exe', ['/c', 'start', `"${task.title.slice(0, 40)}"`, 'cmd', '/k', batFile], {
+      detached: true,
+      stdio: 'ignore',
+      env,
+    })
+    child.unref()
+
+    updateMasterPlanTask(task.id, { status: 'launched', launchedAt: new Date().toISOString() })
+    launched.push(task.id)
+  }
+
+  return { launched: launched.length, taskIds: launched }
+})
+
+ipcMain.handle('poll-task-sessions', async () => {
+  const tasks = getMasterPlanTasks()
+  const needsMatch = tasks.filter(t => (t.status === 'launched' || t.status === 'running') && !t.sessionId)
+
+  for (const task of needsMatch) {
+    if (!task.launchedAt) continue
+    const fragment = task.title.slice(0, 40)
+    const sessionId = await findSessionByPromptFragment(fragment, task.launchedAt)
+    if (sessionId) {
+      updateMasterPlanTask(task.id, { sessionId, status: 'running' })
+    }
+  }
+
+  return getMasterPlanTasks()
+})
+
+// Context Files (read ~/.claude/memory/*.md)
+ipcMain.handle('get-context-files', () => {
+  const homeDir = process.env.USERPROFILE || process.env.HOME || ''
+  const memoryDir = path.join(homeDir, '.claude', 'memory')
+  try {
+    if (!fs.existsSync(memoryDir)) return []
+    const files = fs.readdirSync(memoryDir).filter(f => f.endsWith('.md'))
+    return files.map(name => {
+      const filePath = path.join(memoryDir, name)
+      const content = fs.readFileSync(filePath, 'utf-8')
+      const stat = fs.statSync(filePath)
+      return { name, path: filePath, content, modifiedAt: stat.mtime.toISOString() }
+    })
+  } catch {
+    return []
+  }
+})
+
+ipcMain.handle('save-context-file', (_, name: string, content: string) => {
+  const homeDir = process.env.USERPROFILE || process.env.HOME || ''
+  const memoryDir = path.join(homeDir, '.claude', 'memory')
+  try {
+    if (!fs.existsSync(memoryDir)) fs.mkdirSync(memoryDir, { recursive: true })
+    const safeName = name.endsWith('.md') ? name : name + '.md'
+    const filePath = path.join(memoryDir, safeName)
+    fs.writeFileSync(filePath, content, 'utf-8')
+    const stat = fs.statSync(filePath)
+    return { name: safeName, path: filePath, content, modifiedAt: stat.mtime.toISOString() }
+  } catch (err: any) {
+    throw new Error('Failed to save context file: ' + (err.message || err))
+  }
+})
+
+ipcMain.handle('delete-context-file', (_, name: string) => {
+  const homeDir = process.env.USERPROFILE || process.env.HOME || ''
+  const memoryDir = path.join(homeDir, '.claude', 'memory')
+  try {
+    const filePath = path.join(memoryDir, name)
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
+    return true
+  } catch {
+    return false
+  }
+})
+
 // Memory
 ipcMain.handle('get-memories', () => {
   return getMemories()
@@ -753,7 +1011,7 @@ ipcMain.on('close-window', () => {
 })
 
 ipcMain.on('minimize-window', () => {
-  mainWindow?.hide()
+  mainWindow?.minimize()
 })
 
 // Enforce single instance — quit if another is already running

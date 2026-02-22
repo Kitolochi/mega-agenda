@@ -249,6 +249,39 @@ export interface MemorySettings {
   tokenBudget: number
 }
 
+export interface MasterPlan {
+  content: string
+  generatedAt: string
+  goalIds: string[]
+  metadata: {
+    totalGoals: number
+    goalsWithResearch: number
+  }
+}
+
+export interface MasterPlanTask {
+  id: string
+  title: string
+  description: string
+  priority: 'critical' | 'high' | 'medium' | 'low'
+  goalId: string
+  goalTitle: string
+  phase: string
+  status: 'pending' | 'launched' | 'running' | 'completed' | 'failed'
+  launchedAt?: string
+  completedAt?: string
+  sessionId?: string
+  createdAt: string
+  planDate: string
+}
+
+export interface ContextFile {
+  name: string       // e.g. "learnings.md"
+  path: string       // full path
+  content: string    // file content
+  modifiedAt: string // ISO timestamp
+}
+
 export type RoadmapGoalCategory = 'career' | 'health' | 'financial' | 'relationships' | 'learning' | 'projects' | 'personal' | 'creative'
 export type RoadmapGoalStatus = 'not_started' | 'in_progress' | 'completed' | 'on_hold'
 
@@ -281,6 +314,8 @@ export interface RoadmapGoal {
   sub_goals: RoadmapSubGoal[]
   tags: string[]
   topicReports: TopicReport[]
+  personalContext?: string
+  contextFiles?: string[]  // array of filenames, e.g. ["learnings.md", "projects.md"]
   createdAt: string
   updatedAt: string
 }
@@ -325,11 +360,11 @@ export interface ElectronAPI {
   summarizeFeed: (apiKey: string, articles: { title: string; description: string }[], section: string) => Promise<string>
   parseVoiceCommand: (apiKey: string, transcript: string, categoryNames: string[]) => Promise<VoiceCommand>
 
-  // Tavily / Research
-  getTavilyApiKey: () => Promise<string>
-  saveTavilyApiKey: (key: string) => Promise<boolean>
+  // Research
   researchRoadmapGoal: (goalId: string) => Promise<{ report: string; filePath: string }>
   researchRoadmapTopic: (goalId: string, topicIndex: number, topicType: 'question' | 'guidance') => Promise<{ report: string; generatedAt: string }>
+  generateActionPlan: (goalId: string) => Promise<{ report: string; generatedAt: string }>
+  generateTopics: (goalId: string) => Promise<{ added: { questions: number; guidance: number }; total: { questions: number; guidance: number } }>
 
   // Tweet posting
   postTweet: (text: string, replyToTweetId?: string) => Promise<{ success: boolean; tweetId?: string; error?: string }>
@@ -439,6 +474,23 @@ export interface ElectronAPI {
   createRoadmapGoal: (goal: Omit<RoadmapGoal, 'id' | 'createdAt' | 'updatedAt'>) => Promise<RoadmapGoal>
   updateRoadmapGoal: (id: string, updates: Partial<RoadmapGoal>) => Promise<RoadmapGoal | null>
   deleteRoadmapGoal: (id: string) => Promise<void>
+
+  // Master Plan
+  getMasterPlan: () => Promise<MasterPlan | null>
+  generateMasterPlan: () => Promise<MasterPlan>
+  clearMasterPlan: () => Promise<void>
+
+  // Master Plan Execution
+  generateContextQuestions: () => Promise<{ goalId: string; questions: string[] }[]>
+  getMasterPlanTasks: (planDate?: string) => Promise<MasterPlanTask[]>
+  updateMasterPlanTask: (id: string, updates: Partial<MasterPlanTask>) => Promise<MasterPlanTask | null>
+  launchDailyPlan: (taskIds?: string[]) => Promise<{ launched: number; taskIds: string[] }>
+  pollTaskSessions: () => Promise<MasterPlanTask[]>
+
+  // Context Files
+  getContextFiles: () => Promise<ContextFile[]>
+  saveContextFile: (name: string, content: string) => Promise<ContextFile>
+  deleteContextFile: (name: string) => Promise<boolean>
 
   // Memory
   getMemories: () => Promise<Memory[]>

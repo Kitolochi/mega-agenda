@@ -270,6 +270,45 @@ export async function searchCliSessions(
   return results
 }
 
+export async function findSessionByPromptFragment(
+  fragment: string,
+  afterTimestamp?: string
+): Promise<string | null> {
+  const projectsDir = getClaudeProjectsDir()
+  if (!fs.existsSync(projectsDir)) return null
+  const lowerFragment = fragment.toLowerCase()
+
+  try {
+    const projectDirs = fs.readdirSync(projectsDir, { withFileTypes: true })
+      .filter(d => d.isDirectory())
+
+    for (const projDir of projectDirs) {
+      const projPath = path.join(projectsDir, projDir.name)
+      const jsonlFiles = fs.readdirSync(projPath).filter(f => f.endsWith('.jsonl'))
+
+      for (const file of jsonlFiles) {
+        const filePath = path.join(projPath, file)
+        const sessionId = file.replace('.jsonl', '')
+
+        // Filter by creation time if afterTimestamp provided
+        if (afterTimestamp) {
+          try {
+            const stat = fs.statSync(filePath)
+            if (stat.birthtime.toISOString() < afterTimestamp) continue
+          } catch { continue }
+        }
+
+        const firstPrompt = await getFirstPrompt(filePath)
+        if (firstPrompt.toLowerCase().includes(lowerFragment)) {
+          return sessionId
+        }
+      }
+    }
+  } catch {}
+
+  return null
+}
+
 async function searchInSession(
   filePath: string,
   sessionId: string,

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Memory, MemoryTopic, MemorySettings } from '../types'
+import { Memory, MemoryTopic, MemorySettings, ContextFile } from '../types'
 import MemoryTimeline from './MemoryTimeline'
 import MemoryGraph from './MemoryGraph'
 
@@ -51,6 +51,13 @@ export default function MemoryTab() {
   const [editingTopicName, setEditingTopicName] = useState<string | null>(null)
   const [topicRenameValue, setTopicRenameValue] = useState('')
   const [mergeSelections, setMergeSelections] = useState<Set<string>>(new Set())
+  const [contextFiles, setContextFiles] = useState<ContextFile[]>([])
+  const [expandedFile, setExpandedFile] = useState<string | null>(null)
+  const [showContextForm, setShowContextForm] = useState(false)
+  const [ctxFileName, setCtxFileName] = useState('')
+  const [ctxFileContent, setCtxFileContent] = useState('')
+  const [editingContextFile, setEditingContextFile] = useState<string | null>(null)
+  const [deletingContextFile, setDeletingContextFile] = useState<string | null>(null)
 
   // Add/edit form state
   const [formTitle, setFormTitle] = useState('')
@@ -59,14 +66,16 @@ export default function MemoryTab() {
   const [formImportance, setFormImportance] = useState<1 | 2 | 3>(2)
 
   const loadData = useCallback(async () => {
-    const [mems, tops, sets] = await Promise.all([
+    const [mems, tops, sets, ctxFiles] = await Promise.all([
       window.electronAPI.getMemories(),
       window.electronAPI.getMemoryTopics(),
       window.electronAPI.getMemorySettings(),
+      window.electronAPI.getContextFiles(),
     ])
     setMemories(mems)
     setTopics(tops)
     setSettings(sets)
+    setContextFiles(ctxFiles)
   }, [])
 
   useEffect(() => { loadData() }, [loadData])
@@ -496,6 +505,160 @@ export default function MemoryTab() {
           </div>
         </div>
       )}
+
+      {/* Context Files Section */}
+      <div className="mb-4 p-3 bg-surface-2 rounded-xl border border-white/[0.06]">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <svg className="w-3.5 h-3.5 text-accent-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+            </svg>
+            <span className="text-[11px] font-medium text-white/80">Context Files</span>
+            <span className="px-1.5 py-0.5 rounded-md bg-surface-3 text-[8px] text-muted font-medium">{contextFiles.length}</span>
+            <span className="text-[9px] text-muted/50">~/.claude/memory/</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => {
+                setShowContextForm(true)
+                setEditingContextFile(null)
+                setCtxFileName('')
+                setCtxFileContent('')
+              }}
+              className="px-2 py-1 rounded-md bg-accent-blue/15 hover:bg-accent-blue/25 text-[9px] font-medium text-accent-blue transition-all"
+            >
+              + New File
+            </button>
+            {contextFiles.length > 0 && (
+              <button
+                onClick={() => window.electronAPI.openExternal('file://' + (contextFiles[0]?.path ? contextFiles[0].path.replace(/[/\\][^/\\]+$/, '') : ''))}
+                className="px-2 py-1 rounded-md bg-surface-3 hover:bg-surface-4 text-[9px] text-muted hover:text-white transition-all"
+              >
+                Open Folder
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Create/Edit form */}
+        {showContextForm && (
+          <div className="mb-2 p-2.5 rounded-lg border border-accent-blue/20 bg-surface-1/40 space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-white/70 flex-shrink-0">Filename:</span>
+              <input
+                value={ctxFileName}
+                onChange={e => setCtxFileName(e.target.value)}
+                placeholder="my-notes.md"
+                disabled={!!editingContextFile}
+                className="flex-1 bg-surface-3 border border-white/[0.06] rounded-md px-2 py-1 text-[11px] text-white/90 placeholder-muted/40 outline-none focus:border-accent-blue/40 disabled:opacity-50"
+              />
+            </div>
+            <textarea
+              value={ctxFileContent}
+              onChange={e => setCtxFileContent(e.target.value)}
+              placeholder="Write your context notes here... Markdown supported."
+              rows={6}
+              className="w-full bg-surface-3 border border-white/[0.06] rounded-md px-2.5 py-1.5 text-[11px] text-white/90 placeholder-muted/40 outline-none focus:border-accent-blue/40 resize-none font-mono"
+            />
+            <div className="flex items-center gap-2 justify-end">
+              <button
+                onClick={() => { setShowContextForm(false); setEditingContextFile(null) }}
+                className="px-2.5 py-1 rounded-md bg-surface-3 hover:bg-surface-4 text-[9px] text-muted hover:text-white transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  const name = ctxFileName.trim()
+                  if (!name) return
+                  await window.electronAPI.saveContextFile(name, ctxFileContent)
+                  setShowContextForm(false)
+                  setEditingContextFile(null)
+                  setCtxFileName('')
+                  setCtxFileContent('')
+                  await loadData()
+                }}
+                disabled={!ctxFileName.trim()}
+                className="px-2.5 py-1 rounded-md bg-accent-blue/20 hover:bg-accent-blue/30 text-[9px] font-medium text-accent-blue transition-all disabled:opacity-30"
+              >
+                {editingContextFile ? 'Save Changes' : 'Create File'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* File list */}
+        {contextFiles.length > 0 ? (
+          <div className="space-y-1">
+            {contextFiles.map(file => {
+              const isExpanded = expandedFile === file.name
+              const preview = file.content.split('\n').filter(l => l.trim()).slice(0, 2).join(' ').slice(0, 120)
+              const isDeleting = deletingContextFile === file.name
+              return (
+                <div key={file.name} className="rounded-lg border border-white/[0.04] bg-surface-1/30 overflow-hidden group/file">
+                  <div
+                    onClick={() => setExpandedFile(isExpanded ? null : file.name)}
+                    className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-surface-2/60 transition-all"
+                  >
+                    <span className="text-[11px] font-medium text-white/80 flex-shrink-0">{file.name}</span>
+                    <span className="text-[9px] text-muted/50 truncate flex-1">{!isExpanded && preview}</span>
+                    <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover/file:opacity-100 transition-opacity">
+                      <button
+                        onClick={e => {
+                          e.stopPropagation()
+                          setEditingContextFile(file.name)
+                          setCtxFileName(file.name)
+                          setCtxFileContent(file.content)
+                          setShowContextForm(true)
+                        }}
+                        className="p-1 rounded hover:bg-surface-3 text-muted hover:text-white transition-all"
+                        title="Edit"
+                      >
+                        <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={async e => {
+                          e.stopPropagation()
+                          if (isDeleting) {
+                            await window.electronAPI.deleteContextFile(file.name)
+                            setDeletingContextFile(null)
+                            if (expandedFile === file.name) setExpandedFile(null)
+                            await loadData()
+                          } else {
+                            setDeletingContextFile(file.name)
+                            setTimeout(() => setDeletingContextFile(null), 3000)
+                          }
+                        }}
+                        className={`p-1 rounded transition-all ${isDeleting ? 'bg-accent-red/15 text-accent-red' : 'hover:bg-surface-3 text-muted hover:text-accent-red'}`}
+                        title={isDeleting ? 'Click again to confirm' : 'Delete'}
+                      >
+                        <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
+                    <span className="text-[9px] text-muted/40 flex-shrink-0">
+                      {new Date(file.modifiedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    </span>
+                    <svg className={`w-3 h-3 text-muted transition-transform flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                  {isExpanded && (
+                    <div className="border-t border-white/[0.04] px-4 py-3 max-h-64 overflow-auto">
+                      <pre className="text-[10px] text-white/70 whitespace-pre-wrap leading-relaxed font-mono">{file.content}</pre>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        ) : !showContextForm ? (
+          <p className="text-[10px] text-muted/50 text-center py-2">No context files yet. Click "+ New File" to create one.</p>
+        ) : null}
+      </div>
 
       {/* Search + Filters */}
       <div className="flex gap-2 items-center mb-3">

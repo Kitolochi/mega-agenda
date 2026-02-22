@@ -196,8 +196,26 @@ interface RoadmapGoal {
   sub_goals: RoadmapSubGoal[]
   tags: string[]
   topicReports: TopicReport[]
+  personalContext?: string
+  contextFiles?: string[]
   createdAt: string
   updatedAt: string
+}
+
+interface MasterPlanTask {
+  id: string
+  title: string
+  description: string
+  priority: 'critical' | 'high' | 'medium' | 'low'
+  goalId: string
+  goalTitle: string
+  phase: string
+  status: 'pending' | 'launched' | 'running' | 'completed' | 'failed'
+  launchedAt?: string
+  completedAt?: string
+  sessionId?: string
+  createdAt: string
+  planDate: string
 }
 
 interface Memory {
@@ -248,6 +266,8 @@ interface Database {
   tweetPersonas: TweetPersona[]
   aiTasks: AITask[]
   roadmapGoals: RoadmapGoal[]
+  masterPlan: { content: string; generatedAt: string; goalIds: string[]; metadata: { totalGoals: number; goalsWithResearch: number } } | null
+  masterPlanTasks: MasterPlanTask[]
   memories: Memory[]
   memoryTopics: MemoryTopic[]
   memorySettings: MemorySettings
@@ -462,6 +482,12 @@ export function initDatabase(): Database {
     saveDatabase()
   }
 
+  // Initialize masterPlan if missing
+  if ((db as any).masterPlan === undefined) {
+    db.masterPlan = null
+    saveDatabase()
+  }
+
   // Migrate roadmapGoals: add topicReports if missing
   let goalsNeedMigration = false
   db.roadmapGoals = db.roadmapGoals.map(g => {
@@ -472,6 +498,23 @@ export function initDatabase(): Database {
     return g
   })
   if (goalsNeedMigration) saveDatabase()
+
+  // Migrate roadmapGoals: add contextFiles if missing
+  let goalsNeedContextFilesMigration = false
+  db.roadmapGoals = db.roadmapGoals.map(g => {
+    if ((g as any).contextFiles === undefined) {
+      goalsNeedContextFilesMigration = true
+      return { ...g, contextFiles: [] }
+    }
+    return g
+  })
+  if (goalsNeedContextFilesMigration) saveDatabase()
+
+  // Initialize masterPlanTasks if missing
+  if (!(db as any).masterPlanTasks) {
+    db.masterPlanTasks = []
+    saveDatabase()
+  }
 
   // Initialize memories if missing
   if (!db.memories) {
@@ -1437,6 +1480,8 @@ export function updateRoadmapGoal(id: string, updates: Partial<RoadmapGoal>): Ro
   if (updates.sub_goals !== undefined) goal.sub_goals = updates.sub_goals
   if (updates.tags !== undefined) goal.tags = updates.tags
   if (updates.topicReports !== undefined) goal.topicReports = updates.topicReports
+  if (updates.personalContext !== undefined) goal.personalContext = updates.personalContext
+  if (updates.contextFiles !== undefined) goal.contextFiles = updates.contextFiles
   goal.updatedAt = new Date().toISOString()
   saveDatabase()
   syncRoadmapFiles()
@@ -1551,4 +1596,54 @@ function syncRoadmapFiles(): void {
   } catch {
     // Silently fail — file sync is best-effort
   }
+}
+
+// Master Plan CRUD
+export function getMasterPlan(): Database['masterPlan'] {
+  return db.masterPlan || null
+}
+
+export function saveMasterPlan(plan: NonNullable<Database['masterPlan']>): NonNullable<Database['masterPlan']> {
+  db.masterPlan = plan
+  saveDatabase()
+  return plan
+}
+
+export function clearMasterPlan(): void {
+  db.masterPlan = null
+  saveDatabase()
+}
+
+// Master Plan Tasks CRUD
+export function getMasterPlanTasks(planDate?: string): MasterPlanTask[] {
+  const tasks = db.masterPlanTasks || []
+  if (planDate) return tasks.filter(t => t.planDate === planDate)
+  return tasks
+}
+
+export function createMasterPlanTask(data: Omit<MasterPlanTask, 'id' | 'createdAt'>): MasterPlanTask {
+  const task: MasterPlanTask = {
+    ...data,
+    id: generateId(),
+    createdAt: new Date().toISOString()
+  }
+  db.masterPlanTasks.push(task)
+  saveDatabase()
+  return task
+}
+
+export function updateMasterPlanTask(id: string, updates: Partial<MasterPlanTask>): MasterPlanTask | null {
+  const task = db.masterPlanTasks.find(t => t.id === id)
+  if (!task) return null
+  if (updates.status !== undefined) task.status = updates.status
+  if (updates.launchedAt !== undefined) task.launchedAt = updates.launchedAt
+  if (updates.completedAt !== undefined) task.completedAt = updates.completedAt
+  if (updates.sessionId !== undefined) task.sessionId = updates.sessionId
+  saveDatabase()
+  return task
+}
+
+export function clearMasterPlanTasks(planDate: string): void {
+  db.masterPlanTasks = db.masterPlanTasks.filter(t => t.planDate !== planDate)
+  saveDatabase()
 }

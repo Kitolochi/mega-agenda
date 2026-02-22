@@ -70,12 +70,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   summarizeFeed: (apiKey: string, articles: { title: string; description: string }[], section: string) => ipcRenderer.invoke('summarize-feed', apiKey, articles, section),
   parseVoiceCommand: (apiKey: string, transcript: string, categoryNames: string[]) => ipcRenderer.invoke('parse-voice-command', apiKey, transcript, categoryNames),
 
-  // Tavily / Research
-  getTavilyApiKey: () => ipcRenderer.invoke('get-tavily-api-key'),
-  saveTavilyApiKey: (key: string) => ipcRenderer.invoke('save-tavily-api-key', key),
+  // Research
   researchRoadmapGoal: (goalId: string) => ipcRenderer.invoke('research-roadmap-goal', goalId),
   researchRoadmapTopic: (goalId: string, topicIndex: number, topicType: 'question' | 'guidance') =>
     ipcRenderer.invoke('research-roadmap-topic', goalId, topicIndex, topicType),
+  generateActionPlan: (goalId: string) => ipcRenderer.invoke('generate-action-plan', goalId),
+  generateTopics: (goalId: string) => ipcRenderer.invoke('generate-topics', goalId),
 
   // Activity Log
   getActivityLog: (days?: number) => ipcRenderer.invoke('get-activity-log', days),
@@ -188,6 +188,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateRoadmapGoal: (id: string, updates: any) => ipcRenderer.invoke('update-roadmap-goal', id, updates),
   deleteRoadmapGoal: (id: string) => ipcRenderer.invoke('delete-roadmap-goal', id),
 
+  // Master Plan
+  getMasterPlan: () => ipcRenderer.invoke('get-master-plan'),
+  generateMasterPlan: () => ipcRenderer.invoke('generate-master-plan'),
+  clearMasterPlan: () => ipcRenderer.invoke('clear-master-plan'),
+
+  // Master Plan Execution
+  generateContextQuestions: () => ipcRenderer.invoke('generate-context-questions'),
+  getMasterPlanTasks: (planDate?: string) => ipcRenderer.invoke('get-master-plan-tasks', planDate),
+  updateMasterPlanTask: (id: string, updates: any) => ipcRenderer.invoke('update-master-plan-task', id, updates),
+  launchDailyPlan: (taskIds?: string[]) => ipcRenderer.invoke('launch-daily-plan', taskIds),
+  pollTaskSessions: () => ipcRenderer.invoke('poll-task-sessions'),
+
   // AI Tasks
   getAITasks: () => ipcRenderer.invoke('get-ai-tasks'),
   createAITask: (task: { title: string; description: string; priority: 'low' | 'medium' | 'high'; tags: string[] }) =>
@@ -195,6 +207,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateAITask: (id: string, updates: any) => ipcRenderer.invoke('update-ai-task', id, updates),
   deleteAITask: (id: string) => ipcRenderer.invoke('delete-ai-task', id),
   moveAITask: (id: string, column: string) => ipcRenderer.invoke('move-ai-task', id, column),
+
+  // Context Files
+  getContextFiles: () => ipcRenderer.invoke('get-context-files'),
+  saveContextFile: (name: string, content: string) => ipcRenderer.invoke('save-context-file', name, content),
+  deleteContextFile: (name: string) => ipcRenderer.invoke('delete-context-file', name),
 
   // Memory
   getMemories: () => ipcRenderer.invoke('get-memories'),
