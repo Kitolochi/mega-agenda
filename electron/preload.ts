@@ -208,6 +208,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deleteAITask: (id: string) => ipcRenderer.invoke('delete-ai-task', id),
   moveAITask: (id: string, column: string) => ipcRenderer.invoke('move-ai-task', id, column),
 
+  // Whisper (local voice transcription)
+  transcribeAudio: (audioData: number[]) => ipcRenderer.invoke('transcribe-audio', audioData),
+  getWhisperStatus: () => ipcRenderer.invoke('get-whisper-status'),
+
   // RAG / Embeddings
   getEmbeddingStatus: () => ipcRenderer.invoke('get-embedding-status'),
   rebuildVectorIndex: () => ipcRenderer.invoke('rebuild-vector-index'),

@@ -256,6 +256,13 @@ export interface EmbeddingStatus {
   progress: number
 }
 
+export interface WhisperStatus {
+  ready: boolean
+  loading: boolean
+  error: string | null
+  progress: number
+}
+
 export interface ReorgPlanItem {
   action: 'move' | 'merge' | 'delete'
   source: string
@@ -518,6 +525,10 @@ export interface ElectronAPI {
   deleteContextFolder: (relativePath: string) => Promise<boolean>
   uploadContextFiles: (targetFolder: string) => Promise<ContextFile[]>
   scaffoldDomainFolders: () => Promise<boolean>
+
+  // Whisper (local voice transcription)
+  transcribeAudio: (audioData: number[]) => Promise<string>
+  getWhisperStatus: () => Promise<WhisperStatus>
 
   // RAG / Embeddings
   getEmbeddingStatus: () => Promise<EmbeddingStatus>

@@ -15,6 +15,7 @@ import { extractMemoriesFromChat, extractMemoriesFromCli, extractMemoriesFromJou
 import { researchTopicSmart, generateActionPlan, generateTopics, generateMasterPlan, findClaudeCli, generateContextQuestions, extractTasksFromPlan, saveMasterPlanFile } from './research'
 import { findSessionByPromptFragment } from './cli-logs'
 import { initEmbeddingModel, getEmbeddingStatus } from './embeddings'
+import { initWhisperModel, transcribeAudio, getWhisperStatus } from './whisper'
 import { loadVectorIndex, rebuildIndex, deleteIndex } from './vector-store'
 import { generateReorgPlan, previewReorgPlan, executeReorgPlan } from './reorganize'
 
@@ -868,6 +869,16 @@ ipcMain.handle('get-embedding-status', () => {
   return getEmbeddingStatus()
 })
 
+// Whisper (local voice transcription)
+ipcMain.handle('get-whisper-status', () => {
+  return getWhisperStatus()
+})
+
+ipcMain.handle('transcribe-audio', async (_, audioData: number[]) => {
+  const float32 = new Float32Array(audioData)
+  return transcribeAudio(float32)
+})
+
 ipcMain.handle('rebuild-vector-index', async () => {
   return rebuildIndex((info) => {
     mainWindow?.webContents.send('index-progress', info)
@@ -1433,12 +1444,17 @@ app.whenReady().then(() => {
   // Scaffold domain-based memory folders
   scaffoldDomainFolders()
 
-  // Background: pre-warm embedding model after 5s, then refresh vector index
+  // Background: pre-warm embedding + whisper models after 5s, then refresh vector index
   setTimeout(async () => {
     try {
-      await initEmbeddingModel((progress) => {
+      // Load embedding and whisper models in parallel
+      const embeddingReady = initEmbeddingModel((progress) => {
         mainWindow?.webContents.send('embedding-progress', progress)
       })
+      initWhisperModel().catch(err => {
+        console.error('Whisper model init failed:', err)
+      })
+      await embeddingReady
       // Load or build vector index once model is ready
       const embStatus = getEmbeddingStatus()
       if (embStatus.ready) {
