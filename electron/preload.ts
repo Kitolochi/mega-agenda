@@ -208,6 +208,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deleteAITask: (id: string) => ipcRenderer.invoke('delete-ai-task', id),
   moveAITask: (id: string, column: string) => ipcRenderer.invoke('move-ai-task', id, column),
 
+  // RAG / Embeddings
+  getEmbeddingStatus: () => ipcRenderer.invoke('get-embedding-status'),
+  rebuildVectorIndex: () => ipcRenderer.invoke('rebuild-vector-index'),
+  generateReorgPlan: () => ipcRenderer.invoke('generate-reorg-plan'),
+  executeReorgPlan: (plan: any) => ipcRenderer.invoke('execute-reorg-plan', plan),
+  onEmbeddingProgress: (callback: (progress: number) => void) => {
+    const handler = (_: any, progress: number) => callback(progress)
+    ipcRenderer.on('embedding-progress', handler)
+    return () => { ipcRenderer.removeListener('embedding-progress', handler) }
+  },
+  onIndexProgress: (callback: (info: { phase: string; current: number; total: number }) => void) => {
+    const handler = (_: any, info: any) => callback(info)
+    ipcRenderer.on('index-progress', handler)
+    return () => { ipcRenderer.removeListener('index-progress', handler) }
+  },
+
   // Context Files
   getContextFiles: () => ipcRenderer.invoke('get-context-files'),
   saveContextFile: (name: string, content: string, folder?: string) => ipcRenderer.invoke('save-context-file', name, content, folder || ''),
@@ -215,6 +231,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   createContextFolder: (relativePath: string) => ipcRenderer.invoke('create-context-folder', relativePath),
   deleteContextFolder: (relativePath: string) => ipcRenderer.invoke('delete-context-folder', relativePath),
   uploadContextFiles: (targetFolder: string) => ipcRenderer.invoke('upload-context-files', targetFolder),
+  scaffoldDomainFolders: () => ipcRenderer.invoke('scaffold-domain-folders'),
 
   // Memory
   getMemories: () => ipcRenderer.invoke('get-memories'),

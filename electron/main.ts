@@ -14,6 +14,9 @@ import { searchGitHubRepos } from './github'
 import { extractMemoriesFromChat, extractMemoriesFromCli, extractMemoriesFromJournal, batchExtractMemories } from './memory'
 import { researchTopicSmart, generateActionPlan, generateTopics, generateMasterPlan, findClaudeCli, generateContextQuestions, extractTasksFromPlan, saveMasterPlanFile } from './research'
 import { findSessionByPromptFragment } from './cli-logs'
+import { initEmbeddingModel, getEmbeddingStatus } from './embeddings'
+import { loadVectorIndex, rebuildIndex, deleteIndex } from './vector-store'
+import { generateReorgPlan, previewReorgPlan, executeReorgPlan } from './reorganize'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -860,6 +863,38 @@ ipcMain.handle('poll-task-sessions', async () => {
   return getMasterPlanTasks()
 })
 
+// RAG / Embeddings
+ipcMain.handle('get-embedding-status', () => {
+  return getEmbeddingStatus()
+})
+
+ipcMain.handle('rebuild-vector-index', async () => {
+  return rebuildIndex((info) => {
+    mainWindow?.webContents.send('index-progress', info)
+  })
+})
+
+ipcMain.handle('generate-reorg-plan', async () => {
+  const claudeApiKey = getClaudeApiKey()
+  if (!claudeApiKey) throw new Error('Claude API key not configured.')
+  return generateReorgPlan(claudeApiKey)
+})
+
+ipcMain.handle('execute-reorg-plan', async (_, plan: any) => {
+  const result = await executeReorgPlan(plan)
+  // Re-index after reorganization
+  try {
+    deleteIndex()
+    const embStatus = getEmbeddingStatus()
+    if (embStatus.ready) {
+      await rebuildIndex()
+    }
+  } catch (err) {
+    console.error('Re-index after reorg failed:', err)
+  }
+  return result
+})
+
 // Context Files (read ~/.claude/memory/ recursively)
 const TEXT_EXTENSIONS = new Set(['.md', '.txt', '.json', '.yaml', '.yml', '.toml', '.csv', '.xml', '.html', '.css', '.js', '.ts', '.py', '.sh', '.bat', '.ps1', '.log', '.env', '.cfg', '.ini', '.conf'])
 
@@ -981,6 +1016,126 @@ function syncAllGoalContextFiles(): void {
     console.log(`Synced ${goals.filter(g => (g.topicReports || []).length > 0).length} goal context files`)
   } catch (err) {
     console.error('Failed to sync goal context files:', err)
+  }
+}
+
+function scaffoldDomainFolders(): void {
+  try {
+    const memoryDir = getMemoryDir()
+    const domainsDir = path.join(memoryDir, 'domains')
+
+    const domains: Record<string, { label: string; profilePrompts: string[] }> = {
+      career: {
+        label: 'Career & Professional',
+        profilePrompts: [
+          'What is your current role/title and company?',
+          'What industry do you work in?',
+          'What are your key professional skills?',
+          'What is your career stage (early, mid, senior, executive)?',
+          'What does career success look like to you?',
+        ],
+      },
+      health: {
+        label: 'Health & Fitness',
+        profilePrompts: [
+          'What is your current fitness level (beginner, intermediate, advanced)?',
+          'Do you have any health conditions or injuries to work around?',
+          'What types of exercise do you enjoy?',
+          'What are your dietary preferences or restrictions?',
+          'How many hours of sleep do you typically get?',
+        ],
+      },
+      financial: {
+        label: 'Financial',
+        profilePrompts: [
+          'What is your current financial situation (stable, building, recovering)?',
+          'Do you have a monthly budget or savings target?',
+          'What are your biggest financial obligations?',
+          'What is your risk tolerance for investments (conservative, moderate, aggressive)?',
+          'Do you have an emergency fund?',
+        ],
+      },
+      relationships: {
+        label: 'Relationships & Social',
+        profilePrompts: [
+          'Who are the most important people in your life?',
+          'What relationship areas need the most attention?',
+          'How do you prefer to stay connected (calls, texts, in-person)?',
+          'Are there relationships you want to strengthen or repair?',
+          'How large is your social circle?',
+        ],
+      },
+      learning: {
+        label: 'Learning & Education',
+        profilePrompts: [
+          'What subjects or skills are you currently learning?',
+          'What is your preferred learning style (reading, video, hands-on)?',
+          'How much time per week can you dedicate to learning?',
+          'Do you have any formal education goals (degrees, certifications)?',
+          'What topics have you always wanted to explore?',
+        ],
+      },
+      projects: {
+        label: 'Projects & Building',
+        profilePrompts: [
+          'What active projects are you working on?',
+          'What tools and technologies do you use most?',
+          'Do you work solo or with a team?',
+          'What is your project management style?',
+          'What is the biggest project you have completed?',
+        ],
+      },
+      personal: {
+        label: 'Personal Development',
+        profilePrompts: [
+          'What personal habits are you trying to build or break?',
+          'What are your core values?',
+          'What does a great day look like for you?',
+          'What areas of personal growth matter most right now?',
+          'How do you handle stress and recharge?',
+        ],
+      },
+      creative: {
+        label: 'Creative & Hobbies',
+        profilePrompts: [
+          'What creative outlets do you enjoy (writing, music, art, etc.)?',
+          'How much time do you spend on hobbies per week?',
+          'Are there creative skills you want to develop?',
+          'Do you share your creative work publicly?',
+          'What inspires you creatively?',
+        ],
+      },
+    }
+
+    let created = 0
+    let existed = 0
+
+    for (const [slug, domain] of Object.entries(domains)) {
+      const domainDir = path.join(domainsDir, slug)
+      if (!fs.existsSync(domainDir)) fs.mkdirSync(domainDir, { recursive: true })
+
+      const files: Record<string, string> = {
+        'index.md': `# ${domain.label}\n\nThis folder contains structured context for your ${domain.label.toLowerCase()} goals.\nFiles here are automatically included when generating master plans.\n\n## Files\n- **profile.md** — Who you are in this domain\n- **goals.md** — What you want to achieve\n- **current_state.md** — Where you are right now\n- **history.md** — Key events, milestones, and decisions\n`,
+        'profile.md': `# ${domain.label} — Profile\n\nFill in what is relevant. Delete questions that do not apply.\n\n${domain.profilePrompts.map(p => `## ${p}\n\n(your answer here)\n`).join('\n')}\n---\n*Last updated: (auto-filled on edit)*\n`,
+        'goals.md': `# ${domain.label} — Goals\n\nList your current goals in this area. Be specific about outcomes and timelines.\n\n## Active Goals\n\n- \n\n## Completed Goals\n\n- \n\n## Someday / Maybe\n\n- \n`,
+        'current_state.md': `# ${domain.label} — Current State\n\nCapture a snapshot of where you are right now. Update this periodically.\n\n## Status\n\n(describe your current situation)\n\n## Recent Progress\n\n- \n\n## Blockers or Challenges\n\n- \n\n## Next Actions\n\n- \n`,
+        'history.md': `# ${domain.label} — History\n\nRecord key milestones, decisions, and turning points.\n\n## Timeline\n\n- **${new Date().toISOString().split('T')[0]}** — Domain folder created\n`,
+      }
+
+      for (const [fileName, content] of Object.entries(files)) {
+        const filePath = path.join(domainDir, fileName)
+        if (!fs.existsSync(filePath)) {
+          fs.writeFileSync(filePath, content, 'utf-8')
+          created++
+        } else {
+          existed++
+        }
+      }
+    }
+
+    console.log(`Domain folders scaffolded: ${created} files created, ${existed} already existed`)
+  } catch (err) {
+    console.error('Failed to scaffold domain folders:', err)
   }
 }
 
@@ -1117,6 +1272,12 @@ ipcMain.handle('upload-context-files', async (_, targetFolder: string) => {
     })
   }
   return uploaded
+})
+
+// Domain Folders
+ipcMain.handle('scaffold-domain-folders', () => {
+  scaffoldDomainFolders()
+  return true
 })
 
 // Memory
@@ -1268,6 +1429,29 @@ app.whenReady().then(() => {
 
   // Sync goal context files on startup
   syncAllGoalContextFiles()
+
+  // Scaffold domain-based memory folders
+  scaffoldDomainFolders()
+
+  // Background: pre-warm embedding model after 5s, then refresh vector index
+  setTimeout(async () => {
+    try {
+      await initEmbeddingModel((progress) => {
+        mainWindow?.webContents.send('embedding-progress', progress)
+      })
+      // Load or build vector index once model is ready
+      const embStatus = getEmbeddingStatus()
+      if (embStatus.ready) {
+        const existing = loadVectorIndex()
+        // Always do an incremental refresh to pick up changes
+        await rebuildIndex((info) => {
+          mainWindow?.webContents.send('index-progress', info)
+        })
+      }
+    } catch (err) {
+      console.error('Background embedding/index init failed:', err)
+    }
+  }, 5000)
 
   // Check once per hour if a new day has started; if so, re-sync goal context files
   let lastSyncDate = new Date().toISOString().split('T')[0]

@@ -2,6 +2,8 @@ import https from 'https'
 import fs from 'fs'
 import path from 'path'
 import { execSync, spawn as spawnProcess } from 'child_process'
+import { getEmbeddingStatus, embedText } from './embeddings'
+import { multiSearch, SearchResult } from './vector-store'
 
 interface RoadmapGoal {
   id: string
@@ -299,7 +301,7 @@ const CONTEXT_FILE_TOKEN_BUDGET = 100000
 const CHARS_PER_TOKEN = 4
 const CONTEXT_CHAR_BUDGET = CONTEXT_FILE_TOKEN_BUDGET * CHARS_PER_TOKEN // ~400K chars
 
-function buildMasterPlanPrompt(goals: RoadmapGoal[]): string {
+function buildBruteForcePrompt(goals: RoadmapGoal[]): string {
   // Load ALL context files as global knowledge base
   const allContextFiles = readAllContextFiles()
 
@@ -339,9 +341,68 @@ function buildMasterPlanPrompt(goals: RoadmapGoal[]): string {
       globalContext += `\n_Note: ${truncatedCount} additional context file(s) omitted due to size limits._\n`
     }
     globalContext += '\n---\n'
-    console.log(`Master plan: included ${includedCount}/${allContextFiles.length} context files (${truncatedCount} omitted, ${Math.round((CONTEXT_CHAR_BUDGET - charBudgetRemaining) / 1000)}K chars used of ${CONTEXT_CHAR_BUDGET / 1000}K budget)`)
+    console.log(`Master plan (brute-force): included ${includedCount}/${allContextFiles.length} context files (${truncatedCount} omitted, ${Math.round((CONTEXT_CHAR_BUDGET - charBudgetRemaining) / 1000)}K chars used of ${CONTEXT_CHAR_BUDGET / 1000}K budget)`)
   }
 
+  return buildPromptWithContext(globalContext, goals)
+}
+
+async function buildSmartPrompt(goals: RoadmapGoal[]): Promise<string> {
+  // Build search queries from goal titles + descriptions
+  const queries = goals.map(g => {
+    let q = g.title
+    if (g.description) q += ' ' + g.description
+    if (g.personalContext) q += ' ' + g.personalContext.slice(0, 200)
+    return q
+  })
+
+  const results = await multiSearch(queries, { topK: 50, minScore: 0.25 })
+
+  if (results.length < 5) {
+    console.log(`Smart retrieval returned only ${results.length} results, supplementing with brute-force`)
+    return buildBruteForcePrompt(goals)
+  }
+
+  // Group results by source file for readability
+  const byFile = new Map<string, SearchResult[]>()
+  for (const r of results) {
+    const existing = byFile.get(r.sourceFile) || []
+    existing.push(r)
+    byFile.set(r.sourceFile, existing)
+  }
+
+  let globalContext = `\n# Relevant Context (${results.length} chunks from ${byFile.size} files, retrieved by semantic search)\n`
+  globalContext += `This context was selected because it's most relevant to your current goals.\n`
+
+  let charBudgetRemaining = CONTEXT_CHAR_BUDGET
+  for (const [file, chunks] of byFile) {
+    if (charBudgetRemaining <= 0) break
+    globalContext += `\n## ${file}\n`
+    for (const chunk of chunks) {
+      if (charBudgetRemaining <= 0) break
+      const text = chunk.text.length > charBudgetRemaining
+        ? chunk.text.slice(0, charBudgetRemaining) + '\n[... truncated ...]'
+        : chunk.text
+      charBudgetRemaining -= text.length
+      if (chunk.heading !== file) {
+        globalContext += `### ${chunk.heading}\n`
+      }
+      globalContext += text + '\n\n'
+    }
+  }
+  globalContext += '\n---\n'
+
+  // Log retrieval stats
+  const scores = results.map(r => r.score)
+  const minScore = Math.min(...scores).toFixed(3)
+  const maxScore = Math.max(...scores).toFixed(3)
+  const filesSourced = new Set(results.map(r => r.sourceFile)).size
+  console.log(`Smart retrieval: ${results.length} chunks from ${filesSourced} files (score range: ${minScore}-${maxScore})`)
+
+  return buildPromptWithContext(globalContext, goals)
+}
+
+function buildPromptWithContext(globalContext: string, goals: RoadmapGoal[]): string {
   const homeDir = process.env.USERPROFILE || process.env.HOME || ''
   let goalsContext = ''
   for (const goal of goals) {
@@ -411,12 +472,28 @@ Flag unrealistic combinations. Reference relevant context from the knowledge bas
 Be direct and practical. No fluff.`
 }
 
-function masterPlanWithCli(cliPath: string, goals: RoadmapGoal[]): Promise<string> {
+async function buildMasterPlanPrompt(goals: RoadmapGoal[]): Promise<string> {
+  // Try smart retrieval if embeddings are available
+  const embeddingStatus = getEmbeddingStatus()
+  if (embeddingStatus.ready) {
+    try {
+      return await buildSmartPrompt(goals)
+    } catch (err) {
+      console.log('Smart retrieval failed, falling back to brute-force:', (err as Error).message)
+    }
+  } else {
+    console.log('Embeddings not available, using brute-force context loading')
+  }
+  return buildBruteForcePrompt(goals)
+}
+
+async function masterPlanWithCli(cliPath: string, goals: RoadmapGoal[]): Promise<string> {
+  const prompt = await buildMasterPlanPrompt(goals)
   return new Promise((resolve, reject) => {
     const tmpDir = process.env.TEMP || process.env.TMP || (process.env.USERPROFILE ? path.join(process.env.USERPROFILE, 'AppData', 'Local', 'Temp') : '/tmp')
     const tmpFile = path.join(tmpDir, `mega-masterplan-${Date.now()}.md`)
 
-    fs.writeFileSync(tmpFile, buildMasterPlanPrompt(goals), 'utf-8')
+    fs.writeFileSync(tmpFile, prompt, 'utf-8')
 
     const cliPrompt = `Read the master plan instructions at "${tmpFile}" and execute them. Synthesize all goals into a unified master plan. Return only the master plan directly as text. Do NOT create or write any files.`
 
@@ -470,7 +547,7 @@ export async function generateMasterPlan(
   }
 
   // Fallback: API call (no web search needed — synthesis only)
-  const prompt = buildMasterPlanPrompt(goals)
+  const prompt = await buildMasterPlanPrompt(goals)
   return new Promise((resolve, reject) => {
     const body = JSON.stringify({
       model: 'claude-sonnet-4-5-20250929',

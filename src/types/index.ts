@@ -249,6 +249,26 @@ export interface MemorySettings {
   tokenBudget: number
 }
 
+export interface EmbeddingStatus {
+  ready: boolean
+  loading: boolean
+  error: string | null
+  progress: number
+}
+
+export interface ReorgPlanItem {
+  action: 'move' | 'merge' | 'delete'
+  source: string
+  destination?: string
+  reason: string
+}
+
+export interface ReorgPlan {
+  items: ReorgPlanItem[]
+  summary: string
+  backupPath?: string
+}
+
 export interface MasterPlan {
   content: string
   generatedAt: string
@@ -497,6 +517,15 @@ export interface ElectronAPI {
   createContextFolder: (relativePath: string) => Promise<boolean>
   deleteContextFolder: (relativePath: string) => Promise<boolean>
   uploadContextFiles: (targetFolder: string) => Promise<ContextFile[]>
+  scaffoldDomainFolders: () => Promise<boolean>
+
+  // RAG / Embeddings
+  getEmbeddingStatus: () => Promise<EmbeddingStatus>
+  rebuildVectorIndex: () => Promise<{ added: number; removed: number; total: number }>
+  generateReorgPlan: () => Promise<ReorgPlan>
+  executeReorgPlan: (plan: ReorgPlan) => Promise<{ success: boolean; backupPath: string }>
+  onEmbeddingProgress: (callback: (progress: number) => void) => () => void
+  onIndexProgress: (callback: (info: { phase: string; current: number; total: number }) => void) => () => void
 
   // Memory
   getMemories: () => Promise<Memory[]>
