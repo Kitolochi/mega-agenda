@@ -754,7 +754,7 @@ export async function extractTasksFromActionPlan(
   actionPlanText: string,
   goal: RoadmapGoal,
   claudeApiKey: string
-): Promise<{ title: string; description: string; priority: 'critical' | 'high' | 'medium' | 'low'; goalId: string; goalTitle: string; phase: string }[]> {
+): Promise<{ title: string; description: string; priority: 'critical' | 'high' | 'medium' | 'low'; goalId: string; goalTitle: string; phase: string; taskType?: string }[]> {
   const prompt = `Extract 10-30 actionable tasks from this action plan for the goal "${goal.title}". Each task should be a concrete, executable action that could be given to an AI coding assistant or done by the user.
 
 Action Plan:
@@ -765,8 +765,16 @@ IMPORTANT: Respond with ONLY a JSON array, no other text:
   "title": "Short actionable title (max 80 chars)",
   "description": "Detailed description of what to do, including specific steps",
   "priority": "critical|high|medium|low",
-  "phase": "Phase or grouping from the plan (e.g. This Week, This Month, etc.)"
+  "phase": "Phase or grouping from the plan (e.g. This Week, This Month, etc.)",
+  "taskType": "research|code|writing|planning|communication"
 }, ...]
+
+Task type classification:
+- "research" = gathering info, analysis, market research, studying topics, finding resources
+- "code" = writing code, building apps/scripts, technical implementation, debugging
+- "writing" = creating documents, blog posts, content, drafts, templates, emails
+- "planning" = creating plans, strategies, roadmaps, timelines, goal-setting
+- "communication" = outreach, networking, messages, social media, presentations
 
 Order by priority (critical first), then by phase order. Focus on the most immediate and impactful actions first.`
 
@@ -806,13 +814,15 @@ Order by priority (critical first), then by phase order. Focus on the most immed
     const jsonMatch = response.match(/\[[\s\S]*\]/)
     if (!jsonMatch) throw new Error('No JSON found')
     const tasks = JSON.parse(jsonMatch[0])
+    const validTaskTypes = ['research', 'code', 'writing', 'planning', 'communication']
     return tasks.map((t: any) => ({
       title: String(t.title || '').slice(0, 120),
       description: String(t.description || ''),
       priority: ['critical', 'high', 'medium', 'low'].includes(t.priority) ? t.priority : 'medium',
       goalId: goal.id,
       goalTitle: goal.title,
-      phase: String(t.phase || 'Unphased')
+      phase: String(t.phase || 'Unphased'),
+      taskType: validTaskTypes.includes(t.taskType) ? t.taskType : undefined,
     }))
   } catch {
     throw new Error('Failed to parse extracted tasks from AI response')

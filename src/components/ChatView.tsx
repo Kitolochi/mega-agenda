@@ -25,6 +25,10 @@ export default function ChatView() {
   const [memoryCount, setMemoryCount] = useState(0)
   const [extractingMemories, setExtractingMemories] = useState(false)
   const [extractedCount, setExtractedCount] = useState<number | null>(null)
+  const [smartQueryText, setSmartQueryText] = useState('')
+  const [smartQueryId, setSmartQueryId] = useState<string | null>(null)
+  const [smartQueryStreaming, setSmartQueryStreaming] = useState(false)
+  const smartQueryTextRef = useRef('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const streamTextRef = useRef('')
@@ -86,6 +90,30 @@ export default function ChatView() {
     return () => { cleanupChunk(); cleanupEnd(); cleanupError() }
   }, [activeConvId, loadConversations])
 
+  // Smart Query event listeners
+  useEffect(() => {
+    const cleanupChunk = window.electronAPI.onSmartQueryChunk((data) => {
+      if (data.queryId === smartQueryId) {
+        smartQueryTextRef.current += data.text
+        setSmartQueryText(smartQueryTextRef.current)
+      }
+    })
+    const cleanupEnd = window.electronAPI.onSmartQueryEnd((data) => {
+      if (data.queryId === smartQueryId) {
+        setSmartQueryStreaming(false)
+      }
+    })
+    const cleanupError = window.electronAPI.onSmartQueryError((data) => {
+      if (data.queryId === smartQueryId) {
+        setSmartQueryStreaming(false)
+        if (!smartQueryTextRef.current) {
+          setSmartQueryText('Error: ' + data.error)
+        }
+      }
+    })
+    return () => { cleanupChunk(); cleanupEnd(); cleanupError() }
+  }, [smartQueryId])
+
   // Auto-scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -113,8 +141,31 @@ export default function ChatView() {
     setRenameId(null)
   }
 
+  const handleSmartQuery = async (query: string) => {
+    smartQueryTextRef.current = ''
+    setSmartQueryText('')
+    setSmartQueryStreaming(true)
+    try {
+      const { queryId } = await window.electronAPI.smartQuery(query)
+      setSmartQueryId(queryId)
+    } catch (err: any) {
+      setSmartQueryStreaming(false)
+      setSmartQueryText('Error: ' + (err.message || 'Failed to start query'))
+    }
+  }
+
   const handleSend = async () => {
     if (!input.trim() || streaming) return
+
+    // /ask shortcut for smart query
+    if (input.trim().startsWith('/ask ')) {
+      const query = input.trim().slice(5).trim()
+      if (query) {
+        setInput('')
+        handleSmartQuery(query)
+      }
+      return
+    }
 
     let convId = activeConvId
     if (!convId) {
@@ -441,6 +492,51 @@ export default function ChatView() {
           )}
           <div ref={messagesEndRef} />
         </div>
+
+        {/* Smart Query response panel (Feature 4) */}
+        {(smartQueryText || smartQueryStreaming) && (
+          <div className="px-3 py-2">
+            <div className="rounded-xl border border-accent-purple/20 bg-accent-purple/5 p-3 relative">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] font-medium text-accent-purple uppercase tracking-wider">Insights</span>
+                {!smartQueryStreaming && (
+                  <button
+                    onClick={() => { setSmartQueryText(''); setSmartQueryId(null); smartQueryTextRef.current = '' }}
+                    className="p-0.5 rounded hover:bg-surface-3 text-muted hover:text-white transition-all"
+                  >
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                  </button>
+                )}
+              </div>
+              <div className="text-[12px] text-white/80 leading-relaxed max-h-[300px] overflow-y-auto whitespace-pre-wrap">
+                <div dangerouslySetInnerHTML={{ __html: renderMarkdown(smartQueryText) }} />
+                {smartQueryStreaming && <span className="inline-block w-1.5 h-3.5 bg-accent-purple/60 animate-pulse ml-0.5" />}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Insights quick-action buttons (Feature 4) */}
+        {!activeConv && !smartQueryText && !smartQueryStreaming && (
+          <div className="px-3 py-2">
+            <div className="flex flex-wrap gap-1.5 justify-center">
+              {[
+                'What should I prioritize this week?',
+                'How am I progressing on my goals?',
+                'What have I been neglecting?',
+              ].map(q => (
+                <button
+                  key={q}
+                  onClick={() => handleSmartQuery(q)}
+                  disabled={smartQueryStreaming}
+                  className="px-3 py-1.5 rounded-lg border border-accent-purple/20 bg-accent-purple/5 text-accent-purple text-[10px] font-medium hover:bg-accent-purple/15 transition-all disabled:opacity-50"
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Input area */}
         <div className="px-3 pb-3 pt-1">

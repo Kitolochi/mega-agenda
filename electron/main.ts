@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, shell, Notification, clipboard, dialog, session } from 'electron'
 import path from 'path'
 import fs from 'fs'
-import { spawn } from 'child_process'
+import { spawn, execSync } from 'child_process'
 import { initDatabase, checkRecurringTasks, getCategories, getTasks, addTask, updateTask, deleteTask, toggleTaskComplete, getDailyNote, saveDailyNote, getRecentNotes, getStats, getTwitterSettings, saveTwitterSettings, getRSSFeeds, addRSSFeed, removeRSSFeed, getClaudeApiKey, saveClaudeApiKey, getActivityLog, getPomodoroState, startPomodoro, completePomodoro, startBreak, stopPomodoro, getMorningBriefing, saveMorningBriefing, dismissMorningBriefing, getBriefingData, getWeeklyReview, saveWeeklyReview, getAllWeeklyReviews, getWeeklyReviewData, checkWeeklyReviewNeeded, getChatConversations, getChatConversation, createChatConversation, addChatMessage, deleteChatConversation, renameChatConversation, getChatSettings, saveChatSettings, addCategory, deleteCategory, getTweetDrafts, getTweetDraft, createTweetDraft, updateTweetDraft, addTweetAIMessage, deleteTweetDraft, getTweetPersonas, createTweetPersona, deleteTweetPersona, getAITasks, createAITask, updateAITask, deleteAITask, moveAITask, getRoadmapGoals, createRoadmapGoal, updateRoadmapGoal, deleteRoadmapGoal, getMasterPlan, saveMasterPlan, clearMasterPlan, getMasterPlanTasks, createMasterPlanTask, updateMasterPlanTask, clearMasterPlanTasks, getMemories, getAllMemories, createMemory, updateMemory, deleteMemory, archiveMemory, pinMemory, getMemoryTopics, updateMemoryTopics, getMemorySettings, saveMemorySettings } from './database'
 import { verifyToken, getUserByUsername, getUserLists, fetchAllLists, postTweet, verifyOAuthCredentials } from './twitter'
 import { fetchAllFeeds } from './rss'
@@ -11,12 +11,13 @@ import { createTerminal, writeTerminal, resizeTerminal, killTerminal } from './t
 import { streamChatMessage, abortChatStream, getMemoryCountForChat } from './chat'
 import { getCliSessions, getCliSessionMessages, searchCliSessions } from './cli-logs'
 import { searchGitHubRepos } from './github'
-import { extractMemoriesFromChat, extractMemoriesFromCli, extractMemoriesFromJournal, batchExtractMemories } from './memory'
+import { extractMemoriesFromChat, extractMemoriesFromCli, extractMemoriesFromJournal, batchExtractMemories, extractMemoriesFromAgentResult } from './memory'
 import { researchTopicSmart, generateActionPlan, generateTopics, generateMasterPlan, findClaudeCli, generateContextQuestions, extractTasksFromPlan, extractTasksFromActionPlan, saveMasterPlanFile } from './research'
 import { findSessionByPromptFragment } from './cli-logs'
 import { initEmbeddingModel, getEmbeddingStatus } from './embeddings'
 import { initWhisperModel, transcribeAudio, getWhisperStatus } from './whisper'
 import { loadVectorIndex, rebuildIndex, deleteIndex } from './vector-store'
+import { streamSmartQuery } from './smart-query'
 import { generateReorgPlan, previewReorgPlan, executeReorgPlan } from './reorganize'
 
 let mainWindow: BrowserWindow | null = null
@@ -902,10 +903,47 @@ ipcMain.handle('extract-goal-action-tasks', async (_, goalId: string) => {
       phase: t.phase,
       status: 'pending',
       planDate,
+      ...(t.taskType ? { taskType: t.taskType as any } : {}),
     }))
   }
   return created
 })
+
+// Agent config for task-type routing (Feature 2)
+function getAgentConfig(taskType?: string): { preamble: string; allowedTools: string } {
+  switch (taskType) {
+    case 'research':
+      return {
+        preamble: 'You are a research specialist. Focus on gathering information, analyzing sources, and producing well-organized findings. Prioritize depth and accuracy.',
+        allowedTools: '"Read(*)" "Glob(*)" "Grep(*)" "WebFetch(*)" "WebSearch(*)" "Write(*)"',
+      }
+    case 'code':
+      return {
+        preamble: 'You are a software engineering specialist. Write clean, working code. Follow best practices, add appropriate error handling, and create production-ready implementations.',
+        allowedTools: '"Bash(*)" "Edit(*)" "Write(*)" "Read(*)" "Glob(*)" "Grep(*)"',
+      }
+    case 'writing':
+      return {
+        preamble: 'You are a writing specialist. Produce clear, well-structured content. Focus on readability, appropriate tone, and comprehensive coverage of the topic.',
+        allowedTools: '"Write(*)" "Edit(*)" "Read(*)" "Glob(*)" "Grep(*)" "WebFetch(*)" "WebSearch(*)"',
+      }
+    case 'planning':
+      return {
+        preamble: 'You are a strategic planning specialist. Create detailed, actionable plans with clear milestones, dependencies, and success criteria.',
+        allowedTools: '"Write(*)" "Read(*)" "Glob(*)" "Grep(*)" "WebFetch(*)" "WebSearch(*)"',
+      }
+    case 'communication':
+      return {
+        preamble: 'You are a communication specialist. Draft professional, clear communications. Consider the audience, tone, and key messages.',
+        allowedTools: '"Write(*)" "Edit(*)" "Read(*)" "Glob(*)" "Grep(*)" "WebFetch(*)" "WebSearch(*)"',
+      }
+    default:
+      return {
+        preamble: 'You are a capable AI assistant. Complete the assigned task thoroughly and produce high-quality deliverables.',
+        allowedTools: '"Bash(*)" "Edit(*)" "Write(*)" "Read(*)" "Glob(*)" "Grep(*)" "WebFetch(*)" "WebSearch(*)"',
+      }
+  }
+}
 
 ipcMain.handle('launch-goal-tasks', async (_, goalId: string, taskIds?: string[]) => {
   const planDate = `goal-${goalId}`
@@ -926,6 +964,21 @@ ipcMain.handle('launch-goal-tasks', async (_, goalId: string, taskIds?: string[]
   fs.mkdirSync(deliverablesDir, { recursive: true })
   const agentResultsDir = path.join(goalDir, 'agent-results')
   fs.mkdirSync(agentResultsDir, { recursive: true })
+
+  // Feature 1: Initialize git repo for the goal
+  const repoDir = path.join(goalDir, 'repo')
+  fs.mkdirSync(repoDir, { recursive: true })
+  const gitDir = path.join(repoDir, '.git')
+  if (!fs.existsSync(gitDir)) {
+    try {
+      execSync('git init', { cwd: repoDir, stdio: 'pipe' })
+      execSync('git config user.email "mega-agenda@local"', { cwd: repoDir, stdio: 'pipe' })
+      execSync('git config user.name "Mega Agenda"', { cwd: repoDir, stdio: 'pipe' })
+      execSync(`git commit --allow-empty -m "init: ${(goal?.title || goalId).replace(/"/g, "'")}"`, { cwd: repoDir, stdio: 'pipe' })
+    } catch (err) {
+      console.error('Git init failed:', err)
+    }
+  }
 
   // Build workspace file (read-only context for agents)
   const actionPlan = goal ? (goal.topicReports || []).find((r: any) => r.type === 'action_plan') : null
@@ -959,7 +1012,6 @@ ipcMain.handle('launch-goal-tasks', async (_, goalId: string, taskIds?: string[]
   fs.writeFileSync(workspaceFile, workspaceContent, 'utf-8')
 
   const launched: string[] = []
-  const workingDir = process.env.USERPROFILE || '.'
   const env = { ...process.env }
   delete env.CLAUDECODE
 
@@ -969,7 +1021,11 @@ ipcMain.handle('launch-goal-tasks', async (_, goalId: string, taskIds?: string[]
   for (const task of tolaunch.slice(0, 10)) {
     const taskSlug = slugify(task.title).slice(0, 50)
     const agentResultFile = path.join(agentResultsDir, `${taskSlug}.md`)
+    // Feature 2: Get agent config based on task type
+    const agentConfig = getAgentConfig((task as any).taskType)
     const promptLines = [
+      agentConfig.preamble,
+      '',
       `[Goal Task: ${task.goalTitle}]`,
       '',
       `YOUR TASK: ${task.title}`,
@@ -986,13 +1042,18 @@ ipcMain.handle('launch-goal-tasks', async (_, goalId: string, taskIds?: string[]
       '   **Files created:** (list each file path)',
       '   **Summary:** (what you accomplished)',
       '5. Create real, usable files - code, templates, scripts, plans',
+      '',
+      'GIT WORKFLOW:',
+      `6. Your working directory is a git repo at: ${repoDir}`,
+      '7. Commit your work when done with a descriptive commit message',
+      `8. Use: cd /d "${repoDir}" && git add -A && git commit -m "your message"`,
     ].join('\n')
     const safePrompt = promptLines.replace(/%/g, '%%').replace(/"/g, "'")
     const batFile = path.join(tmpDir, `goal-${task.id}-${Date.now()}.bat`)
     fs.writeFileSync(batFile, [
       '@echo off',
-      `cd /d "${workingDir}"`,
-      `npx --yes @anthropic-ai/claude-code --dangerously-skip-permissions --allowedTools "Bash(*)" "Edit(*)" "Write(*)" "Read(*)" "Glob(*)" "Grep(*)" "WebFetch(*)" "WebSearch(*)" -- "${safePrompt}"`,
+      `cd /d "${repoDir}"`,
+      `npx --yes @anthropic-ai/claude-code --dangerously-skip-permissions --allowedTools ${agentConfig.allowedTools} -- "${safePrompt}"`,
     ].join('\r\n'))
     const child = spawn('cmd.exe', ['/c', 'start', '""', 'cmd', '/k', batFile], {
       detached: true,
@@ -1022,7 +1083,47 @@ ipcMain.handle('poll-goal-task-sessions', async (_, goalId: string) => {
     }
   }
 
+  // Feature 3: Auto-completion detection — check agent result files for completed status
+  const goals = getRoadmapGoals()
+  const goal = goals.find((g: any) => g.id === goalId)
+  if (goal) {
+    const goalSlug = slugify(goal.title)
+    const agentResultsDir = path.join(getMemoryDir(), 'goals', goalSlug, 'agent-results')
+    const activeTasks = getMasterPlanTasks(planDate).filter(t => t.status === 'launched' || t.status === 'running')
+    for (const task of activeTasks) {
+      const taskSlug = slugify(task.title).slice(0, 50)
+      const resultFile = path.join(agentResultsDir, `${taskSlug}.md`)
+      try {
+        if (fs.existsSync(resultFile)) {
+          const content = fs.readFileSync(resultFile, 'utf-8')
+          if (content.includes('**Status:** completed')) {
+            updateMasterPlanTask(task.id, { status: 'completed', completedAt: new Date().toISOString() })
+          }
+        }
+      } catch {}
+    }
+  }
+
   return getMasterPlanTasks(planDate)
+})
+
+// Feature 1: Git log for goal repo
+ipcMain.handle('get-goal-git-log', async (_, goalId: string) => {
+  const goals = getRoadmapGoals()
+  const goal = goals.find((g: any) => g.id === goalId)
+  if (!goal) return []
+  const goalSlug = slugify(goal.title)
+  const repoDir = path.join(getMemoryDir(), 'goals', goalSlug, 'repo')
+  if (!fs.existsSync(path.join(repoDir, '.git'))) return []
+  try {
+    const log = execSync('git log --oneline -20 --format="%h|%s|%ai|%an"', { cwd: repoDir, encoding: 'utf-8' })
+    return log.trim().split('\n').filter(Boolean).map(line => {
+      const [hash, message, date, author] = line.split('|')
+      return { hash, message, date, author }
+    })
+  } catch {
+    return []
+  }
 })
 
 ipcMain.handle('get-goal-workspace', async (_, goalId: string) => {
@@ -1066,6 +1167,64 @@ ipcMain.handle('get-goal-deliverables', async (_, goalId: string) => {
   } catch {
     return []
   }
+})
+
+// Feature 3: Extract learnings from goal agent results
+ipcMain.handle('extract-goal-learnings', async (_, goalId: string) => {
+  const goals = getRoadmapGoals()
+  const goal = goals.find((g: any) => g.id === goalId)
+  if (!goal) throw new Error('Goal not found')
+  const goalSlug = slugify(goal.title)
+  const goalDir = path.join(getMemoryDir(), 'goals', goalSlug)
+  const agentResultsDir = path.join(goalDir, 'agent-results')
+
+  // Read all agent result files
+  let combinedContent = ''
+  try {
+    const resultFiles = fs.readdirSync(agentResultsDir).filter(f => f.endsWith('.md'))
+    for (const rf of resultFiles) {
+      combinedContent += fs.readFileSync(path.join(agentResultsDir, rf), 'utf-8') + '\n\n'
+    }
+  } catch {}
+
+  // Read deliverables list
+  const deliverablesDir = path.join(goalDir, 'deliverables')
+  try {
+    const delivFiles = fs.readdirSync(deliverablesDir)
+    if (delivFiles.length > 0) {
+      combinedContent += '\nDeliverables created: ' + delivFiles.join(', ') + '\n'
+    }
+  } catch {}
+
+  if (!combinedContent.trim()) throw new Error('No agent results found to extract learnings from')
+
+  const memories = await extractMemoriesFromAgentResult(
+    combinedContent,
+    goalId,
+    goal.title,
+    [goal.category, ...(goal.tags || [])]
+  )
+
+  // Write lessons-learned file (append)
+  if (memories.length > 0) {
+    const lessonsFile = path.join(goalDir, '_lessons-learned.md')
+    const newEntries = memories.map(m =>
+      `### ${m.title}\n${m.content}\n*Topics: ${m.topics.join(', ')}*\n`
+    ).join('\n')
+    const header = `\n## Learnings — ${new Date().toISOString().split('T')[0]}\n\n`
+    const existing = fs.existsSync(lessonsFile) ? fs.readFileSync(lessonsFile, 'utf-8') : '# Lessons Learned\n'
+    fs.writeFileSync(lessonsFile, existing + header + newEntries, 'utf-8')
+  }
+
+  return { memoriesCreated: memories.length, memories }
+})
+
+// Feature 4: Smart Query
+ipcMain.handle('smart-query', async (_, query: string) => {
+  if (!mainWindow) throw new Error('No main window')
+  const queryId = Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
+  streamSmartQuery(mainWindow, queryId, query)
+  return { queryId }
 })
 
 // RAG / Embeddings

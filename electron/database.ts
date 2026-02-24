@@ -214,6 +214,7 @@ interface MasterPlanTask {
   launchedAt?: string
   completedAt?: string
   sessionId?: string
+  taskType?: 'research' | 'code' | 'writing' | 'planning' | 'communication'
   createdAt: string
   planDate: string
 }

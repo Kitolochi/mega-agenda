@@ -286,6 +286,8 @@ export interface MasterPlan {
   }
 }
 
+export type AgentTaskType = 'research' | 'code' | 'writing' | 'planning' | 'communication'
+
 export interface MasterPlanTask {
   id: string
   title: string
@@ -298,8 +300,16 @@ export interface MasterPlanTask {
   launchedAt?: string
   completedAt?: string
   sessionId?: string
+  taskType?: AgentTaskType
   createdAt: string
   planDate: string
+}
+
+export interface GitLogEntry {
+  hash: string
+  message: string
+  date: string
+  author: string
 }
 
 export interface ContextFile {
@@ -523,6 +533,14 @@ export interface ElectronAPI {
   pollGoalTaskSessions: (goalId: string) => Promise<MasterPlanTask[]>
   getGoalWorkspace: (goalId: string) => Promise<string | null>
   getGoalDeliverables: (goalId: string) => Promise<{ name: string; size: number; modifiedAt: string }[]>
+  getGoalGitLog: (goalId: string) => Promise<GitLogEntry[]>
+  extractGoalLearnings: (goalId: string) => Promise<{ memoriesCreated: number; memories: Memory[] }>
+
+  // Smart Query
+  smartQuery: (query: string) => Promise<{ queryId: string }>
+  onSmartQueryChunk: (callback: (data: { queryId: string; text: string }) => void) => () => void
+  onSmartQueryEnd: (callback: (data: { queryId: string }) => void) => () => void
+  onSmartQueryError: (callback: (data: { queryId: string; error: string }) => void) => () => void
 
   // Context Files
   getContextFiles: () => Promise<ContextFile[]>

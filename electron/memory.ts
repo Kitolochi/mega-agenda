@@ -281,6 +281,50 @@ export async function batchExtractMemories(): Promise<any[]> {
   return allCreated
 }
 
+// Extract memories from agent task results (Feature 3: Feedback/Learning Loop)
+export async function extractMemoriesFromAgentResult(
+  content: string,
+  goalId: string,
+  goalTitle: string,
+  goalTopics: string[]
+): Promise<any[]> {
+  const apiKey = getClaudeApiKey()
+  if (!apiKey) return []
+  if (content.length < 50) return []
+
+  const existingTopics = getMemoryTopics().map(t => t.name)
+  const allTopics = [...new Set([...existingTopics, ...goalTopics.filter(Boolean)])]
+  const allMemories = getAllMemories()
+
+  const extracted = await extractMemories(apiKey, 'ai_task', goalId, content, allTopics)
+  const created: any[] = []
+
+  for (const mem of extracted) {
+    // Merge goal topics into memory topics
+    const mergedTopics = [...new Set([...mem.topics, ...goalTopics.filter(Boolean).map(t => t.toLowerCase())])]
+    const enrichedMem = { ...mem, topics: mergedTopics }
+
+    if (!isDuplicateMemory(enrichedMem, allMemories)) {
+      const newMem = createMemory({
+        title: enrichedMem.title,
+        content: enrichedMem.content,
+        topics: enrichedMem.topics,
+        sourceType: 'ai_task',
+        sourceId: goalId,
+        sourcePreview: `Goal: ${goalTitle}`,
+        importance: enrichedMem.importance,
+        isPinned: false,
+        isArchived: false,
+        relatedMemoryIds: [],
+      })
+      created.push(newMem)
+      allMemories.push(newMem)
+    }
+  }
+
+  return created
+}
+
 // Phase 3: Relevance matching for chat context injection
 export function getRelevantMemories(
   userMessage: string,

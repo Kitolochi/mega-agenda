@@ -206,6 +206,26 @@ contextBridge.exposeInMainWorld('electronAPI', {
   pollGoalTaskSessions: (goalId: string) => ipcRenderer.invoke('poll-goal-task-sessions', goalId),
   getGoalWorkspace: (goalId: string) => ipcRenderer.invoke('get-goal-workspace', goalId),
   getGoalDeliverables: (goalId: string) => ipcRenderer.invoke('get-goal-deliverables', goalId),
+  getGoalGitLog: (goalId: string) => ipcRenderer.invoke('get-goal-git-log', goalId),
+  extractGoalLearnings: (goalId: string) => ipcRenderer.invoke('extract-goal-learnings', goalId),
+
+  // Smart Query
+  smartQuery: (query: string) => ipcRenderer.invoke('smart-query', query),
+  onSmartQueryChunk: (callback: (data: { queryId: string; text: string }) => void) => {
+    const handler = (_: any, data: { queryId: string; text: string }) => callback(data)
+    ipcRenderer.on('smart-query-chunk', handler)
+    return () => { ipcRenderer.removeListener('smart-query-chunk', handler) }
+  },
+  onSmartQueryEnd: (callback: (data: { queryId: string }) => void) => {
+    const handler = (_: any, data: any) => callback(data)
+    ipcRenderer.on('smart-query-end', handler)
+    return () => { ipcRenderer.removeListener('smart-query-end', handler) }
+  },
+  onSmartQueryError: (callback: (data: { queryId: string; error: string }) => void) => {
+    const handler = (_: any, data: any) => callback(data)
+    ipcRenderer.on('smart-query-error', handler)
+    return () => { ipcRenderer.removeListener('smart-query-error', handler) }
+  },
 
   // AI Tasks
   getAITasks: () => ipcRenderer.invoke('get-ai-tasks'),

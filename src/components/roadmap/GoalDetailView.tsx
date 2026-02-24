@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { RoadmapGoal, ContextFile, MasterPlanTask } from '../../types'
+import { RoadmapGoal, ContextFile, MasterPlanTask, GitLogEntry } from '../../types'
 import { CATEGORIES, catColor } from './constants'
 import GoalForm from './GoalForm'
 
@@ -34,6 +34,9 @@ export default function GoalDetailView({ goal, onUpdateGoal, onDeleteGoal, onRel
   const [workspace, setWorkspace] = useState<string | null>(null)
   const [workspaceExpanded, setWorkspaceExpanded] = useState(false)
   const [deliverables, setDeliverables] = useState<{ name: string; size: number; modifiedAt: string }[]>([])
+  const [gitLog, setGitLog] = useState<GitLogEntry[]>([])
+  const [extractingLearnings, setExtractingLearnings] = useState(false)
+  const [learningsResult, setLearningsResult] = useState<{ count: number } | null>(null)
 
   useEffect(() => {
     window.electronAPI.getContextFiles().then(setContextFiles).catch(() => {})
@@ -42,6 +45,7 @@ export default function GoalDetailView({ goal, onUpdateGoal, onDeleteGoal, onRel
     // Load workspace and deliverables
     window.electronAPI.getGoalWorkspace(goal.id).then(setWorkspace).catch(() => {})
     window.electronAPI.getGoalDeliverables(goal.id).then(setDeliverables).catch(() => {})
+    window.electronAPI.getGoalGitLog(goal.id).then(setGitLog).catch(() => {})
   }, [goal.id])
 
   // Auto-poll when tasks are launched/running
@@ -55,6 +59,7 @@ export default function GoalDetailView({ goal, onUpdateGoal, onDeleteGoal, onRel
           // Refresh workspace and deliverables
           window.electronAPI.getGoalWorkspace(goal.id).then(setWorkspace).catch(() => {})
           window.electronAPI.getGoalDeliverables(goal.id).then(setDeliverables).catch(() => {})
+          window.electronAPI.getGoalGitLog(goal.id).then(setGitLog).catch(() => {})
         } catch {}
       }, 10000)
     } else if (!hasActive && pollRef.current) {
@@ -113,6 +118,21 @@ export default function GoalDetailView({ goal, onUpdateGoal, onDeleteGoal, onRel
     })
   }
 
+  const handleExtractLearnings = async () => {
+    setExtractingLearnings(true)
+    setLearningsResult(null)
+    try {
+      const result = await window.electronAPI.extractGoalLearnings(goal.id)
+      setLearningsResult({ count: result.memoriesCreated })
+      setTimeout(() => setLearningsResult(null), 5000)
+    } catch (err: any) {
+      setError(err.message || 'Failed to extract learnings')
+    } finally {
+      setExtractingLearnings(false)
+    }
+  }
+
+  const completedTasks = tasks.filter(t => t.status === 'completed')
   const pendingTasks = tasks.filter(t => t.status === 'pending')
   const selectedPendingIds = [...selectedTasks].filter(id => pendingTasks.some(t => t.id === id))
 
@@ -484,6 +504,19 @@ export default function GoalDetailView({ goal, onUpdateGoal, onDeleteGoal, onRel
                               <span className={`px-1.5 py-0.5 rounded text-[8px] font-medium flex-shrink-0 ${statusColors[task.status] || statusColors.pending}`}>
                                 {task.status}
                               </span>
+                              {task.taskType && (
+                                <span className={`px-1.5 py-0.5 rounded text-[8px] font-medium flex-shrink-0 ${
+                                  {
+                                    research: 'text-cyan-400 bg-cyan-400/15',
+                                    code: 'text-emerald-400 bg-emerald-400/15',
+                                    writing: 'text-amber-400 bg-amber-400/15',
+                                    planning: 'text-violet-400 bg-violet-400/15',
+                                    communication: 'text-pink-400 bg-pink-400/15',
+                                  }[task.taskType] || 'text-muted bg-white/[0.06]'
+                                }`}>
+                                  {task.taskType}
+                                </span>
+                              )}
                             </div>
                             {task.phase && task.phase !== 'Unphased' && (
                               <span className="text-[9px] text-muted/60">{task.phase}</span>
@@ -556,6 +589,47 @@ export default function GoalDetailView({ goal, onUpdateGoal, onDeleteGoal, onRel
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Extract Learnings button (Feature 3) */}
+      {completedTasks.length > 0 && (
+        <div className="ml-7 flex items-center gap-2">
+          <button
+            onClick={handleExtractLearnings}
+            disabled={extractingLearnings}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent-purple/15 text-accent-purple text-[11px] font-medium hover:bg-accent-purple/25 transition-all disabled:opacity-50"
+          >
+            {extractingLearnings ? (
+              <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+            ) : (
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" /></svg>
+            )}
+            {extractingLearnings ? 'Extracting...' : 'Extract Learnings'}
+          </button>
+          {learningsResult !== null && (
+            <span className="text-[10px] text-accent-purple">
+              {learningsResult.count} {learningsResult.count === 1 ? 'memory' : 'memories'} created
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Git History (Feature 1) */}
+      {gitLog.length > 0 && (
+        <div className="ml-7">
+          <h4 className="text-[10px] text-muted uppercase tracking-wider px-1 mb-2">Git History</h4>
+          <div className="space-y-1 max-h-[200px] overflow-y-auto">
+            {gitLog.map((entry, i) => (
+              <div key={i} className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-surface-2/40">
+                <span className="text-[10px] font-mono text-accent-blue/70 flex-shrink-0">{entry.hash}</span>
+                <span className="text-[11px] text-white/75 flex-1 truncate">{entry.message}</span>
+                <span className="text-[9px] text-muted/50 flex-shrink-0">
+                  {entry.date ? new Date(entry.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
