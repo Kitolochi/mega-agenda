@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { RoadmapGoal, ContextFile } from '../../types'
+import { useState, useEffect, useRef } from 'react'
+import { RoadmapGoal, ContextFile, MasterPlanTask } from '../../types'
 import { CATEGORIES, catColor } from './constants'
 import GoalForm from './GoalForm'
 
@@ -23,9 +23,98 @@ export default function GoalDetailView({ goal, onUpdateGoal, onDeleteGoal, onRel
   const [contextFiles, setContextFiles] = useState<ContextFile[]>([])
   const [showContextPicker, setShowContextPicker] = useState(false)
 
+  // Task execution state
+  const [tasks, setTasks] = useState<MasterPlanTask[]>([])
+  const [extracting, setExtracting] = useState(false)
+  const [launching, setLaunching] = useState(false)
+  const [selectedTasks, setSelectedTasks] = useState<Set<string>>(new Set())
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Workspace state
+  const [workspace, setWorkspace] = useState<string | null>(null)
+  const [workspaceExpanded, setWorkspaceExpanded] = useState(false)
+  const [deliverables, setDeliverables] = useState<{ name: string; size: number; modifiedAt: string }[]>([])
+
   useEffect(() => {
     window.electronAPI.getContextFiles().then(setContextFiles).catch(() => {})
-  }, [])
+    // Load any existing tasks for this goal
+    window.electronAPI.getMasterPlanTasks(`goal-${goal.id}`).then(setTasks).catch(() => {})
+    // Load workspace and deliverables
+    window.electronAPI.getGoalWorkspace(goal.id).then(setWorkspace).catch(() => {})
+    window.electronAPI.getGoalDeliverables(goal.id).then(setDeliverables).catch(() => {})
+  }, [goal.id])
+
+  // Auto-poll when tasks are launched/running
+  useEffect(() => {
+    const hasActive = tasks.some(t => t.status === 'launched' || t.status === 'running')
+    if (hasActive && !pollRef.current) {
+      pollRef.current = setInterval(async () => {
+        try {
+          const updated = await window.electronAPI.pollGoalTaskSessions(goal.id)
+          setTasks(updated)
+          // Refresh workspace and deliverables
+          window.electronAPI.getGoalWorkspace(goal.id).then(setWorkspace).catch(() => {})
+          window.electronAPI.getGoalDeliverables(goal.id).then(setDeliverables).catch(() => {})
+        } catch {}
+      }, 10000)
+    } else if (!hasActive && pollRef.current) {
+      clearInterval(pollRef.current)
+      pollRef.current = null
+    }
+    return () => { if (pollRef.current) clearInterval(pollRef.current) }
+  }, [tasks, goal.id])
+
+  const handleExtractTasks = async () => {
+    setExtracting(true)
+    setError(null)
+    try {
+      const result = await window.electronAPI.extractGoalActionTasks(goal.id)
+      setTasks(result)
+      setSelectedTasks(new Set())
+    } catch (err: any) {
+      setError(err.message || 'Failed to extract tasks')
+    } finally {
+      setExtracting(false)
+    }
+  }
+
+  const handleLaunchTasks = async (taskIds?: string[]) => {
+    setLaunching(true)
+    setError(null)
+    try {
+      await window.electronAPI.launchGoalTasks(goal.id, taskIds)
+      const updated = await window.electronAPI.getMasterPlanTasks(`goal-${goal.id}`)
+      setTasks(updated)
+      setSelectedTasks(new Set())
+    } catch (err: any) {
+      setError(err.message || 'Failed to launch tasks')
+    } finally {
+      setLaunching(false)
+    }
+  }
+
+  const handleUpdateTaskStatus = async (taskId: string, status: MasterPlanTask['status']) => {
+    try {
+      await window.electronAPI.updateMasterPlanTask(taskId, {
+        status,
+        ...(status === 'completed' || status === 'failed' ? { completedAt: new Date().toISOString() } : {})
+      })
+      const updated = await window.electronAPI.getMasterPlanTasks(`goal-${goal.id}`)
+      setTasks(updated)
+    } catch {}
+  }
+
+  const toggleTaskSelection = (taskId: string) => {
+    setSelectedTasks(prev => {
+      const next = new Set(prev)
+      if (next.has(taskId)) next.delete(taskId)
+      else next.add(taskId)
+      return next
+    })
+  }
+
+  const pendingTasks = tasks.filter(t => t.status === 'pending')
+  const selectedPendingIds = [...selectedTasks].filter(id => pendingTasks.some(t => t.id === id))
 
   const color = catColor(goal.category)
   const allTopics = [
@@ -287,6 +376,184 @@ export default function GoalDetailView({ goal, onUpdateGoal, onDeleteGoal, onRel
           {expandedTopic === 'action-plan' && (
             <div className="border border-t-0 border-accent-emerald/10 rounded-b-lg bg-surface-1/40 px-4 py-3">
               <div className="text-xs text-white/80 whitespace-pre-wrap leading-relaxed">{actionPlan.report}</div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Task Extraction & Execution */}
+      {actionPlan && (
+        <div className="ml-7 space-y-3">
+          {/* Extract / Re-extract / Launch buttons */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleExtractTasks}
+              disabled={extracting}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent-orange/15 text-accent-orange text-[11px] font-medium hover:bg-accent-orange/25 transition-all disabled:opacity-50"
+            >
+              {extracting ? (
+                <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+              ) : (
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg>
+              )}
+              {extracting ? 'Extracting...' : tasks.length > 0 ? 'Re-extract Tasks' : 'Extract Tasks'}
+            </button>
+            {pendingTasks.length > 0 && (
+              <>
+                {selectedPendingIds.length > 0 ? (
+                  <button
+                    onClick={() => handleLaunchTasks(selectedPendingIds)}
+                    disabled={launching}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent-emerald/15 text-accent-emerald text-[11px] font-medium hover:bg-accent-emerald/25 transition-all disabled:opacity-50"
+                  >
+                    {launching ? (
+                      <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                    ) : (
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    )}
+                    Launch Selected ({selectedPendingIds.length})
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleLaunchTasks()}
+                    disabled={launching}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent-emerald/15 text-accent-emerald text-[11px] font-medium hover:bg-accent-emerald/25 transition-all disabled:opacity-50"
+                  >
+                    {launching ? (
+                      <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                    ) : (
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    )}
+                    Launch All ({Math.min(pendingTasks.length, 10)})
+                  </button>
+                )}
+              </>
+            )}
+            {tasks.some(t => t.status === 'launched' || t.status === 'running') && (
+              <span className="text-[10px] text-accent-blue flex items-center gap-1">
+                <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                Polling sessions...
+              </span>
+            )}
+          </div>
+
+          {/* Task list grouped by priority */}
+          {tasks.length > 0 && (
+            <div className="space-y-2">
+              {(['critical', 'high', 'medium', 'low'] as const).map(priority => {
+                const group = tasks.filter(t => t.priority === priority)
+                if (group.length === 0) return null
+                const priorityColors = {
+                  critical: 'text-red-400 bg-red-400/15',
+                  high: 'text-orange-400 bg-orange-400/15',
+                  medium: 'text-yellow-400 bg-yellow-400/15',
+                  low: 'text-blue-400 bg-blue-400/15',
+                }
+                const statusColors: Record<string, string> = {
+                  pending: 'text-muted bg-white/[0.06]',
+                  launched: 'text-accent-blue bg-accent-blue/15',
+                  running: 'text-accent-purple bg-accent-purple/15',
+                  completed: 'text-green-400 bg-green-400/15',
+                  failed: 'text-red-400 bg-red-400/15',
+                }
+                return (
+                  <div key={priority}>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase ${priorityColors[priority]}`}>
+                        {priority}
+                      </span>
+                      <span className="text-[10px] text-muted">{group.length} task{group.length !== 1 ? 's' : ''}</span>
+                    </div>
+                    <div className="space-y-1">
+                      {group.map(task => (
+                        <div
+                          key={task.id}
+                          className="flex items-start gap-2.5 px-3 py-2 rounded-lg border border-white/[0.06] bg-surface-2/40 hover:bg-surface-2/60 transition-all"
+                        >
+                          {task.status === 'pending' && (
+                            <input
+                              type="checkbox"
+                              checked={selectedTasks.has(task.id)}
+                              onChange={() => toggleTaskSelection(task.id)}
+                              className="mt-0.5 w-3 h-3 rounded bg-surface-3 border-white/10 accent-accent-blue flex-shrink-0"
+                            />
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-0.5">
+                              <span className="text-xs text-white/85 font-medium truncate">{task.title}</span>
+                              <span className={`px-1.5 py-0.5 rounded text-[8px] font-medium flex-shrink-0 ${statusColors[task.status] || statusColors.pending}`}>
+                                {task.status}
+                              </span>
+                            </div>
+                            {task.phase && task.phase !== 'Unphased' && (
+                              <span className="text-[9px] text-muted/60">{task.phase}</span>
+                            )}
+                            <p className="text-[10px] text-muted/70 line-clamp-2 mt-0.5">{task.description}</p>
+                          </div>
+                          {(task.status === 'launched' || task.status === 'running') && (
+                            <div className="flex gap-1 flex-shrink-0">
+                              <button
+                                onClick={() => handleUpdateTaskStatus(task.id, 'completed')}
+                                className="px-1.5 py-0.5 rounded text-[8px] font-medium bg-green-400/15 text-green-400 hover:bg-green-400/25 transition-all"
+                                title="Mark completed"
+                              >Done</button>
+                              <button
+                                onClick={() => handleUpdateTaskStatus(task.id, 'failed')}
+                                className="px-1.5 py-0.5 rounded text-[8px] font-medium bg-red-400/15 text-red-400 hover:bg-red-400/25 transition-all"
+                                title="Mark failed"
+                              >Fail</button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Agent Workspace */}
+      {workspace && (
+        <div className="ml-7">
+          <button
+            onClick={() => setWorkspaceExpanded(!workspaceExpanded)}
+            className="w-full text-left rounded-lg border border-accent-blue/20 bg-accent-blue/5 hover:bg-accent-blue/10 transition-all"
+          >
+            <div className="flex items-center gap-2 px-4 py-3">
+              <svg className="w-4 h-4 text-accent-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
+              <span className="text-sm font-medium text-accent-blue flex-1">Agent Workspace</span>
+              {deliverables.length > 0 && (
+                <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-accent-blue/15 text-accent-blue">
+                  {deliverables.length} file{deliverables.length !== 1 ? 's' : ''}
+                </span>
+              )}
+              <svg className={`w-3.5 h-3.5 text-muted transition-transform ${workspaceExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+            </div>
+          </button>
+          {workspaceExpanded && (
+            <div className="border border-t-0 border-accent-blue/10 rounded-b-lg bg-surface-1/40 px-4 py-3 space-y-3">
+              {deliverables.length > 0 && (
+                <div>
+                  <h5 className="text-[10px] text-muted uppercase tracking-wider mb-1.5">Deliverables</h5>
+                  <div className="space-y-1">
+                    {deliverables.map(file => (
+                      <div key={file.name} className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-surface-2/40">
+                        <svg className="w-3 h-3 text-accent-blue/60 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+                        <span className="text-[11px] text-white/80 flex-1 truncate">{file.name}</span>
+                        <span className="text-[9px] text-muted/50">
+                          {file.size < 1024 ? `${file.size} B` : `${(file.size / 1024).toFixed(1)} KB`}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="text-xs text-white/80 whitespace-pre-wrap leading-relaxed max-h-[400px] overflow-y-auto">
+                {workspace}
+              </div>
             </div>
           )}
         </div>

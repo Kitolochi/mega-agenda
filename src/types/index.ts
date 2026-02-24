@@ -517,6 +517,13 @@ export interface ElectronAPI {
   launchDailyPlan: (taskIds?: string[]) => Promise<{ launched: number; taskIds: string[] }>
   pollTaskSessions: () => Promise<MasterPlanTask[]>
 
+  // Goal Action Plan Execution
+  extractGoalActionTasks: (goalId: string) => Promise<MasterPlanTask[]>
+  launchGoalTasks: (goalId: string, taskIds?: string[]) => Promise<{ launched: number; taskIds: string[] }>
+  pollGoalTaskSessions: (goalId: string) => Promise<MasterPlanTask[]>
+  getGoalWorkspace: (goalId: string) => Promise<string | null>
+  getGoalDeliverables: (goalId: string) => Promise<{ name: string; size: number; modifiedAt: string }[]>
+
   // Context Files
   getContextFiles: () => Promise<ContextFile[]>
   saveContextFile: (name: string, content: string, folder?: string) => Promise<ContextFile>

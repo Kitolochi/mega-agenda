@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, shell, Notification, clipboard, dialog } from 'electron'
+import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, shell, Notification, clipboard, dialog, session } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import { spawn } from 'child_process'
@@ -12,7 +12,7 @@ import { streamChatMessage, abortChatStream, getMemoryCountForChat } from './cha
 import { getCliSessions, getCliSessionMessages, searchCliSessions } from './cli-logs'
 import { searchGitHubRepos } from './github'
 import { extractMemoriesFromChat, extractMemoriesFromCli, extractMemoriesFromJournal, batchExtractMemories } from './memory'
-import { researchTopicSmart, generateActionPlan, generateTopics, generateMasterPlan, findClaudeCli, generateContextQuestions, extractTasksFromPlan, saveMasterPlanFile } from './research'
+import { researchTopicSmart, generateActionPlan, generateTopics, generateMasterPlan, findClaudeCli, generateContextQuestions, extractTasksFromPlan, extractTasksFromActionPlan, saveMasterPlanFile } from './research'
 import { findSessionByPromptFragment } from './cli-logs'
 import { initEmbeddingModel, getEmbeddingStatus } from './embeddings'
 import { initWhisperModel, transcribeAudio, getWhisperStatus } from './whisper'
@@ -24,6 +24,11 @@ let tray: Tray | null = null
 
 const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL
 
+// Ensure mediaDevices API is available (requires secure context)
+if (VITE_DEV_SERVER_URL) {
+  app.commandLine.appendSwitch('unsafely-treat-insecure-origin-as-secure', VITE_DEV_SERVER_URL)
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 900,
@@ -32,6 +37,7 @@ function createWindow() {
     frame: false,
     resizable: true,
     skipTaskbar: false,
+    backgroundColor: '#0c0c0e',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -39,9 +45,14 @@ function createWindow() {
     },
   })
 
+  // Show the window once the page is ready (prevents white flash)
+  mainWindow.once('ready-to-show', () => {
+    mainWindow?.show()
+    mainWindow?.focus()
+  })
+
   if (VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(VITE_DEV_SERVER_URL)
-    // Don't auto-open DevTools
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
   }
@@ -864,6 +875,199 @@ ipcMain.handle('poll-task-sessions', async () => {
   return getMasterPlanTasks()
 })
 
+// Goal Action Plan Task Execution
+ipcMain.handle('extract-goal-action-tasks', async (_, goalId: string) => {
+  const goals = getRoadmapGoals()
+  const goal = goals.find(g => g.id === goalId)
+  if (!goal) throw new Error('Goal not found')
+
+  const actionPlan = (goal.topicReports || []).find(r => (r as any).type === 'action_plan')
+  if (!actionPlan) throw new Error('No action plan found. Generate one first with "Get Best Steps".')
+
+  const claudeApiKey = getClaudeApiKey()
+  if (!claudeApiKey) throw new Error('Claude API key not configured. Set it in Settings.')
+
+  const planDate = `goal-${goalId}`
+  clearMasterPlanTasks(planDate)
+
+  const extracted = await extractTasksFromActionPlan(actionPlan.report, goal, claudeApiKey)
+  const created = []
+  for (const t of extracted) {
+    created.push(createMasterPlanTask({
+      title: t.title,
+      description: t.description,
+      priority: t.priority,
+      goalId: t.goalId,
+      goalTitle: t.goalTitle,
+      phase: t.phase,
+      status: 'pending',
+      planDate,
+    }))
+  }
+  return created
+})
+
+ipcMain.handle('launch-goal-tasks', async (_, goalId: string, taskIds?: string[]) => {
+  const planDate = `goal-${goalId}`
+  const allTasks = getMasterPlanTasks(planDate)
+  const tolaunch = taskIds
+    ? allTasks.filter(t => taskIds.includes(t.id) && t.status === 'pending')
+    : allTasks.filter(t => t.status === 'pending').slice(0, 10)
+
+  // Look up goal for workspace context
+  const goals = getRoadmapGoals()
+  const goal = goals.find((g: any) => g.id === goalId)
+  const goalSlug = goal ? slugify(goal.title) : `goal-${goalId}`
+  const goalDir = path.join(getMemoryDir(), 'goals', goalSlug)
+  const deliverablesDir = path.join(goalDir, 'deliverables')
+  const workspaceFile = path.join(goalDir, '_workspace.md')
+
+  // Create deliverables and agent-results directories
+  fs.mkdirSync(deliverablesDir, { recursive: true })
+  const agentResultsDir = path.join(goalDir, 'agent-results')
+  fs.mkdirSync(agentResultsDir, { recursive: true })
+
+  // Build workspace file (read-only context for agents)
+  const actionPlan = goal ? (goal.topicReports || []).find((r: any) => r.type === 'action_plan') : null
+  const actionPlanSummary = actionPlan ? actionPlan.report.slice(0, 2000) : '(No action plan available)'
+  const taskTable = tolaunch.map((t, i) =>
+    `| ${i + 1} | ${t.title} | ${t.priority} |`
+  ).join('\n')
+
+  const workspaceContent = [
+    `# Workspace: ${goal?.title || goalId}`,
+    goal?.description ? `> ${goal.description}` : '',
+    '',
+    `**Category:** ${goal?.category || 'N/A'} | **Priority:** ${goal?.priority || 'N/A'}`,
+    '',
+    '## Action Plan Summary',
+    actionPlanSummary,
+    '',
+    '## Task Assignments',
+    '| # | Task | Priority |',
+    '|---|------|----------|',
+    taskTable,
+    '',
+    '## Deliverables Directory',
+    `Save files to: ${deliverablesDir}`,
+    '',
+    '## Agent Results Directory',
+    `Each agent writes its own result file to: ${agentResultsDir}`,
+    '',
+  ].join('\n')
+
+  fs.writeFileSync(workspaceFile, workspaceContent, 'utf-8')
+
+  const launched: string[] = []
+  const workingDir = process.env.USERPROFILE || '.'
+  const env = { ...process.env }
+  delete env.CLAUDECODE
+
+  const tmpDir = path.join(app.getPath('temp'), 'mega-agenda')
+  fs.mkdirSync(tmpDir, { recursive: true })
+
+  for (const task of tolaunch.slice(0, 10)) {
+    const taskSlug = slugify(task.title).slice(0, 50)
+    const agentResultFile = path.join(agentResultsDir, `${taskSlug}.md`)
+    const promptLines = [
+      `[Goal Task: ${task.goalTitle}]`,
+      '',
+      `YOUR TASK: ${task.title}`,
+      task.description,
+      '',
+      'WORKSPACE COORDINATION:',
+      `1. Read the shared workspace for context: ${workspaceFile}`,
+      `2. Check other agents' results in: ${agentResultsDir}`,
+      `3. Save files you create to: ${deliverablesDir}`,
+      `4. When done, write your result summary to: ${agentResultFile}`,
+      '   Use this format:',
+      `   # Task: ${task.title}`,
+      '   **Status:** completed',
+      '   **Files created:** (list each file path)',
+      '   **Summary:** (what you accomplished)',
+      '5. Create real, usable files - code, templates, scripts, plans',
+    ].join('\n')
+    const safePrompt = promptLines.replace(/%/g, '%%').replace(/"/g, "'")
+    const batFile = path.join(tmpDir, `goal-${task.id}-${Date.now()}.bat`)
+    fs.writeFileSync(batFile, [
+      '@echo off',
+      `cd /d "${workingDir}"`,
+      `npx --yes @anthropic-ai/claude-code --dangerously-skip-permissions --allowedTools "Bash(*)" "Edit(*)" "Write(*)" "Read(*)" "Glob(*)" "Grep(*)" "WebFetch(*)" "WebSearch(*)" -- "${safePrompt}"`,
+    ].join('\r\n'))
+    const child = spawn('cmd.exe', ['/c', 'start', '""', 'cmd', '/k', batFile], {
+      detached: true,
+      stdio: 'ignore',
+      env,
+    })
+    child.unref()
+
+    updateMasterPlanTask(task.id, { status: 'launched', launchedAt: new Date().toISOString() })
+    launched.push(task.id)
+  }
+
+  return { launched: launched.length, taskIds: launched }
+})
+
+ipcMain.handle('poll-goal-task-sessions', async (_, goalId: string) => {
+  const planDate = `goal-${goalId}`
+  const tasks = getMasterPlanTasks(planDate)
+  const needsMatch = tasks.filter(t => (t.status === 'launched' || t.status === 'running') && !t.sessionId)
+
+  for (const task of needsMatch) {
+    if (!task.launchedAt) continue
+    const fragment = task.title.slice(0, 40)
+    const sessionId = await findSessionByPromptFragment(fragment, task.launchedAt)
+    if (sessionId) {
+      updateMasterPlanTask(task.id, { sessionId, status: 'running' })
+    }
+  }
+
+  return getMasterPlanTasks(planDate)
+})
+
+ipcMain.handle('get-goal-workspace', async (_, goalId: string) => {
+  const goals = getRoadmapGoals()
+  const goal = goals.find((g: any) => g.id === goalId)
+  if (!goal) return null
+  const goalSlug = slugify(goal.title)
+  const goalDir = path.join(getMemoryDir(), 'goals', goalSlug)
+  const workspaceFile = path.join(goalDir, '_workspace.md')
+  try {
+    let content = fs.readFileSync(workspaceFile, 'utf-8')
+    // Merge per-agent result files into the workspace view
+    const agentResultsDir = path.join(goalDir, 'agent-results')
+    try {
+      const resultFiles = fs.readdirSync(agentResultsDir).filter(f => f.endsWith('.md'))
+      if (resultFiles.length > 0) {
+        content += '\n## Agent Results\n\n'
+        for (const rf of resultFiles) {
+          content += fs.readFileSync(path.join(agentResultsDir, rf), 'utf-8') + '\n\n---\n\n'
+        }
+      }
+    } catch {}
+    return content
+  } catch {
+    return null
+  }
+})
+
+ipcMain.handle('get-goal-deliverables', async (_, goalId: string) => {
+  const goals = getRoadmapGoals()
+  const goal = goals.find((g: any) => g.id === goalId)
+  if (!goal) return []
+  const goalSlug = slugify(goal.title)
+  const deliverablesDir = path.join(getMemoryDir(), 'goals', goalSlug, 'deliverables')
+  try {
+    const entries = fs.readdirSync(deliverablesDir, { withFileTypes: true })
+    return entries.filter(e => e.isFile()).map(e => {
+      const stat = fs.statSync(path.join(deliverablesDir, e.name))
+      return { name: e.name, size: stat.size, modifiedAt: stat.mtime.toISOString() }
+    })
+  } catch {
+    return []
+  }
+})
+
 // RAG / Embeddings
 ipcMain.handle('get-embedding-status', () => {
   return getEmbeddingStatus()
@@ -1427,6 +1631,11 @@ if (!gotTheLock) {
 }
 
 app.whenReady().then(() => {
+  // Auto-grant microphone permission for voice commands
+  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+    callback(['media', 'clipboard-read', 'notifications'].includes(permission))
+  })
+
   initDatabase()
   createWindow()
   createTray()

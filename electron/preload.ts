@@ -200,6 +200,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   launchDailyPlan: (taskIds?: string[]) => ipcRenderer.invoke('launch-daily-plan', taskIds),
   pollTaskSessions: () => ipcRenderer.invoke('poll-task-sessions'),
 
+  // Goal Action Plan Execution
+  extractGoalActionTasks: (goalId: string) => ipcRenderer.invoke('extract-goal-action-tasks', goalId),
+  launchGoalTasks: (goalId: string, taskIds?: string[]) => ipcRenderer.invoke('launch-goal-tasks', goalId, taskIds),
+  pollGoalTaskSessions: (goalId: string) => ipcRenderer.invoke('poll-goal-task-sessions', goalId),
+  getGoalWorkspace: (goalId: string) => ipcRenderer.invoke('get-goal-workspace', goalId),
+  getGoalDeliverables: (goalId: string) => ipcRenderer.invoke('get-goal-deliverables', goalId),
+
   // AI Tasks
   getAITasks: () => ipcRenderer.invoke('get-ai-tasks'),
   createAITask: (task: { title: string; description: string; priority: 'low' | 'medium' | 'high'; tags: string[] }) =>
