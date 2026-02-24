@@ -107,8 +107,8 @@ Built with Electron + React + TypeScript + Tailwind CSS + Claude AI.
 - Extract memories from sessions
 - Quick-link from AI tasks to related sessions
 
-### Voice Commands
-- Speech recognition via Web Speech API (press V or mic button)
+### Voice Commands (Experimental)
+- Currently being reworked — migrating from Web Speech API (not supported in Electron 28) to local Whisper transcription
 - Local fallback parsing for navigation and basic commands
 - AI parsing via Claude for complex commands
 - Visual feedback: pulsing indicator, transcript banner, success/error states
@@ -167,7 +167,7 @@ Built with Electron + React + TypeScript + Tailwind CSS + Claude AI.
 - **AI:** Claude API (Sonnet 4.5 / Haiku 4.5 / Opus 4.6) for chat, research, summaries, memory extraction, and master plan generation
 - **Embeddings:** @xenova/transformers with MiniLM-L6-v2 (384-dim, ~22MB, cached locally)
 - **Terminal:** node-pty + xterm.js
-- **Speech:** Web Speech API (built into Chromium/Electron)
+- **Speech:** Local Whisper via @xenova/transformers (migrating from Web Speech API, which is unsupported in Electron 28)
 - **Twitter:** Twitter API v2 (OAuth 1.0a for posting, bearer token for reading)
 
 ### Data Storage
