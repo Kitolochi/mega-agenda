@@ -748,6 +748,77 @@ Order by priority (critical first), then by phase order. Focus on the Next 7-Day
   }
 }
 
+// --- Extract Tasks from Action Plan (single goal) ---
+
+export async function extractTasksFromActionPlan(
+  actionPlanText: string,
+  goal: RoadmapGoal,
+  claudeApiKey: string
+): Promise<{ title: string; description: string; priority: 'critical' | 'high' | 'medium' | 'low'; goalId: string; goalTitle: string; phase: string }[]> {
+  const prompt = `Extract 10-30 actionable tasks from this action plan for the goal "${goal.title}". Each task should be a concrete, executable action that could be given to an AI coding assistant or done by the user.
+
+Action Plan:
+${actionPlanText.slice(0, 12000)}
+
+IMPORTANT: Respond with ONLY a JSON array, no other text:
+[{
+  "title": "Short actionable title (max 80 chars)",
+  "description": "Detailed description of what to do, including specific steps",
+  "priority": "critical|high|medium|low",
+  "phase": "Phase or grouping from the plan (e.g. This Week, This Month, etc.)"
+}, ...]
+
+Order by priority (critical first), then by phase order. Focus on the most immediate and impactful actions first.`
+
+  const callClaudeLong = (apiKey: string, p: string): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const body = JSON.stringify({
+        model: 'claude-sonnet-4-5-20250929',
+        max_tokens: 8000,
+        messages: [{ role: 'user', content: p }]
+      })
+      const req = https.request({
+        hostname: 'api.anthropic.com',
+        path: '/v1/messages',
+        method: 'POST',
+        headers: { 'x-api-key': apiKey, 'content-type': 'application/json', 'anthropic-version': '2023-06-01' }
+      }, (res) => {
+        let data = ''
+        res.on('data', (chunk: string) => { data += chunk })
+        res.on('end', () => {
+          try {
+            const parsed = JSON.parse(data)
+            if (res.statusCode && res.statusCode >= 400) reject(new Error(parsed.error?.message || `API error ${res.statusCode}`))
+            else resolve(parsed.content?.[0]?.text || '')
+          } catch { reject(new Error('Failed to parse API response')) }
+        })
+      })
+      req.on('error', reject)
+      req.setTimeout(180000, () => { req.destroy(); reject(new Error('Request timeout')) })
+      req.write(body)
+      req.end()
+    })
+  }
+
+  const response = await withRetry(() => callClaudeLong(claudeApiKey, prompt))
+
+  try {
+    const jsonMatch = response.match(/\[[\s\S]*\]/)
+    if (!jsonMatch) throw new Error('No JSON found')
+    const tasks = JSON.parse(jsonMatch[0])
+    return tasks.map((t: any) => ({
+      title: String(t.title || '').slice(0, 120),
+      description: String(t.description || ''),
+      priority: ['critical', 'high', 'medium', 'low'].includes(t.priority) ? t.priority : 'medium',
+      goalId: goal.id,
+      goalTitle: goal.title,
+      phase: String(t.phase || 'Unphased')
+    }))
+  } catch {
+    throw new Error('Failed to parse extracted tasks from AI response')
+  }
+}
+
 // --- Save Master Plan File ---
 
 export function saveMasterPlanFile(content: string, date: string): string {
