@@ -207,6 +207,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getGoalWorkspace: (goalId: string) => ipcRenderer.invoke('get-goal-workspace', goalId),
   getGoalDeliverables: (goalId: string) => ipcRenderer.invoke('get-goal-deliverables', goalId),
   getGoalGitLog: (goalId: string) => ipcRenderer.invoke('get-goal-git-log', goalId),
+  getGoalRepoInfo: (goalId: string) => ipcRenderer.invoke('get-goal-repo-info', goalId),
   extractGoalLearnings: (goalId: string) => ipcRenderer.invoke('extract-goal-learnings', goalId),
 
   // Smart Query

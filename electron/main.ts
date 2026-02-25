@@ -1031,22 +1031,27 @@ ipcMain.handle('launch-goal-tasks', async (_, goalId: string, taskIds?: string[]
       `YOUR TASK: ${task.title}`,
       task.description,
       '',
+      'BEFORE YOU START:',
+      `1. Run "git log --oneline -10" to see what previous agents have already committed`,
+      `2. Run "ls" or "dir" to see what files already exist in the repo`,
+      '3. Read any existing files relevant to your task so you BUILD ON prior work, not duplicate it',
+      '',
       'WORKSPACE COORDINATION:',
-      `1. Read the shared workspace for context: ${workspaceFile}`,
-      `2. Check other agents' results in: ${agentResultsDir}`,
-      `3. Save files you create to: ${deliverablesDir}`,
-      `4. When done, write your result summary to: ${agentResultFile}`,
+      `4. Read the shared workspace for context: ${workspaceFile}`,
+      `5. Check other agents' results in: ${agentResultsDir}`,
+      `6. Save files you create to: ${deliverablesDir}`,
+      `7. When done, write your result summary to: ${agentResultFile}`,
       '   Use this format:',
       `   # Task: ${task.title}`,
       '   **Status:** completed',
       '   **Files created:** (list each file path)',
       '   **Summary:** (what you accomplished)',
-      '5. Create real, usable files - code, templates, scripts, plans',
+      '8. Create real, usable files - code, templates, scripts, plans',
       '',
       'GIT WORKFLOW:',
-      `6. Your working directory is a git repo at: ${repoDir}`,
-      '7. Commit your work when done with a descriptive commit message',
-      `8. Use: cd /d "${repoDir}" && git add -A && git commit -m "your message"`,
+      `Your working directory is a git repo at: ${repoDir}`,
+      'Commit your work with a descriptive commit message when done.',
+      `Use: git add -A && git commit -m "your message"`,
     ].join('\n')
     const safePrompt = promptLines.replace(/%/g, '%%').replace(/"/g, "'")
     const batFile = path.join(tmpDir, `goal-${task.id}-${Date.now()}.bat`)
@@ -1123,6 +1128,42 @@ ipcMain.handle('get-goal-git-log', async (_, goalId: string) => {
     })
   } catch {
     return []
+  }
+})
+
+ipcMain.handle('get-goal-repo-info', async (_, goalId: string) => {
+  const goals = getRoadmapGoals()
+  const goal = goals.find((g: any) => g.id === goalId)
+  if (!goal) return null
+  const goalSlug = slugify(goal.title)
+  const repoDir = path.join(getMemoryDir(), 'goals', goalSlug, 'repo')
+  if (!fs.existsSync(path.join(repoDir, '.git'))) return null
+  try {
+    // Count commits
+    let commitCount = 0
+    try {
+      const countOut = execSync('git rev-list --count HEAD', { cwd: repoDir, encoding: 'utf-8' }).trim()
+      commitCount = parseInt(countOut, 10) || 0
+    } catch {}
+    // Count tracked files
+    let fileCount = 0
+    try {
+      const filesOut = execSync('git ls-files', { cwd: repoDir, encoding: 'utf-8' }).trim()
+      fileCount = filesOut ? filesOut.split('\n').length : 0
+    } catch {}
+    // Get repo size (rough)
+    let sizeBytes = 0
+    try {
+      const entries = fs.readdirSync(repoDir, { withFileTypes: true })
+      for (const e of entries) {
+        if (e.isFile()) {
+          sizeBytes += fs.statSync(path.join(repoDir, e.name)).size
+        }
+      }
+    } catch {}
+    return { path: repoDir, commitCount, fileCount, sizeBytes }
+  } catch {
+    return null
   }
 })
 

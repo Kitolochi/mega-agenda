@@ -35,6 +35,8 @@ export default function GoalDetailView({ goal, onUpdateGoal, onDeleteGoal, onRel
   const [workspaceExpanded, setWorkspaceExpanded] = useState(false)
   const [deliverables, setDeliverables] = useState<{ name: string; size: number; modifiedAt: string }[]>([])
   const [gitLog, setGitLog] = useState<GitLogEntry[]>([])
+  const [repoInfo, setRepoInfo] = useState<{ path: string; commitCount: number; fileCount: number; sizeBytes: number } | null>(null)
+  const [repoExpanded, setRepoExpanded] = useState(false)
   const [extractingLearnings, setExtractingLearnings] = useState(false)
   const [learningsResult, setLearningsResult] = useState<{ count: number } | null>(null)
 
@@ -46,6 +48,7 @@ export default function GoalDetailView({ goal, onUpdateGoal, onDeleteGoal, onRel
     window.electronAPI.getGoalWorkspace(goal.id).then(setWorkspace).catch(() => {})
     window.electronAPI.getGoalDeliverables(goal.id).then(setDeliverables).catch(() => {})
     window.electronAPI.getGoalGitLog(goal.id).then(setGitLog).catch(() => {})
+    window.electronAPI.getGoalRepoInfo(goal.id).then(setRepoInfo).catch(() => {})
   }, [goal.id])
 
   // Auto-poll when tasks are launched/running
@@ -60,6 +63,7 @@ export default function GoalDetailView({ goal, onUpdateGoal, onDeleteGoal, onRel
           window.electronAPI.getGoalWorkspace(goal.id).then(setWorkspace).catch(() => {})
           window.electronAPI.getGoalDeliverables(goal.id).then(setDeliverables).catch(() => {})
           window.electronAPI.getGoalGitLog(goal.id).then(setGitLog).catch(() => {})
+          window.electronAPI.getGoalRepoInfo(goal.id).then(setRepoInfo).catch(() => {})
         } catch {}
       }, 10000)
     } else if (!hasActive && pollRef.current) {
@@ -615,21 +619,60 @@ export default function GoalDetailView({ goal, onUpdateGoal, onDeleteGoal, onRel
         </div>
       )}
 
-      {/* Git History (Feature 1) */}
-      {gitLog.length > 0 && (
+      {/* Goal Repository */}
+      {repoInfo && (
         <div className="ml-7">
-          <h4 className="text-[10px] text-muted uppercase tracking-wider px-1 mb-2">Git History</h4>
-          <div className="space-y-1 max-h-[200px] overflow-y-auto">
-            {gitLog.map((entry, i) => (
-              <div key={i} className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-surface-2/40">
-                <span className="text-[10px] font-mono text-accent-blue/70 flex-shrink-0">{entry.hash}</span>
-                <span className="text-[11px] text-white/75 flex-1 truncate">{entry.message}</span>
-                <span className="text-[9px] text-muted/50 flex-shrink-0">
-                  {entry.date ? new Date(entry.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
-                </span>
+          <button
+            onClick={() => setRepoExpanded(!repoExpanded)}
+            className="w-full text-left rounded-lg border border-accent-emerald/20 bg-accent-emerald/5 hover:bg-accent-emerald/10 transition-all"
+          >
+            <div className="flex items-center gap-2 px-4 py-3">
+              <svg className="w-4 h-4 text-accent-emerald" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>
+              <span className="text-sm font-medium text-accent-emerald flex-1">Goal Repository</span>
+              <div className="flex items-center gap-3">
+                {repoInfo.commitCount > 1 && (
+                  <span className="text-[9px] text-muted/60">{repoInfo.commitCount - 1} commit{repoInfo.commitCount - 1 !== 1 ? 's' : ''}</span>
+                )}
+                {repoInfo.fileCount > 0 && (
+                  <span className="text-[9px] text-muted/60">{repoInfo.fileCount} file{repoInfo.fileCount !== 1 ? 's' : ''}</span>
+                )}
               </div>
-            ))}
-          </div>
+              <svg className={`w-3.5 h-3.5 text-muted transition-transform ${repoExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+            </div>
+          </button>
+          {repoExpanded && (
+            <div className="border border-t-0 border-accent-emerald/10 rounded-b-lg bg-surface-1/40 px-4 py-3 space-y-3">
+              {/* Repo path */}
+              <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-surface-2/30">
+                <svg className="w-3 h-3 text-muted/50 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>
+                <code className="text-[10px] text-muted/70 font-mono truncate flex-1">{repoInfo.path}</code>
+                {repoInfo.sizeBytes > 0 && (
+                  <span className="text-[9px] text-muted/40 flex-shrink-0">
+                    {repoInfo.sizeBytes < 1024 ? `${repoInfo.sizeBytes} B` : repoInfo.sizeBytes < 1048576 ? `${(repoInfo.sizeBytes / 1024).toFixed(1)} KB` : `${(repoInfo.sizeBytes / 1048576).toFixed(1)} MB`}
+                  </span>
+                )}
+              </div>
+              {/* Commit log */}
+              {gitLog.length > 0 ? (
+                <div>
+                  <h5 className="text-[10px] text-muted uppercase tracking-wider mb-1.5">Commits</h5>
+                  <div className="space-y-1 max-h-[200px] overflow-y-auto">
+                    {gitLog.map((entry, i) => (
+                      <div key={i} className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-surface-2/40">
+                        <code className="text-[9px] font-mono text-accent-emerald/70 flex-shrink-0">{entry.hash}</code>
+                        <span className="text-[11px] text-white/75 flex-1 truncate">{entry.message}</span>
+                        <span className="text-[9px] text-muted/50 flex-shrink-0">
+                          {entry.date ? new Date(entry.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <p className="text-[10px] text-muted/50 text-center py-2">No agent commits yet. Launch tasks to start building.</p>
+              )}
+            </div>
+          )}
         </div>
       )}
 

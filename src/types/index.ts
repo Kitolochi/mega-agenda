@@ -534,6 +534,7 @@ export interface ElectronAPI {
   getGoalWorkspace: (goalId: string) => Promise<string | null>
   getGoalDeliverables: (goalId: string) => Promise<{ name: string; size: number; modifiedAt: string }[]>
   getGoalGitLog: (goalId: string) => Promise<GitLogEntry[]>
+  getGoalRepoInfo: (goalId: string) => Promise<{ path: string; commitCount: number; fileCount: number; sizeBytes: number } | null>
   extractGoalLearnings: (goalId: string) => Promise<{ memoriesCreated: number; memories: Memory[] }>
 
   // Smart Query
