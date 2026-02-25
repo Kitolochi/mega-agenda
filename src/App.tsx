@@ -17,6 +17,7 @@ import AITasksBoard from './components/AITasksBoard'
 import MemoryTab from './components/MemoryTab'
 import MemoriesTab from './components/MemoriesTab'
 import RoadmapTab from './components/RoadmapTab'
+import WelcomeModal from './components/WelcomeModal'
 
 type Tab = 'dashboard' | 'tasks' | 'list' | 'notes' | 'feed' | 'social' | 'chat' | 'code' | 'ai-tasks' | 'memory' | 'memories' | 'roadmap' | 'settings'
 
@@ -70,6 +71,7 @@ function App() {
   const [activeTab, setActiveTab] = useState<Tab>('dashboard')
   const [expandedGroup, setExpandedGroup] = useState<string | null>('daily')
   const voiceListeningRef = useRef(false)
+  const [showWelcome, setShowWelcome] = useState(false)
 
   // Auto-expand the group containing the active tab
   useEffect(() => {
@@ -94,6 +96,9 @@ function App() {
 
   useEffect(() => {
     loadData()
+    window.electronAPI.isWelcomeDismissed().then(dismissed => {
+      if (!dismissed) setShowWelcome(true)
+    }).catch(() => {})
 
     const cleanup = window.electronAPI.onOpenAddModal(() => {
       setShowAddModal(true)
@@ -387,6 +392,14 @@ function App() {
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
           </svg>
         </button>
+      )}
+
+      {/* Welcome Modal */}
+      {showWelcome && (
+        <WelcomeModal onDismiss={() => {
+          setShowWelcome(false)
+          window.electronAPI.dismissWelcome()
+        }} />
       )}
 
       {/* Add Task Modal */}

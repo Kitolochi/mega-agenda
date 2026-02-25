@@ -543,6 +543,10 @@ export interface ElectronAPI {
   onSmartQueryEnd: (callback: (data: { queryId: string }) => void) => () => void
   onSmartQueryError: (callback: (data: { queryId: string; error: string }) => void) => () => void
 
+  // Welcome modal
+  isWelcomeDismissed: () => Promise<boolean>
+  dismissWelcome: () => Promise<void>
+
   // Context Files
   getContextFiles: () => Promise<ContextFile[]>
   saveContextFile: (name: string, content: string, folder?: string) => Promise<ContextFile>

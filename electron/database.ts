@@ -272,6 +272,7 @@ interface Database {
   memories: Memory[]
   memoryTopics: MemoryTopic[]
   memorySettings: MemorySettings
+  welcomeDismissed: boolean
 }
 
 let db: Database
@@ -544,6 +545,12 @@ export function initDatabase(): Database {
       tasksCompletedThisWeek: 0,
       weekStartDate: getWeekStart()
     }
+    saveDatabase()
+  }
+
+  // Initialize welcomeDismissed if missing
+  if ((db as any).welcomeDismissed === undefined) {
+    db.welcomeDismissed = false
     saveDatabase()
   }
 
@@ -1379,6 +1386,16 @@ export function saveMemorySettings(updates: Partial<MemorySettings>): MemorySett
   if (updates.tokenBudget !== undefined) db.memorySettings.tokenBudget = updates.tokenBudget
   saveDatabase()
   return db.memorySettings
+}
+
+// Welcome modal
+export function isWelcomeDismissed(): boolean {
+  return db.welcomeDismissed || false
+}
+
+export function dismissWelcome(): void {
+  db.welcomeDismissed = true
+  saveDatabase()
 }
 
 function updateTopicCounts(): void {

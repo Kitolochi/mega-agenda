@@ -228,6 +228,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => { ipcRenderer.removeListener('smart-query-error', handler) }
   },
 
+  // Welcome modal
+  isWelcomeDismissed: () => ipcRenderer.invoke('is-welcome-dismissed'),
+  dismissWelcome: () => ipcRenderer.invoke('dismiss-welcome'),
+
   // AI Tasks
   getAITasks: () => ipcRenderer.invoke('get-ai-tasks'),
   createAITask: (task: { title: string; description: string; priority: 'low' | 'medium' | 'high'; tags: string[] }) =>
