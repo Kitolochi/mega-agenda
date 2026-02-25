@@ -1,6 +1,13 @@
 import { useState, useEffect, useCallback } from 'react'
 import { CLISession, CLISessionMessage } from '../types'
 
+interface SessionTaskInfo {
+  goalTitle: string
+  taskTitle: string
+  taskType?: string
+  status: string
+}
+
 export default function CLIHistoryView() {
   const [sessions, setSessions] = useState<CLISession[]>([])
   const [loading, setLoading] = useState(true)
@@ -12,12 +19,30 @@ export default function CLIHistoryView() {
   const [messagesOffset, setMessagesOffset] = useState(0)
   const [hasMoreMessages, setHasMoreMessages] = useState(false)
   const [loadingMessages, setLoadingMessages] = useState(false)
+  const [sessionTaskMap, setSessionTaskMap] = useState<Map<string, SessionTaskInfo>>(new Map())
 
   const loadSessions = useCallback(async () => {
     setLoading(true)
     try {
-      const s = await window.electronAPI.getCliSessions()
+      const [s, allTasks] = await Promise.all([
+        window.electronAPI.getCliSessions(),
+        window.electronAPI.getMasterPlanTasks(),
+      ])
       setSessions(s)
+
+      // Build sessionId → task info lookup
+      const map = new Map<string, SessionTaskInfo>()
+      for (const task of allTasks) {
+        if (task.sessionId) {
+          map.set(task.sessionId, {
+            goalTitle: task.goalTitle,
+            taskTitle: task.title,
+            taskType: task.taskType,
+            status: task.status,
+          })
+        }
+      }
+      setSessionTaskMap(map)
     } catch {
       setSessions([])
     }
@@ -156,18 +181,52 @@ export default function CLIHistoryView() {
             <p className="text-[10px] text-muted/40 mt-1">Sessions from ~/.claude/projects/ will appear here</p>
           </div>
         ) : (
-          sessions.map(s => (
+          sessions.map(s => {
+            const taskInfo = sessionTaskMap.get(s.sessionId)
+            const taskTypeColors: Record<string, string> = {
+              research: 'text-cyan-400 bg-cyan-400/15',
+              code: 'text-emerald-400 bg-emerald-400/15',
+              writing: 'text-amber-400 bg-amber-400/15',
+              planning: 'text-violet-400 bg-violet-400/15',
+              communication: 'text-pink-400 bg-pink-400/15',
+            }
+            const statusColors: Record<string, string> = {
+              completed: 'text-green-400 bg-green-400/15',
+              running: 'text-accent-purple bg-accent-purple/15',
+              launched: 'text-accent-blue bg-accent-blue/15',
+              failed: 'text-red-400 bg-red-400/15',
+              pending: 'text-muted bg-white/[0.06]',
+            }
+            return (
             <div key={s.sessionId}>
               <div
                 className={`rounded-lg p-2.5 cursor-pointer transition-all ${
                   expandedSession === s.sessionId ? 'bg-surface-3' : 'bg-surface-2 hover:bg-surface-3'
-                }`}
+                } ${taskInfo ? 'border-l-2 border-accent-purple/40' : ''}`}
                 onClick={() => handleExpandSession(s.sessionId)}
               >
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] text-white/80 truncate flex-1">{s.firstPrompt || 'Untitled session'}</span>
                   <span className="text-[10px] text-muted/50 ml-2 shrink-0">{formatDate(s.modified)}</span>
                 </div>
+                {taskInfo && (
+                  <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                    <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-accent-purple/15 text-accent-purple truncate max-w-[180px]">
+                      {taskInfo.goalTitle}
+                    </span>
+                    <span className="text-[9px] text-white/50 truncate max-w-[200px]">
+                      {taskInfo.taskTitle}
+                    </span>
+                    {taskInfo.taskType && (
+                      <span className={`px-1.5 py-0.5 rounded text-[8px] font-medium ${taskTypeColors[taskInfo.taskType] || 'text-muted bg-white/[0.06]'}`}>
+                        {taskInfo.taskType}
+                      </span>
+                    )}
+                    <span className={`px-1.5 py-0.5 rounded text-[8px] font-medium ${statusColors[taskInfo.status] || statusColors.pending}`}>
+                      {taskInfo.status}
+                    </span>
+                  </div>
+                )}
                 <div className="flex gap-3 mt-0.5">
                   <span className="text-[10px] text-muted/40">{s.messageCount} messages</span>
                   <span className="text-[10px] text-muted/40 truncate">{s.project}</span>
@@ -207,7 +266,7 @@ export default function CLIHistoryView() {
                 </div>
               )}
             </div>
-          ))
+          )})
         )}
       </div>
     </div>
