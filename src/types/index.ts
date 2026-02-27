@@ -151,6 +151,17 @@ export interface ChatSettings {
   customSystemPrompt?: string
 }
 
+export type LLMProvider = 'claude' | 'gemini' | 'groq' | 'openrouter'
+
+export interface LLMSettings {
+  provider: LLMProvider
+  geminiApiKey: string
+  groqApiKey: string
+  openrouterApiKey: string
+  primaryModel: string
+  fastModel: string
+}
+
 export interface CLISession {
   sessionId: string
   firstPrompt: string
@@ -465,6 +476,13 @@ export interface ElectronAPI {
   // Chat settings
   getChatSettings: () => Promise<ChatSettings>
   saveChatSettings: (settings: Partial<ChatSettings>) => Promise<ChatSettings>
+
+  // LLM Settings
+  getLLMSettings: () => Promise<LLMSettings>
+  saveLLMSettings: (settings: Partial<LLMSettings>) => Promise<LLMSettings>
+  verifyLLMKey: (provider: string, key: string) => Promise<{ valid: boolean; error?: string }>
+  getProviderModels: () => Promise<Record<string, { primary: { id: string; name: string }[]; fast: { id: string; name: string }[] }>>
+  getProviderChatModels: () => Promise<Record<string, { id: string; name: string }[]>>
 
   // Chat streaming
   chatSendMessage: (conversationId: string, messages: { role: string; content: string }[], systemPrompt?: string) => Promise<void>

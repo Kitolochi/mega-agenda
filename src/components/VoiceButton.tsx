@@ -68,6 +68,7 @@ export default function VoiceButton({ categories, onCommand, listeningRef }: Voi
 
   // Enumerate audio input devices
   const refreshDevices = useCallback(async () => {
+    if (!navigator.mediaDevices?.enumerateDevices) return
     try {
       const devices = await navigator.mediaDevices.enumerateDevices()
       const mics = devices.filter(d => d.kind === 'audioinput')
@@ -84,6 +85,7 @@ export default function VoiceButton({ categories, onCommand, listeningRef }: Voi
 
   useEffect(() => {
     refreshDevices()
+    if (!navigator.mediaDevices) return
     navigator.mediaDevices.addEventListener('devicechange', refreshDevices)
     return () => navigator.mediaDevices.removeEventListener('devicechange', refreshDevices)
   }, [refreshDevices])
@@ -248,9 +250,9 @@ export default function VoiceButton({ categories, onCommand, listeningRef }: Voi
   }, [state, stopAndTranscribe, cleanup, listeningRef])
 
   const startListening = useCallback(async () => {
-    if (!whisperReady) {
+    if (!whisperReady || !navigator.mediaDevices?.getUserMedia) {
       setState('error')
-      setStatusText(whisperLoading ? 'Loading voice...' : 'Voice not available')
+      setStatusText(!navigator.mediaDevices ? 'Mic not available' : whisperLoading ? 'Loading voice...' : 'Voice not available')
       setTimeout(() => { setState('idle'); setStatusText('') }, 2000)
       return
     }

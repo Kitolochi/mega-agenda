@@ -1,6 +1,6 @@
-import https from 'https'
-import { getClaudeApiKey, getChatConversation, getChatConversations, getDailyNote, getRecentNotes, getAllMemories, createMemory, getMemoryTopics, getMemorySettings } from './database'
+import { getChatConversation, getChatConversations, getDailyNote, getRecentNotes, getAllMemories, createMemory, getMemoryTopics, getMemorySettings } from './database'
 import { getCliSessions, getCliSessionMessages } from './cli-logs'
+import { callLLM, isLLMConfigured } from './llm'
 
 interface ExtractedMemory {
   title: string
@@ -9,48 +9,7 @@ interface ExtractedMemory {
   importance: 1 | 2 | 3
 }
 
-function callClaude(apiKey: string, prompt: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const body = JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1024,
-      messages: [{ role: 'user', content: prompt }]
-    })
-
-    const req = https.request({
-      hostname: 'api.anthropic.com',
-      path: '/v1/messages',
-      method: 'POST',
-      headers: {
-        'x-api-key': apiKey,
-        'content-type': 'application/json',
-        'anthropic-version': '2023-06-01',
-      }
-    }, (res) => {
-      let data = ''
-      res.on('data', (chunk: string) => { data += chunk })
-      res.on('end', () => {
-        try {
-          const parsed = JSON.parse(data)
-          if (res.statusCode && res.statusCode >= 400) {
-            reject(new Error(parsed.error?.message || `API error ${res.statusCode}`))
-          } else {
-            resolve(parsed.content?.[0]?.text || '')
-          }
-        } catch {
-          reject(new Error('Failed to parse API response'))
-        }
-      })
-    })
-    req.on('error', reject)
-    req.setTimeout(30000, () => { req.destroy(); reject(new Error('Request timeout')) })
-    req.write(body)
-    req.end()
-  })
-}
-
 export async function extractMemories(
-  apiKey: string,
   sourceType: 'chat' | 'cli_session' | 'journal' | 'task' | 'ai_task' | 'manual',
   sourceId: string | null,
   content: string,
@@ -86,7 +45,7 @@ Rules:
 - Prefer reusing existing topics when they fit
 - If the content doesn't contain anything worth remembering, return an empty array []`
 
-  const response = await callClaude(apiKey, prompt)
+  const response = await callLLM({ prompt, tier: 'fast', maxTokens: 1024 })
   try {
     const cleaned = response.replace(/```json?\n?/g, '').replace(/```/g, '').trim()
     const parsed = JSON.parse(cleaned)
@@ -124,8 +83,7 @@ export function isDuplicateMemory(
 }
 
 export async function extractMemoriesFromChat(conversationId: string): Promise<any[]> {
-  const apiKey = getClaudeApiKey()
-  if (!apiKey) return []
+  if (!isLLMConfigured()) return []
 
   const conv = getChatConversation(conversationId)
   if (!conv || conv.messages.length < 2) return []
@@ -134,7 +92,7 @@ export async function extractMemoriesFromChat(conversationId: string): Promise<a
   const existingTopics = getMemoryTopics().map(t => t.name)
   const allMemories = getAllMemories()
 
-  const extracted = await extractMemories(apiKey, 'chat', conversationId, content, existingTopics)
+  const extracted = await extractMemories('chat', conversationId, content, existingTopics)
   const created: any[] = []
 
   for (const mem of extracted) {
@@ -161,8 +119,7 @@ export async function extractMemoriesFromChat(conversationId: string): Promise<a
 }
 
 export async function extractMemoriesFromCli(sessionId: string): Promise<any[]> {
-  const apiKey = getClaudeApiKey()
-  if (!apiKey) return []
+  if (!isLLMConfigured()) return []
 
   try {
     const { messages } = await getCliSessionMessages(sessionId, 0, 50)
@@ -172,7 +129,7 @@ export async function extractMemoriesFromCli(sessionId: string): Promise<any[]> 
     const existingTopics = getMemoryTopics().map(t => t.name)
     const allMemories = getAllMemories()
 
-    const extracted = await extractMemories(apiKey, 'cli_session', sessionId, content, existingTopics)
+    const extracted = await extractMemories('cli_session', sessionId, content, existingTopics)
     const created: any[] = []
 
     for (const mem of extracted) {
@@ -202,8 +159,7 @@ export async function extractMemoriesFromCli(sessionId: string): Promise<any[]> 
 }
 
 export async function extractMemoriesFromJournal(date: string): Promise<any[]> {
-  const apiKey = getClaudeApiKey()
-  if (!apiKey) return []
+  if (!isLLMConfigured()) return []
 
   const note = getDailyNote(date)
   if (!note || note.content.length < 20) return []
@@ -211,7 +167,7 @@ export async function extractMemoriesFromJournal(date: string): Promise<any[]> {
   const existingTopics = getMemoryTopics().map(t => t.name)
   const allMemories = getAllMemories()
 
-  const extracted = await extractMemories(apiKey, 'journal', date, note.content, existingTopics)
+  const extracted = await extractMemories('journal', date, note.content, existingTopics)
   const created: any[] = []
 
   for (const mem of extracted) {
@@ -237,8 +193,7 @@ export async function extractMemoriesFromJournal(date: string): Promise<any[]> {
 }
 
 export async function batchExtractMemories(): Promise<any[]> {
-  const apiKey = getClaudeApiKey()
-  if (!apiKey) return []
+  if (!isLLMConfigured()) return []
 
   const allCreated: any[] = []
   const allMemories = getAllMemories()
@@ -288,15 +243,14 @@ export async function extractMemoriesFromAgentResult(
   goalTitle: string,
   goalTopics: string[]
 ): Promise<any[]> {
-  const apiKey = getClaudeApiKey()
-  if (!apiKey) return []
+  if (!isLLMConfigured()) return []
   if (content.length < 50) return []
 
   const existingTopics = getMemoryTopics().map(t => t.name)
   const allTopics = [...new Set([...existingTopics, ...goalTopics.filter(Boolean)])]
   const allMemories = getAllMemories()
 
-  const extracted = await extractMemories(apiKey, 'ai_task', goalId, content, allTopics)
+  const extracted = await extractMemories('ai_task', goalId, content, allTopics)
   const created: any[] = []
 
   for (const mem of extracted) {

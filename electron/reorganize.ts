@@ -1,6 +1,6 @@
-import https from 'https'
 import fs from 'fs'
 import path from 'path'
+import { callLLM } from './llm'
 
 export interface ReorgPlanItem {
   action: 'move' | 'merge' | 'delete'
@@ -89,50 +89,15 @@ Respond with ONLY a JSON object:
   "summary": "Brief summary of changes"
 }`
 
-  return new Promise((resolve, reject) => {
-    const body = JSON.stringify({
-      model: 'claude-sonnet-4-5-20250929',
-      max_tokens: 8000,
-      messages: [{ role: 'user', content: prompt }]
-    })
-    const req = https.request({
-      hostname: 'api.anthropic.com',
-      path: '/v1/messages',
-      method: 'POST',
-      headers: { 'x-api-key': claudeApiKey, 'content-type': 'application/json', 'anthropic-version': '2023-06-01' }
-    }, (res) => {
-      let data = ''
-      res.on('data', (chunk: string) => { data += chunk })
-      res.on('end', () => {
-        try {
-          const parsed = JSON.parse(data)
-          if (res.statusCode && res.statusCode >= 400) {
-            reject(new Error(parsed.error?.message || `API error ${res.statusCode}`))
-            return
-          }
-          const text = (parsed.content || [])
-            .filter((block: any) => block.type === 'text')
-            .map((block: any) => block.text)
-            .join('\n\n')
+  const text = await callLLM({ prompt, tier: 'primary', maxTokens: 8000, timeout: 120000 })
 
-          const jsonMatch = text.match(/\{[\s\S]*\}/)
-          if (!jsonMatch) {
-            reject(new Error('No JSON found in reorganization response'))
-            return
-          }
-          const plan: ReorgPlan = JSON.parse(jsonMatch[0])
-          if (!Array.isArray(plan.items)) plan.items = []
-          resolve(plan)
-        } catch (err) {
-          reject(new Error('Failed to parse reorganization plan'))
-        }
-      })
-    })
-    req.on('error', reject)
-    req.setTimeout(120000, () => { req.destroy(); reject(new Error('Request timeout')) })
-    req.write(body)
-    req.end()
-  })
+  const jsonMatch = text.match(/\{[\s\S]*\}/)
+  if (!jsonMatch) {
+    throw new Error('No JSON found in reorganization response')
+  }
+  const plan: ReorgPlan = JSON.parse(jsonMatch[0])
+  if (!Array.isArray(plan.items)) plan.items = []
+  return plan
 }
 
 export function previewReorgPlan(plan: ReorgPlan): string {

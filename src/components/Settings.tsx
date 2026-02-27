@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Category, RSSFeed, TwitterSettings } from '../types'
+import { Category, RSSFeed, TwitterSettings, LLMSettings, LLMProvider } from '../types'
 
 const SECTIONS = [
   { id: 'ai', name: 'AI & LLMs', icon: '🤖' },
@@ -81,18 +81,29 @@ export default function Settings() {
   const [twVerifying, setTwVerifying] = useState(false)
   const [twError, setTwError] = useState<string | null>(null)
   const [twUsername, setTwUsername] = useState<string | null>(null)
+  // LLM Settings
+  const [llmSettings, setLlmSettings] = useState<LLMSettings | null>(null)
+  const [llmKeyInput, setLlmKeyInput] = useState('')
+  const [llmKeyVerifying, setLlmKeyVerifying] = useState(false)
+  const [llmKeyError, setLlmKeyError] = useState<string | null>(null)
+  const [providerModels, setProviderModels] = useState<Record<string, { primary: { id: string; name: string }[]; fast: { id: string; name: string }[] }>>({})
+  const [llmKeySuccess, setLlmKeySuccess] = useState(false)
 
   const loadData = useCallback(async () => {
-    const [key, saved, tw, cats] = await Promise.all([
+    const [key, saved, tw, cats, llm, models] = await Promise.all([
       window.electronAPI.getClaudeApiKey(),
       window.electronAPI.getRSSFeeds(),
       window.electronAPI.getTwitterSettings(),
       window.electronAPI.getCategories(),
+      window.electronAPI.getLLMSettings(),
+      window.electronAPI.getProviderModels(),
     ])
     setApiKey(key)
     setFeeds(saved)
     setTwitterSettings(tw)
     setCategories(cats)
+    setLlmSettings(llm)
+    setProviderModels(models)
     if (tw.apiKey) setTwUsername('connected')
   }, [])
 
@@ -288,6 +299,148 @@ export default function Settings() {
         )}
         <p className="text-[10px] text-muted/50 mt-1.5">Used for feed summaries and voice commands</p>
       </div>
+
+      {/* LLM Provider Settings */}
+      {llmSettings && (
+        <div className="mb-6">
+          <label className="block text-[10px] uppercase tracking-widest text-muted font-display font-medium mb-2">LLM Provider</label>
+
+          {/* Provider selector */}
+          <div className="flex gap-1 mb-3">
+            {([
+              { id: 'claude' as LLMProvider, name: 'Claude' },
+              { id: 'gemini' as LLMProvider, name: 'Gemini' },
+              { id: 'groq' as LLMProvider, name: 'Groq' },
+              { id: 'openrouter' as LLMProvider, name: 'OpenRouter' },
+            ]).map(p => (
+              <button
+                key={p.id}
+                onClick={async () => {
+                  const updated = await window.electronAPI.saveLLMSettings({ provider: p.id })
+                  setLlmSettings(updated)
+                  setLlmKeyInput('')
+                  setLlmKeyError(null)
+                  setLlmKeySuccess(false)
+                }}
+                className={`flex-1 py-1.5 rounded-lg text-[10px] font-medium transition-all ${
+                  llmSettings.provider === p.id ? 'bg-surface-4 text-white' : 'bg-surface-2 text-muted hover:text-white/60'
+                }`}
+              >
+                {p.name}
+              </button>
+            ))}
+          </div>
+
+          {/* API Key for non-Claude providers */}
+          {llmSettings.provider !== 'claude' && (
+            <div className="mb-3">
+              {(() => {
+                const keyField = llmSettings.provider === 'gemini' ? 'geminiApiKey' : llmSettings.provider === 'groq' ? 'groqApiKey' : 'openrouterApiKey'
+                const currentKey = llmSettings[keyField]
+                const helpText = llmSettings.provider === 'gemini' ? 'Get a free key at ai.google.dev' :
+                                 llmSettings.provider === 'groq' ? 'Get a free key at console.groq.com' :
+                                 'Get a key at openrouter.ai'
+
+                if (currentKey) {
+                  return (
+                    <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl glass-card">
+                      <svg className="w-3.5 h-3.5 text-accent-emerald shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                      <span className="text-[11px] text-white/60 flex-1">{llmSettings.provider} key saved</span>
+                      <button
+                        onClick={async () => {
+                          const updated = await window.electronAPI.saveLLMSettings({ [keyField]: '' })
+                          setLlmSettings(updated)
+                          setLlmKeyInput('')
+                        }}
+                        className="text-[10px] text-muted hover:text-accent-red transition-colors"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  )
+                }
+
+                return (
+                  <div className="space-y-2">
+                    <input
+                      type="password"
+                      value={llmKeyInput}
+                      onChange={e => setLlmKeyInput(e.target.value)}
+                      placeholder={`${llmSettings.provider} API key...`}
+                      className={inputClass}
+                    />
+                    {llmKeyError && <p className="text-[10px] text-accent-red">{llmKeyError}</p>}
+                    {llmKeySuccess && <p className="text-[10px] text-accent-emerald">Key verified and saved!</p>}
+                    <button
+                      onClick={async () => {
+                        if (!llmKeyInput.trim()) return
+                        setLlmKeyVerifying(true)
+                        setLlmKeyError(null)
+                        setLlmKeySuccess(false)
+                        const result = await window.electronAPI.verifyLLMKey(llmSettings.provider, llmKeyInput.trim())
+                        if (result.valid) {
+                          const updated = await window.electronAPI.saveLLMSettings({ [keyField]: llmKeyInput.trim() })
+                          setLlmSettings(updated)
+                          setLlmKeySuccess(true)
+                          setLlmKeyInput('')
+                          setTimeout(() => setLlmKeySuccess(false), 3000)
+                        } else {
+                          setLlmKeyError(result.error || 'Invalid key')
+                        }
+                        setLlmKeyVerifying(false)
+                      }}
+                      disabled={!llmKeyInput.trim() || llmKeyVerifying}
+                      className="w-full py-2 bg-accent-blue/20 hover:bg-accent-blue/30 disabled:opacity-30 rounded-lg text-xs text-accent-blue font-medium transition-all"
+                    >
+                      {llmKeyVerifying ? 'Verifying...' : 'Verify & Save Key'}
+                    </button>
+                    <p className="text-[10px] text-muted/50">{helpText}</p>
+                  </div>
+                )
+              })()}
+            </div>
+          )}
+
+          {/* Model dropdowns */}
+          {providerModels[llmSettings.provider] && (
+            <div className="space-y-2">
+              <div>
+                <label className="block text-[10px] text-muted/60 mb-1">Primary Model (research, planning)</label>
+                <select
+                  value={llmSettings.primaryModel}
+                  onChange={async e => {
+                    const updated = await window.electronAPI.saveLLMSettings({ primaryModel: e.target.value })
+                    setLlmSettings(updated)
+                  }}
+                  className="w-full bg-surface-2 border border-white/[0.06] rounded-lg px-3 py-1.5 text-[11px] text-white/90 focus:outline-none focus:border-accent-blue/40 [&>option]:bg-surface-2 [&>option]:text-white/80"
+                >
+                  {providerModels[llmSettings.provider].primary.map(m => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] text-muted/60 mb-1">Fast Model (summaries, memory, tweets)</label>
+                <select
+                  value={llmSettings.fastModel}
+                  onChange={async e => {
+                    const updated = await window.electronAPI.saveLLMSettings({ fastModel: e.target.value })
+                    setLlmSettings(updated)
+                  }}
+                  className="w-full bg-surface-2 border border-white/[0.06] rounded-lg px-3 py-1.5 text-[11px] text-white/90 focus:outline-none focus:border-accent-blue/40 [&>option]:bg-surface-2 [&>option]:text-white/80"
+                >
+                  {providerModels[llmSettings.provider].fast.map(m => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </select>
+              </div>
+              <p className="text-[10px] text-muted/50">Primary model handles research and heavy tasks. Fast model handles summaries, memory extraction, and tweets.</p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Twitter / X Integration */}
       <div className="mb-6">

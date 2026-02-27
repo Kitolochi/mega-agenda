@@ -25,6 +25,7 @@ export default function ChatView() {
   const [memoryCount, setMemoryCount] = useState(0)
   const [extractingMemories, setExtractingMemories] = useState(false)
   const [extractedCount, setExtractedCount] = useState<number | null>(null)
+  const [chatModels, setChatModels] = useState<{ id: string; name: string }[]>([])
   const [smartQueryText, setSmartQueryText] = useState('')
   const [smartQueryId, setSmartQueryId] = useState<string | null>(null)
   const [smartQueryStreaming, setSmartQueryStreaming] = useState(false)
@@ -41,8 +42,14 @@ export default function ChatView() {
   }, [])
 
   const loadSettings = useCallback(async () => {
-    const s = await window.electronAPI.getChatSettings()
+    const [s, llm, allModels] = await Promise.all([
+      window.electronAPI.getChatSettings(),
+      window.electronAPI.getLLMSettings(),
+      window.electronAPI.getProviderChatModels(),
+    ])
     setSettings(s)
+    const models = allModels[llm.provider] || []
+    setChatModels(models)
   }, [])
 
   useEffect(() => {
@@ -334,9 +341,15 @@ export default function ChatView() {
             onChange={e => handleSaveSettings({ model: e.target.value })}
             className="w-full bg-surface-2 border border-white/[0.06] rounded-lg px-3 py-2 text-sm text-white/90 focus:outline-none focus:border-accent-blue/40 mb-4"
           >
-            <option value="claude-sonnet-4-5-20250929">Claude Sonnet 4.5</option>
-            <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5</option>
-            <option value="claude-opus-4-6">Claude Opus 4.6</option>
+            {chatModels.length > 0 ? chatModels.map(m => (
+              <option key={m.id} value={m.id}>{m.name}</option>
+            )) : (
+              <>
+                <option value="claude-sonnet-4-5-20250929">Claude Sonnet 4.5</option>
+                <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5</option>
+                <option value="claude-opus-4-6">Claude Opus 4.6</option>
+              </>
+            )}
           </select>
 
           <label className="block text-[10px] uppercase tracking-widest text-muted font-medium mb-1.5">System Prompt</label>
@@ -586,9 +599,15 @@ export default function ChatView() {
                   className="bg-surface-2 text-[9px] text-muted/60 hover:text-white/60 outline-none cursor-pointer appearance-none pr-3 rounded px-1 py-0.5 transition-colors [&>option]:bg-surface-2 [&>option]:text-white/80"
                   style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.25)' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right center' }}
                 >
-                  <option value="claude-sonnet-4-5-20250929">Sonnet 4.5</option>
-                  <option value="claude-haiku-4-5-20251001">Haiku 4.5</option>
-                  <option value="claude-opus-4-6">Opus 4.6</option>
+                  {chatModels.length > 0 ? chatModels.map(m => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  )) : (
+                    <>
+                      <option value="claude-sonnet-4-5-20250929">Sonnet 4.5</option>
+                      <option value="claude-haiku-4-5-20251001">Haiku 4.5</option>
+                      <option value="claude-opus-4-6">Opus 4.6</option>
+                    </>
+                  )}
                 </select>
                 {settings.systemPromptMode === 'context' && (
                   <span className="text-[9px] text-muted/40">· Context</span>

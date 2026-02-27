@@ -1,9 +1,9 @@
-import https from 'https'
 import fs from 'fs'
 import path from 'path'
 import { execSync, spawn as spawnProcess } from 'child_process'
 import { getEmbeddingStatus, embedText } from './embeddings'
 import { multiSearch, SearchResult } from './vector-store'
+import { callLLM, callLLMWithWebSearch } from './llm'
 
 interface RoadmapGoal {
   id: string
@@ -56,75 +56,6 @@ async function withRetry<T>(fn: () => Promise<T>, maxRetries: number = 3, baseDe
     }
   }
   throw new Error('Retry exhausted')
-}
-
-// --- API Helpers ---
-
-function callClaude(apiKey: string, prompt: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const body = JSON.stringify({
-      model: 'claude-sonnet-4-5-20250929',
-      max_tokens: 4096,
-      messages: [{ role: 'user', content: prompt }]
-    })
-    const req = https.request({
-      hostname: 'api.anthropic.com',
-      path: '/v1/messages',
-      method: 'POST',
-      headers: { 'x-api-key': apiKey, 'content-type': 'application/json', 'anthropic-version': '2023-06-01' }
-    }, (res) => {
-      let data = ''
-      res.on('data', (chunk: string) => { data += chunk })
-      res.on('end', () => {
-        try {
-          const parsed = JSON.parse(data)
-          if (res.statusCode && res.statusCode >= 400) reject(new Error(parsed.error?.message || `API error ${res.statusCode}`))
-          else resolve(parsed.content?.[0]?.text || '')
-        } catch { reject(new Error('Failed to parse API response')) }
-      })
-    })
-    req.on('error', reject)
-    req.setTimeout(60000, () => { req.destroy(); reject(new Error('Request timeout')) })
-    req.write(body)
-    req.end()
-  })
-}
-
-function callClaudeWithWebSearch(apiKey: string, prompt: string, maxSearches: number = 10): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const body = JSON.stringify({
-      model: 'claude-sonnet-4-5-20250929',
-      max_tokens: 16000,
-      tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: maxSearches }],
-      messages: [{ role: 'user', content: prompt }]
-    })
-    const req = https.request({
-      hostname: 'api.anthropic.com',
-      path: '/v1/messages',
-      method: 'POST',
-      headers: { 'x-api-key': apiKey, 'content-type': 'application/json', 'anthropic-version': '2023-06-01' }
-    }, (res) => {
-      let data = ''
-      res.on('data', (chunk: string) => { data += chunk })
-      res.on('end', () => {
-        try {
-          const parsed = JSON.parse(data)
-          if (res.statusCode && res.statusCode >= 400) {
-            reject(new Error(parsed.error?.message || `API error ${res.statusCode}`))
-          } else {
-            const textParts = (parsed.content || [])
-              .filter((block: any) => block.type === 'text')
-              .map((block: any) => block.text)
-            resolve(textParts.join('\n\n') || 'No analysis generated')
-          }
-        } catch { reject(new Error('Failed to parse API response')) }
-      })
-    })
-    req.on('error', reject)
-    req.setTimeout(300000, () => { req.destroy(); reject(new Error('Request timeout')) })
-    req.write(body)
-    req.end()
-  })
 }
 
 // --- Research Prompts ---
@@ -224,7 +155,7 @@ export async function researchTopicSmart(
 
   // Fallback: API with web search (with rate limit retry)
   const prompt = buildResearchPrompt(goal.title, goal.description, topic, topicType)
-  return withRetry(() => callClaudeWithWebSearch(claudeApiKey, prompt, 10))
+  return withRetry(() => callLLMWithWebSearch({ prompt, tier: 'primary', maxTokens: 16000, maxSearches: 10 }))
 }
 
 // --- Topic Generation ---
@@ -248,7 +179,7 @@ Be thorough and holistic - cover financial, practical, emotional, logistical, an
 IMPORTANT: Respond with ONLY a JSON object, no other text:
 {"research_questions": ["...", "..."], "guidance_needed": ["...", "..."]}`
 
-  const response = await withRetry(() => callClaude(claudeApiKey, prompt))
+  const response = await withRetry(() => callLLM({ prompt, tier: 'primary', maxTokens: 4096 }))
 
   try {
     const jsonMatch = response.match(/\{[\s\S]*\}/)
@@ -548,40 +479,7 @@ export async function generateMasterPlan(
 
   // Fallback: API call (no web search needed — synthesis only)
   const prompt = await buildMasterPlanPrompt(goals)
-  return new Promise((resolve, reject) => {
-    const body = JSON.stringify({
-      model: 'claude-sonnet-4-5-20250929',
-      max_tokens: 16000,
-      messages: [{ role: 'user', content: prompt }]
-    })
-    const req = https.request({
-      hostname: 'api.anthropic.com',
-      path: '/v1/messages',
-      method: 'POST',
-      headers: { 'x-api-key': claudeApiKey, 'content-type': 'application/json', 'anthropic-version': '2023-06-01' }
-    }, (res) => {
-      let data = ''
-      res.on('data', (chunk: string) => { data += chunk })
-      res.on('end', () => {
-        try {
-          const parsed = JSON.parse(data)
-          if (res.statusCode && res.statusCode >= 400) {
-            reject(new Error(parsed.error?.message || `API error ${res.statusCode}`))
-          } else {
-            const text = (parsed.content || [])
-              .filter((block: any) => block.type === 'text')
-              .map((block: any) => block.text)
-              .join('\n\n')
-            resolve(text || 'No master plan generated')
-          }
-        } catch { reject(new Error('Failed to parse API response')) }
-      })
-    })
-    req.on('error', reject)
-    req.setTimeout(300000, () => { req.destroy(); reject(new Error('Request timeout')) })
-    req.write(body)
-    req.end()
-  })
+  return callLLM({ prompt, tier: 'primary', maxTokens: 16000, timeout: 300000 })
 }
 
 // --- Action Plan ---
@@ -600,12 +498,7 @@ export async function generateActionPlan(
     .map(r => `### ${r.type === 'question' ? 'Research' : 'Guidance'}: ${r.topic}\n\n${r.report}`)
     .join('\n\n---\n\n')
 
-  const body = JSON.stringify({
-    model: 'claude-sonnet-4-5-20250929',
-    max_tokens: 8000,
-    messages: [{
-      role: 'user',
-      content: `You are a practical life coach. Based on the research reports below for this goal, create a clear, prioritized action plan.
+  const prompt = `You are a practical life coach. Based on the research reports below for this goal, create a clear, prioritized action plan.
 
 ## Goal: ${goal.title}
 ${goal.description ? `Description: ${goal.description}` : ''}
@@ -624,38 +517,9 @@ Create a **Best Steps** action plan:
 5. Keep it practical — what should they actually DO this week, this month, and longer-term
 
 Be direct and specific. No fluff.`
-    }]
-  })
 
-  return new Promise((resolve, reject) => {
-    const req = https.request({
-      hostname: 'api.anthropic.com',
-      path: '/v1/messages',
-      method: 'POST',
-      headers: { 'x-api-key': claudeApiKey, 'content-type': 'application/json', 'anthropic-version': '2023-06-01' }
-    }, (res) => {
-      let data = ''
-      res.on('data', (chunk: string) => { data += chunk })
-      res.on('end', () => {
-        try {
-          const parsed = JSON.parse(data)
-          if (res.statusCode && res.statusCode >= 400) {
-            reject(new Error(parsed.error?.message || `API error ${res.statusCode}`))
-          } else {
-            const text = (parsed.content || [])
-              .filter((block: any) => block.type === 'text')
-              .map((block: any) => block.text)
-              .join('\n\n')
-            resolve({ report: text || 'No action plan generated' })
-          }
-        } catch { reject(new Error('Failed to parse API response')) }
-      })
-    })
-    req.on('error', reject)
-    req.setTimeout(120000, () => { req.destroy(); reject(new Error('Request timeout')) })
-    req.write(body)
-    req.end()
-  })
+  const report = await callLLM({ prompt, tier: 'primary', maxTokens: 8000, timeout: 120000 })
+  return { report: report || 'No action plan generated' }
 }
 
 // --- Context Questions ---
@@ -682,7 +546,7 @@ IMPORTANT: Respond with ONLY a JSON array, no other text:
 
 Use these exact goal IDs: ${goals.map(g => g.id).join(', ')}`
 
-  const response = await withRetry(() => callClaude(claudeApiKey, prompt))
+  const response = await withRetry(() => callLLM({ prompt, tier: 'primary', maxTokens: 4096 }))
 
   try {
     const jsonMatch = response.match(/\[[\s\S]*\]/)
@@ -729,7 +593,7 @@ IMPORTANT: Respond with ONLY a JSON array, no other text:
 
 Order by priority (critical first), then by phase order. Focus on the Next 7-Day Actions and Phase 1 items as highest priority.`
 
-  const response = await withRetry(() => callClaude(claudeApiKey, prompt))
+  const response = await withRetry(() => callLLM({ prompt, tier: 'primary', maxTokens: 4096 }))
 
   try {
     const jsonMatch = response.match(/\[[\s\S]*\]/)
@@ -778,37 +642,7 @@ Task type classification:
 
 Order by priority (critical first), then by phase order. Focus on the most immediate and impactful actions first.`
 
-  const callClaudeLong = (apiKey: string, p: string): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const body = JSON.stringify({
-        model: 'claude-sonnet-4-5-20250929',
-        max_tokens: 8000,
-        messages: [{ role: 'user', content: p }]
-      })
-      const req = https.request({
-        hostname: 'api.anthropic.com',
-        path: '/v1/messages',
-        method: 'POST',
-        headers: { 'x-api-key': apiKey, 'content-type': 'application/json', 'anthropic-version': '2023-06-01' }
-      }, (res) => {
-        let data = ''
-        res.on('data', (chunk: string) => { data += chunk })
-        res.on('end', () => {
-          try {
-            const parsed = JSON.parse(data)
-            if (res.statusCode && res.statusCode >= 400) reject(new Error(parsed.error?.message || `API error ${res.statusCode}`))
-            else resolve(parsed.content?.[0]?.text || '')
-          } catch { reject(new Error('Failed to parse API response')) }
-        })
-      })
-      req.on('error', reject)
-      req.setTimeout(180000, () => { req.destroy(); reject(new Error('Request timeout')) })
-      req.write(body)
-      req.end()
-    })
-  }
-
-  const response = await withRetry(() => callClaudeLong(claudeApiKey, prompt))
+  const response = await withRetry(() => callLLM({ prompt, tier: 'fast', maxTokens: 8000, timeout: 180000 }))
 
   try {
     const jsonMatch = response.match(/\[[\s\S]*\]/)

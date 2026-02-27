@@ -1,4 +1,4 @@
-import https from 'https'
+import { callLLM } from './llm'
 
 interface TweetPersona {
   id: string
@@ -30,51 +30,6 @@ ${exampleLines}
 Maintain this voice consistently.`
 }
 
-function callClaudeWithMessages(
-  apiKey: string,
-  messages: { role: string; content: string }[],
-  systemPrompt: string
-): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const body = JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1500,
-      system: systemPrompt,
-      messages
-    })
-
-    const req = https.request({
-      hostname: 'api.anthropic.com',
-      path: '/v1/messages',
-      method: 'POST',
-      headers: {
-        'x-api-key': apiKey,
-        'content-type': 'application/json',
-        'anthropic-version': '2023-06-01',
-      }
-    }, (res) => {
-      let data = ''
-      res.on('data', (chunk: string) => { data += chunk })
-      res.on('end', () => {
-        try {
-          const parsed = JSON.parse(data)
-          if (res.statusCode && res.statusCode >= 400) {
-            reject(new Error(parsed.error?.message || `API error ${res.statusCode}`))
-          } else {
-            resolve(parsed.content?.[0]?.text || 'No response generated')
-          }
-        } catch {
-          reject(new Error('Failed to parse API response'))
-        }
-      })
-    })
-    req.on('error', reject)
-    req.setTimeout(30000, () => { req.destroy(); reject(new Error('Request timeout')) })
-    req.write(body)
-    req.end()
-  })
-}
-
 export async function brainstormTweet(
   apiKey: string,
   topic: string,
@@ -90,7 +45,7 @@ export async function brainstormTweet(
 For each option, use a different rhetorical approach (e.g., bold claim, question hook, contrarian take, storytelling, data-driven). Label each with its approach and wrap the tweet text in backticks.`
     }
   ]
-  return callClaudeWithMessages(apiKey, messages, buildSystemPrompt(persona))
+  return callLLM({ messages, system: buildSystemPrompt(persona), tier: 'fast', maxTokens: 1500 })
 }
 
 export async function brainstormThread(
@@ -115,7 +70,7 @@ Rules:
 - Include brief transition notes between tweets explaining the narrative flow`
     }
   ]
-  return callClaudeWithMessages(apiKey, messages, buildSystemPrompt(persona))
+  return callLLM({ messages, system: buildSystemPrompt(persona), tier: 'fast', maxTokens: 1500 })
 }
 
 export async function refineTweet(
@@ -137,7 +92,7 @@ ${instruction}
 Return 2-3 improved versions, each wrapped in backticks. Briefly note what you changed in each.`
     }
   ]
-  return callClaudeWithMessages(apiKey, messages, buildSystemPrompt(persona))
+  return callLLM({ messages, system: buildSystemPrompt(persona), tier: 'fast', maxTokens: 1500 })
 }
 
 export async function analyzeTweet(
@@ -158,5 +113,5 @@ Rate each dimension 1-10:
 Then list any rhetorical devices used (or missing opportunities). Finally, suggest one concrete improvement wrapped in backticks.`
     }
   ]
-  return callClaudeWithMessages(apiKey, messages, SYSTEM_PROMPT)
+  return callLLM({ messages, system: SYSTEM_PROMPT, tier: 'fast', maxTokens: 1500 })
 }

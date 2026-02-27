@@ -19,6 +19,8 @@ import { initWhisperModel, transcribeAudio, getWhisperStatus } from './whisper'
 import { loadVectorIndex, rebuildIndex, deleteIndex } from './vector-store'
 import { streamSmartQuery } from './smart-query'
 import { generateReorgPlan, previewReorgPlan, executeReorgPlan } from './reorganize'
+import { getLLMSettings, saveLLMSettings } from './database'
+import { verifyLLMKey, PROVIDER_MODELS, PROVIDER_CHAT_MODELS } from './llm'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -245,6 +247,27 @@ ipcMain.handle('save-claude-api-key', (_, key: string) => {
 
 ipcMain.handle('verify-claude-key', async (_, key: string) => {
   return verifyClaudeKey(key)
+})
+
+// LLM Settings
+ipcMain.handle('get-llm-settings', () => {
+  return getLLMSettings()
+})
+
+ipcMain.handle('save-llm-settings', (_, updates: any) => {
+  return saveLLMSettings(updates)
+})
+
+ipcMain.handle('verify-llm-key', async (_, provider: string, key: string) => {
+  return verifyLLMKey(provider, key)
+})
+
+ipcMain.handle('get-provider-models', () => {
+  return PROVIDER_MODELS
+})
+
+ipcMain.handle('get-provider-chat-models', () => {
+  return PROVIDER_CHAT_MODELS
 })
 
 ipcMain.handle('summarize-feed', async (_, apiKey: string, articles: { title: string; description: string }[], section: string) => {

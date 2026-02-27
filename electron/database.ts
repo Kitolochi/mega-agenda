@@ -247,6 +247,15 @@ interface MemorySettings {
   tokenBudget: number
 }
 
+export interface LLMSettings {
+  provider: 'claude' | 'gemini' | 'groq' | 'openrouter'
+  geminiApiKey: string
+  groqApiKey: string
+  openrouterApiKey: string
+  primaryModel: string
+  fastModel: string
+}
+
 interface Database {
   categories: Category[]
   tasks: Task[]
@@ -273,6 +282,7 @@ interface Database {
   memoryTopics: MemoryTopic[]
   memorySettings: MemorySettings
   welcomeDismissed: boolean
+  llmSettings: LLMSettings
 }
 
 let db: Database
@@ -359,7 +369,15 @@ export function initDatabase(): Database {
       tweetDrafts: [],
       tweetPersonas: [],
       aiTasks: [],
-      roadmapGoals: []
+      roadmapGoals: [],
+      llmSettings: {
+        provider: 'claude',
+        geminiApiKey: '',
+        groqApiKey: '',
+        openrouterApiKey: '',
+        primaryModel: 'claude-sonnet-4-5-20250929',
+        fastModel: 'claude-haiku-4-5-20251001'
+      }
     }
     saveDatabase()
   }
@@ -551,6 +569,19 @@ export function initDatabase(): Database {
   // Initialize welcomeDismissed if missing
   if ((db as any).welcomeDismissed === undefined) {
     db.welcomeDismissed = false
+    saveDatabase()
+  }
+
+  // Initialize llmSettings if missing
+  if (!(db as any).llmSettings) {
+    db.llmSettings = {
+      provider: 'claude',
+      geminiApiKey: '',
+      groqApiKey: '',
+      openrouterApiKey: '',
+      primaryModel: 'claude-sonnet-4-5-20250929',
+      fastModel: 'claude-haiku-4-5-20251001'
+    }
     saveDatabase()
   }
 
@@ -1386,6 +1417,22 @@ export function saveMemorySettings(updates: Partial<MemorySettings>): MemorySett
   if (updates.tokenBudget !== undefined) db.memorySettings.tokenBudget = updates.tokenBudget
   saveDatabase()
   return db.memorySettings
+}
+
+// LLM Settings
+export function getLLMSettings(): LLMSettings {
+  return db.llmSettings
+}
+
+export function saveLLMSettings(updates: Partial<LLMSettings>): LLMSettings {
+  if (updates.provider !== undefined) db.llmSettings.provider = updates.provider
+  if (updates.geminiApiKey !== undefined) db.llmSettings.geminiApiKey = updates.geminiApiKey
+  if (updates.groqApiKey !== undefined) db.llmSettings.groqApiKey = updates.groqApiKey
+  if (updates.openrouterApiKey !== undefined) db.llmSettings.openrouterApiKey = updates.openrouterApiKey
+  if (updates.primaryModel !== undefined) db.llmSettings.primaryModel = updates.primaryModel
+  if (updates.fastModel !== undefined) db.llmSettings.fastModel = updates.fastModel
+  saveDatabase()
+  return db.llmSettings
 }
 
 // Welcome modal

@@ -1,20 +1,14 @@
-import https from 'https'
 import { BrowserWindow } from 'electron'
-import { getClaudeApiKey, getChatSettings, getBriefingData, getRoadmapGoals, getMasterPlanTasks, getRecentNotes, getMasterPlan } from './database'
+import { getChatSettings, getBriefingData, getRoadmapGoals, getMasterPlanTasks, getRecentNotes, getMasterPlan } from './database'
 import { getRelevantMemories } from './memory'
 import { search } from './vector-store'
+import { streamLLM } from './llm'
 
 export async function streamSmartQuery(
   mainWindow: BrowserWindow,
   queryId: string,
   query: string
 ): Promise<void> {
-  const apiKey = getClaudeApiKey()
-  if (!apiKey) {
-    mainWindow.webContents.send('smart-query-error', { queryId, error: 'No Claude API key configured.' })
-    return
-  }
-
   // 1. RAG search over ~/.claude/memory/
   let ragContext = ''
   try {
@@ -87,95 +81,33 @@ Guidelines:
 - Be actionable — suggest specific next steps when appropriate`
 
   const settings = getChatSettings()
-  const body = JSON.stringify({
-    model: settings.model,
-    max_tokens: settings.maxTokens,
-    stream: true,
-    system: systemPrompt,
-    messages: [{ role: 'user', content: query }]
-  })
-
   let endSent = false
 
-  const req = https.request({
-    hostname: 'api.anthropic.com',
-    path: '/v1/messages',
-    method: 'POST',
-    headers: {
-      'x-api-key': apiKey,
-      'content-type': 'application/json',
-      'anthropic-version': '2023-06-01',
-    }
-  }, (res) => {
-    if (res.statusCode && res.statusCode >= 400) {
-      let errorData = ''
-      res.on('data', (chunk: Buffer) => { errorData += chunk.toString() })
-      res.on('end', () => {
-        let errorMsg = `API error ${res.statusCode}`
-        try {
-          const parsed = JSON.parse(errorData)
-          errorMsg = parsed.error?.message || errorMsg
-        } catch {}
+  streamLLM(
+    {
+      messages: [{ role: 'user', content: query }],
+      system: systemPrompt,
+      model: settings.model,
+      maxTokens: settings.maxTokens,
+      tier: 'chat',
+    },
+    {
+      onData: (text) => {
         if (!mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('smart-query-error', { queryId, error: errorMsg })
+          mainWindow.webContents.send('smart-query-chunk', { queryId, text })
         }
-      })
-      return
-    }
-
-    let buffer = ''
-
-    res.on('data', (chunk: Buffer) => {
-      buffer += chunk.toString()
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
-
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const jsonStr = line.slice(6).trim()
-          if (!jsonStr || jsonStr === '[DONE]') continue
-          try {
-            const event = JSON.parse(jsonStr)
-            if (event.type === 'content_block_delta' && event.delta?.text) {
-              if (!mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('smart-query-chunk', { queryId, text: event.delta.text })
-              }
-            } else if (event.type === 'message_stop') {
-              if (!endSent && !mainWindow.isDestroyed()) {
-                endSent = true
-                mainWindow.webContents.send('smart-query-end', { queryId })
-              }
-            } else if (event.type === 'error') {
-              if (!mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('smart-query-error', { queryId, error: event.error?.message || 'Stream error' })
-              }
-            }
-          } catch {}
+      },
+      onEnd: () => {
+        if (!endSent && !mainWindow.isDestroyed()) {
+          endSent = true
+          mainWindow.webContents.send('smart-query-end', { queryId })
         }
-      }
-    })
-
-    res.on('end', () => {
-      if (!endSent && !mainWindow.isDestroyed()) {
-        endSent = true
-        mainWindow.webContents.send('smart-query-end', { queryId })
-      }
-    })
-  })
-
-  req.on('error', (err) => {
-    if (!mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('smart-query-error', { queryId, error: err.message || 'Network error' })
+      },
+      onError: (error) => {
+        if (!mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('smart-query-error', { queryId, error })
+        }
+      },
     }
-  })
-
-  req.setTimeout(120000, () => {
-    req.destroy()
-    if (!mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('smart-query-error', { queryId, error: 'Request timeout' })
-    }
-  })
-
-  req.write(body)
-  req.end()
+  )
 }

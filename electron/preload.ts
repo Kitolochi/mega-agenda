@@ -127,6 +127,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getChatSettings: () => ipcRenderer.invoke('get-chat-settings'),
   saveChatSettings: (settings: any) => ipcRenderer.invoke('save-chat-settings', settings),
 
+  // LLM Settings
+  getLLMSettings: () => ipcRenderer.invoke('get-llm-settings'),
+  saveLLMSettings: (settings: any) => ipcRenderer.invoke('save-llm-settings', settings),
+  verifyLLMKey: (provider: string, key: string) => ipcRenderer.invoke('verify-llm-key', provider, key),
+  getProviderModels: () => ipcRenderer.invoke('get-provider-models'),
+  getProviderChatModels: () => ipcRenderer.invoke('get-provider-chat-models'),
+
   // Chat streaming
   chatSendMessage: (conversationId: string, messages: { role: string; content: string }[], systemPrompt?: string) =>
     ipcRenderer.invoke('chat-send-message', conversationId, messages, systemPrompt),
