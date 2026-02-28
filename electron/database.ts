@@ -1445,6 +1445,17 @@ export function dismissWelcome(): void {
   saveDatabase()
 }
 
+// CLI Mode
+export function getUseCliMode(): boolean {
+  return db.useCliMode || false
+}
+
+export function setUseCliMode(enabled: boolean): boolean {
+  db.useCliMode = enabled
+  saveDatabase()
+  return db.useCliMode
+}
+
 function updateTopicCounts(): void {
   const topicMap = new Map<string, number>()
   const activeMemories = db.memories.filter(m => !m.isArchived)
