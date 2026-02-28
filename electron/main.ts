@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, shell, Notificati
 import path from 'path'
 import fs from 'fs'
 import { spawn, execSync } from 'child_process'
-import { initDatabase, checkRecurringTasks, getCategories, getTasks, addTask, updateTask, deleteTask, toggleTaskComplete, getDailyNote, saveDailyNote, getRecentNotes, getStats, getTwitterSettings, saveTwitterSettings, getRSSFeeds, addRSSFeed, removeRSSFeed, getClaudeApiKey, saveClaudeApiKey, getActivityLog, getPomodoroState, startPomodoro, completePomodoro, startBreak, stopPomodoro, getMorningBriefing, saveMorningBriefing, dismissMorningBriefing, getBriefingData, getWeeklyReview, saveWeeklyReview, getAllWeeklyReviews, getWeeklyReviewData, checkWeeklyReviewNeeded, getChatConversations, getChatConversation, createChatConversation, addChatMessage, deleteChatConversation, renameChatConversation, getChatSettings, saveChatSettings, addCategory, deleteCategory, getTweetDrafts, getTweetDraft, createTweetDraft, updateTweetDraft, addTweetAIMessage, deleteTweetDraft, getTweetPersonas, createTweetPersona, deleteTweetPersona, getAITasks, createAITask, updateAITask, deleteAITask, moveAITask, getRoadmapGoals, createRoadmapGoal, updateRoadmapGoal, deleteRoadmapGoal, getMasterPlan, saveMasterPlan, clearMasterPlan, getMasterPlanTasks, createMasterPlanTask, updateMasterPlanTask, clearMasterPlanTasks, getMemories, getAllMemories, createMemory, updateMemory, deleteMemory, archiveMemory, pinMemory, getMemoryTopics, updateMemoryTopics, getMemorySettings, saveMemorySettings, isWelcomeDismissed, dismissWelcome } from './database'
+import { initDatabase, checkRecurringTasks, getCategories, getTasks, addTask, updateTask, deleteTask, toggleTaskComplete, getDailyNote, saveDailyNote, getRecentNotes, getStats, getTwitterSettings, saveTwitterSettings, getRSSFeeds, addRSSFeed, removeRSSFeed, getClaudeApiKey, saveClaudeApiKey, getActivityLog, getPomodoroState, startPomodoro, completePomodoro, startBreak, stopPomodoro, getMorningBriefing, saveMorningBriefing, dismissMorningBriefing, getBriefingData, getWeeklyReview, saveWeeklyReview, getAllWeeklyReviews, getWeeklyReviewData, checkWeeklyReviewNeeded, getChatConversations, getChatConversation, createChatConversation, addChatMessage, deleteChatConversation, renameChatConversation, getChatSettings, saveChatSettings, addCategory, deleteCategory, getTweetDrafts, getTweetDraft, createTweetDraft, updateTweetDraft, addTweetAIMessage, deleteTweetDraft, getTweetPersonas, createTweetPersona, deleteTweetPersona, getAITasks, createAITask, updateAITask, deleteAITask, moveAITask, getRoadmapGoals, createRoadmapGoal, updateRoadmapGoal, deleteRoadmapGoal, getMasterPlan, saveMasterPlan, clearMasterPlan, getMasterPlanTasks, createMasterPlanTask, updateMasterPlanTask, clearMasterPlanTasks, getMemories, getAllMemories, createMemory, updateMemory, deleteMemory, archiveMemory, pinMemory, getMemoryTopics, updateMemoryTopics, getMemorySettings, saveMemorySettings, isWelcomeDismissed, dismissWelcome, getUseCliMode, setUseCliMode } from './database'
 import { verifyToken, getUserByUsername, getUserLists, fetchAllLists, postTweet, verifyOAuthCredentials } from './twitter'
 import { fetchAllFeeds } from './rss'
 import { summarizeAI, summarizeGeo, verifyClaudeKey, parseVoiceCommand, generateMorningBriefing, generateWeeklyReview } from './summarize'
@@ -12,7 +12,7 @@ import { streamChatMessage, abortChatStream, getMemoryCountForChat } from './cha
 import { getCliSessions, getCliSessionMessages, searchCliSessions } from './cli-logs'
 import { searchGitHubRepos } from './github'
 import { extractMemoriesFromChat, extractMemoriesFromCli, extractMemoriesFromJournal, batchExtractMemories, extractMemoriesFromAgentResult } from './memory'
-import { researchTopicSmart, generateActionPlan, generateTopics, generateMasterPlan, findClaudeCli, generateContextQuestions, extractTasksFromPlan, extractTasksFromActionPlan, saveMasterPlanFile } from './research'
+import { researchTopicSmart, generateActionPlan, generateTopics, generateMasterPlan, findClaudeCli, generateContextQuestions, extractTasksFromPlan, extractTasksFromActionPlan, saveMasterPlanFile, generateTopicsSmart, generateActionPlanSmart, extractTasksFromPlanSmart, extractTasksFromActionPlanSmart } from './research'
 import { findSessionByPromptFragment } from './cli-logs'
 import { initEmbeddingModel, getEmbeddingStatus } from './embeddings'
 import { initWhisperModel, transcribeAudio, getWhisperStatus } from './whisper'
@@ -21,9 +21,58 @@ import { streamSmartQuery } from './smart-query'
 import { generateReorgPlan, previewReorgPlan, executeReorgPlan } from './reorganize'
 import { getLLMSettings, saveLLMSettings } from './database'
 import { verifyLLMKey, PROVIDER_MODELS, PROVIDER_CHAT_MODELS } from './llm'
+import { compressKnowledgeBase, loadCompressedKnowledge, isCompressionStale } from './compressor'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
+
+// --- Cross-platform terminal launcher helper ---
+function launchInExternalTerminal(opts: {
+  prompt: string
+  cwd: string
+  env: NodeJS.ProcessEnv
+  title?: string
+  allowedTools?: string
+}): void {
+  const tmpDir = path.join(app.getPath('temp'), 'mega-agenda')
+  fs.mkdirSync(tmpDir, { recursive: true })
+  const safePrompt = opts.prompt.replace(/%/g, '%%').replace(/"/g, "'")
+  const tools = opts.allowedTools || '"Bash(*)" "Edit(*)" "Write(*)" "Read(*)" "Glob(*)" "Grep(*)" "WebFetch(*)" "WebSearch(*)"'
+  const claudeCmd = `npx --yes @anthropic-ai/claude-code --dangerously-skip-permissions --allowedTools ${tools} -- "${safePrompt}"`
+
+  if (process.platform === 'win32') {
+    const batFile = path.join(tmpDir, `launch-${Date.now()}.bat`)
+    fs.writeFileSync(batFile, [
+      '@echo off',
+      `cd /d "${opts.cwd}"`,
+      claudeCmd,
+    ].join('\r\n'))
+    const child = spawn('cmd.exe', ['/c', 'start', `"${(opts.title || '').slice(0, 40)}"`, 'cmd', '/k', batFile], {
+      detached: true, stdio: 'ignore', env: opts.env,
+    })
+    child.unref()
+  } else {
+    const shFile = path.join(tmpDir, `launch-${Date.now()}.sh`)
+    fs.writeFileSync(shFile, [
+      '#!/bin/bash',
+      `cd "${opts.cwd}"`,
+      claudeCmd,
+      'exec $SHELL',
+    ].join('\n'))
+    fs.chmodSync(shFile, 0o755)
+    if (process.platform === 'darwin') {
+      const child = spawn('open', ['-a', 'Terminal', shFile], {
+        detached: true, stdio: 'ignore', env: opts.env,
+      })
+      child.unref()
+    } else {
+      const child = spawn('x-terminal-emulator', ['-e', shFile], {
+        detached: true, stdio: 'ignore', env: opts.env,
+      })
+      child.unref()
+    }
+  }
+}
 
 const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL
 
@@ -288,9 +337,10 @@ ipcMain.handle('generate-topics', async (_, goalId: string) => {
   if (!goal) throw new Error('Goal not found')
 
   const claudeApiKey = getClaudeApiKey()
-  if (!claudeApiKey) throw new Error('Claude API key not configured. Set it in Settings.')
+  const useCliMode = getUseCliMode()
+  if (!claudeApiKey && !useCliMode) throw new Error('Claude API key not configured. Set it in Settings or enable CLI mode.')
 
-  const result = await generateTopics(goal, claudeApiKey)
+  const result = await generateTopicsSmart(goal, claudeApiKey, useCliMode)
 
   // Merge new topics with existing (no duplicates)
   const existingQ = new Set(goal.research_questions)
@@ -413,9 +463,10 @@ ipcMain.handle('generate-action-plan', async (_, goalId: string) => {
   if (!goal) throw new Error('Goal not found')
 
   const claudeApiKey = getClaudeApiKey()
-  if (!claudeApiKey) throw new Error('Claude API key not configured. Set it in Settings.')
+  const useCliMode = getUseCliMode()
+  if (!claudeApiKey && !useCliMode) throw new Error('Claude API key not configured. Set it in Settings or enable CLI mode.')
 
-  const result = await generateActionPlan(goal, claudeApiKey)
+  const result = await generateActionPlanSmart(goal, claudeApiKey, useCliMode)
 
   // Save as a special topic report with type 'action_plan'
   const generatedAt = new Date().toISOString()
@@ -781,7 +832,8 @@ ipcMain.handle('generate-master-plan', async () => {
   if (goalsWithResearch.length === 0) throw new Error('No goals with research reports. Research at least one goal first.')
 
   const claudeApiKey = getClaudeApiKey()
-  if (!claudeApiKey) throw new Error('Claude API key not configured. Set it in Settings.')
+  const useCliMode = getUseCliMode()
+  if (!claudeApiKey && !useCliMode) throw new Error('Claude API key not configured. Set it in Settings or enable CLI mode.')
 
   const content = await generateMasterPlan(goalsWithResearch, claudeApiKey)
 
@@ -803,7 +855,7 @@ ipcMain.handle('generate-master-plan', async () => {
   // Extract tasks from plan
   try {
     clearMasterPlanTasks(planDate)
-    const extracted = await extractTasksFromPlan(content, goalsWithResearch, claudeApiKey)
+    const extracted = await extractTasksFromPlanSmart(content, goalsWithResearch, claudeApiKey, useCliMode)
     for (const t of extracted) {
       createMasterPlanTask({
         title: t.title,
@@ -854,27 +906,13 @@ ipcMain.handle('launch-daily-plan', async (_, taskIds?: string[]) => {
     : allTasks.filter(t => t.status === 'pending').slice(0, 10)
 
   const launched: string[] = []
-  const workingDir = process.env.USERPROFILE || '.'
+  const workingDir = process.env.USERPROFILE || process.env.HOME || '.'
   const env = { ...process.env }
   delete env.CLAUDECODE
 
-  const tmpDir = path.join(app.getPath('temp'), 'mega-agenda')
-  fs.mkdirSync(tmpDir, { recursive: true })
-
   for (const task of tolaunch.slice(0, 10)) {
-    const safePrompt = `[Master Plan Task] ${task.title}: ${task.description}`.replace(/%/g, '%%').replace(/"/g, "'")
-    const batFile = path.join(tmpDir, `plan-${task.id}-${Date.now()}.bat`)
-    fs.writeFileSync(batFile, [
-      '@echo off',
-      `cd /d "${workingDir}"`,
-      `npx --yes @anthropic-ai/claude-code --dangerously-skip-permissions --allowedTools "Bash(*)" "Edit(*)" "Write(*)" "Read(*)" "Glob(*)" "Grep(*)" "WebFetch(*)" "WebSearch(*)" -- "${safePrompt}"`,
-    ].join('\r\n'))
-    const child = spawn('cmd.exe', ['/c', 'start', `"${task.title.slice(0, 40)}"`, 'cmd', '/k', batFile], {
-      detached: true,
-      stdio: 'ignore',
-      env,
-    })
-    child.unref()
+    const prompt = `[Master Plan Task] ${task.title}: ${task.description}`
+    launchInExternalTerminal({ prompt, cwd: workingDir, env, title: task.title })
 
     updateMasterPlanTask(task.id, { status: 'launched', launchedAt: new Date().toISOString() })
     launched.push(task.id)
@@ -909,12 +947,13 @@ ipcMain.handle('extract-goal-action-tasks', async (_, goalId: string) => {
   if (!actionPlan) throw new Error('No action plan found. Generate one first with "Get Best Steps".')
 
   const claudeApiKey = getClaudeApiKey()
-  if (!claudeApiKey) throw new Error('Claude API key not configured. Set it in Settings.')
+  const useCliMode = getUseCliMode()
+  if (!claudeApiKey && !useCliMode) throw new Error('Claude API key not configured. Set it in Settings or enable CLI mode.')
 
   const planDate = `goal-${goalId}`
   clearMasterPlanTasks(planDate)
 
-  const extracted = await extractTasksFromActionPlan(actionPlan.report, goal, claudeApiKey)
+  const extracted = await extractTasksFromActionPlanSmart(actionPlan.report, goal, claudeApiKey, useCliMode)
   const created = []
   for (const t of extracted) {
     created.push(createMasterPlanTask({
@@ -1038,9 +1077,6 @@ ipcMain.handle('launch-goal-tasks', async (_, goalId: string, taskIds?: string[]
   const env = { ...process.env }
   delete env.CLAUDECODE
 
-  const tmpDir = path.join(app.getPath('temp'), 'mega-agenda')
-  fs.mkdirSync(tmpDir, { recursive: true })
-
   for (const task of tolaunch.slice(0, 10)) {
     const taskSlug = slugify(task.title).slice(0, 50)
     const agentResultFile = path.join(agentResultsDir, `${taskSlug}.md`)
@@ -1056,7 +1092,7 @@ ipcMain.handle('launch-goal-tasks', async (_, goalId: string, taskIds?: string[]
       '',
       'BEFORE YOU START:',
       `1. Run "git log --oneline -10" to see what previous agents have already committed`,
-      `2. Run "ls" or "dir" to see what files already exist in the repo`,
+      `2. Run "ls" to see what files already exist in the repo`,
       '3. Read any existing files relevant to your task so you BUILD ON prior work, not duplicate it',
       '',
       'WORKSPACE COORDINATION:',
@@ -1076,19 +1112,13 @@ ipcMain.handle('launch-goal-tasks', async (_, goalId: string, taskIds?: string[]
       'Commit your work with a descriptive commit message when done.',
       `Use: git add -A && git commit -m "your message"`,
     ].join('\n')
-    const safePrompt = promptLines.replace(/%/g, '%%').replace(/"/g, "'")
-    const batFile = path.join(tmpDir, `goal-${task.id}-${Date.now()}.bat`)
-    fs.writeFileSync(batFile, [
-      '@echo off',
-      `cd /d "${repoDir}"`,
-      `npx --yes @anthropic-ai/claude-code --dangerously-skip-permissions --allowedTools ${agentConfig.allowedTools} -- "${safePrompt}"`,
-    ].join('\r\n'))
-    const child = spawn('cmd.exe', ['/c', 'start', '""', 'cmd', '/k', batFile], {
-      detached: true,
-      stdio: 'ignore',
+    launchInExternalTerminal({
+      prompt: promptLines,
+      cwd: repoDir,
       env,
+      title: task.title,
+      allowedTools: agentConfig.allowedTools,
     })
-    child.unref()
 
     updateMasterPlanTask(task.id, { status: 'launched', launchedAt: new Date().toISOString() })
     launched.push(task.id)
@@ -1295,6 +1325,14 @@ ipcMain.handle('smart-query', async (_, query: string) => {
 ipcMain.handle('is-welcome-dismissed', () => isWelcomeDismissed())
 ipcMain.handle('dismiss-welcome', () => { dismissWelcome() })
 
+// CLI Mode
+ipcMain.handle('get-use-cli-mode', () => getUseCliMode())
+ipcMain.handle('set-use-cli-mode', (_, enabled: boolean) => setUseCliMode(enabled))
+ipcMain.handle('check-cli-available', () => ({
+  available: !!findClaudeCli(),
+  path: findClaudeCli(),
+}))
+
 // RAG / Embeddings
 ipcMain.handle('get-embedding-status', () => {
   return getEmbeddingStatus()
@@ -1314,6 +1352,20 @@ ipcMain.handle('rebuild-vector-index', async () => {
   return rebuildIndex((info) => {
     mainWindow?.webContents.send('index-progress', info)
   })
+})
+
+ipcMain.handle('compress-knowledge-base', async () => {
+  return compressKnowledgeBase((info) => {
+    mainWindow?.webContents.send('compression-progress', info)
+  })
+})
+
+ipcMain.handle('get-compressed-knowledge', () => {
+  return loadCompressedKnowledge()
+})
+
+ipcMain.handle('get-compression-staleness', () => {
+  return isCompressionStale()
 })
 
 ipcMain.handle('generate-reorg-plan', async () => {
@@ -1781,26 +1833,10 @@ ipcMain.handle('batch-extract-memories', async () => {
 
 // Launch external terminal
 ipcMain.handle('launch-external-terminal', async (_, prompt: string, cwd?: string) => {
-  const workingDir = cwd || process.env.USERPROFILE || '.'
+  const workingDir = cwd || process.env.USERPROFILE || process.env.HOME || '.'
   const env = { ...process.env }
   delete env.CLAUDECODE
-  // Write prompt directly into a temp batch file to avoid all cmd.exe quoting/escaping issues
-  const tmpDir = path.join(app.getPath('temp'), 'mega-agenda')
-  fs.mkdirSync(tmpDir, { recursive: true })
-  const batFile = path.join(tmpDir, `launch-${Date.now()}.bat`)
-  // Escape for batch: % -> %%, " -> ' (prompt already has " -> ' from renderer, but double-check)
-  const safePrompt = prompt.replace(/%/g, '%%').replace(/"/g, "'")
-  fs.writeFileSync(batFile, [
-    '@echo off',
-    `cd /d "${workingDir}"`,
-    `npx --yes @anthropic-ai/claude-code --dangerously-skip-permissions --allowedTools "Bash(*)" "Edit(*)" "Write(*)" "Read(*)" "Glob(*)" "Grep(*)" "WebFetch(*)" "WebSearch(*)" -- "${safePrompt}"`,
-  ].join('\r\n'))
-  const child = spawn('cmd.exe', ['/c', 'start', '""', 'cmd', '/k', batFile], {
-    detached: true,
-    stdio: 'ignore',
-    env,
-  })
-  child.unref()
+  launchInExternalTerminal({ prompt, cwd: workingDir, env })
 })
 
 // Terminal

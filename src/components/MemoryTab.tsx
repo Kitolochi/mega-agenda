@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { ContextFile } from '../types'
+import { ContextFile, CompressedKnowledge } from '../types'
 
 function formatFileSize(bytes: number): string {
   if (bytes === 0) return '0 B'
@@ -21,12 +21,35 @@ export default function MemoryTab() {
   const [newFolderName, setNewFolderName] = useState('')
   const [deletingFolder, setDeletingFolder] = useState<string | null>(null)
 
+  // Compression state
+  const [compressedKnowledge, setCompressedKnowledge] = useState<CompressedKnowledge | null>(null)
+  const [isCompressing, setIsCompressing] = useState(false)
+  const [compressionProgress, setCompressionProgress] = useState<{ phase: string; current: number; total: number } | null>(null)
+  const [isStale, setIsStale] = useState(false)
+  const [showOverview, setShowOverview] = useState(false)
+
   const loadData = useCallback(async () => {
     const ctxFiles = await window.electronAPI.getContextFiles()
     setContextFiles(ctxFiles)
+    // Load compression data
+    try {
+      const compressed = await window.electronAPI.getCompressedKnowledge()
+      setCompressedKnowledge(compressed)
+      if (compressed) {
+        const stale = await window.electronAPI.getCompressionStaleness()
+        setIsStale(stale)
+      }
+    } catch {}
   }, [])
 
   useEffect(() => { loadData() }, [loadData])
+
+  useEffect(() => {
+    const unsub = window.electronAPI.onCompressionProgress((info) => {
+      setCompressionProgress(info)
+    })
+    return unsub
+  }, [])
 
   // Breadcrumb segments from currentFolder
   const breadcrumbs = useMemo(() => {
@@ -124,6 +147,92 @@ export default function MemoryTab() {
             + New File
           </button>
         </div>
+      </div>
+
+      {/* Compression Card */}
+      <div className="mb-4 p-3 rounded-xl bg-surface-2 border border-white/[0.06]">
+        <div className="flex items-center justify-between mb-1">
+          <div className="flex items-center gap-2">
+            <svg className="w-3.5 h-3.5 text-accent-purple" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
+            </svg>
+            <span className="text-[11px] font-medium text-white/80">Knowledge Compression</span>
+            {isStale && compressedKnowledge && (
+              <span className="px-1.5 py-0.5 rounded text-[8px] font-medium bg-yellow-500/20 text-yellow-400">
+                Stale
+              </span>
+            )}
+          </div>
+          <button
+            onClick={async () => {
+              setIsCompressing(true)
+              setCompressionProgress(null)
+              try {
+                const result = await window.electronAPI.compressKnowledgeBase()
+                setCompressedKnowledge(result)
+                setIsStale(false)
+              } catch (err: any) {
+                console.error('Compression failed:', err)
+              } finally {
+                setIsCompressing(false)
+                setCompressionProgress(null)
+              }
+            }}
+            disabled={isCompressing}
+            className="px-2.5 py-1 rounded-lg bg-accent-purple/20 hover:bg-accent-purple/30 text-[10px] font-medium text-accent-purple transition-all disabled:opacity-40 flex items-center gap-1.5"
+          >
+            {isCompressing && (
+              <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+            )}
+            {isCompressing ? 'Compressing...' : 'Compress Knowledge Base'}
+          </button>
+        </div>
+
+        {/* Progress */}
+        {isCompressing && compressionProgress && (
+          <div className="mt-2 flex items-center gap-2">
+            <div className="flex-1 h-1 rounded-full bg-surface-3 overflow-hidden">
+              <div
+                className="h-full bg-accent-purple/60 rounded-full transition-all"
+                style={{ width: compressionProgress.total > 0 ? `${Math.round((compressionProgress.current / compressionProgress.total) * 100)}%` : '0%' }}
+              />
+            </div>
+            <span className="text-[9px] text-muted flex-shrink-0">{compressionProgress.phase}</span>
+          </div>
+        )}
+
+        {/* Stats */}
+        {compressedKnowledge && !isCompressing && (
+          <div className="mt-2">
+            <div className="flex items-center gap-3 text-[9px] text-muted">
+              <span>{compressedKnowledge.stats.ratio}x compression</span>
+              <span className="text-white/[0.15]">|</span>
+              <span>{compressedKnowledge.stats.chunksProcessed} chunks</span>
+              <span className="text-white/[0.15]">|</span>
+              <span>{compressedKnowledge.stats.duplicatesRemoved} dupes removed</span>
+              <span className="text-white/[0.15]">|</span>
+              <span>{compressedKnowledge.stats.clustersFound} clusters</span>
+              <span className="text-white/[0.15]">|</span>
+              <span>{new Date(compressedKnowledge.lastCompressed).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+            </div>
+
+            {/* Collapsible overview */}
+            <button
+              onClick={() => setShowOverview(!showOverview)}
+              className="mt-1.5 text-[9px] text-accent-purple/70 hover:text-accent-purple transition-colors"
+            >
+              {showOverview ? 'Hide overview' : 'Show overview'}
+            </button>
+            {showOverview && (
+              <div className="mt-1.5 p-2 rounded-lg bg-surface-3 text-[10px] text-white/70 leading-relaxed">
+                {compressedKnowledge.overview}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Breadcrumbs */}

@@ -287,6 +287,31 @@ export interface ReorgPlan {
   backupPath?: string
 }
 
+export interface CompressionStats {
+  inputTokens: number
+  outputTokens: number
+  ratio: number
+  chunksProcessed: number
+  duplicatesRemoved: number
+  clustersFound: number
+}
+
+export interface DomainSummary {
+  domain: string
+  label: string
+  summary: string
+  facts: string[]
+  embedding?: number[]  // cached centroid embedding for fast similarity lookup
+}
+
+export interface CompressedKnowledge {
+  overview: string
+  domains: DomainSummary[]
+  lastCompressed: string
+  fileHashSnapshot: Record<string, string>
+  stats: CompressionStats
+}
+
 export interface MasterPlan {
   content: string
   generatedAt: string
@@ -452,6 +477,11 @@ export interface ElectronAPI {
   killTerminal: () => Promise<void>
   onTerminalData: (callback: (data: string) => void) => () => void
 
+  // CLI Mode
+  getUseCliMode: () => Promise<boolean>
+  setUseCliMode: (enabled: boolean) => Promise<boolean>
+  checkCliAvailable: () => Promise<{ available: boolean; path: string | null }>
+
   // Clipboard
   readClipboard: () => string
   writeClipboard: (text: string) => void
@@ -585,6 +615,12 @@ export interface ElectronAPI {
   executeReorgPlan: (plan: ReorgPlan) => Promise<{ success: boolean; backupPath: string }>
   onEmbeddingProgress: (callback: (progress: number) => void) => () => void
   onIndexProgress: (callback: (info: { phase: string; current: number; total: number }) => void) => () => void
+
+  // Knowledge Compression
+  compressKnowledgeBase: () => Promise<CompressedKnowledge>
+  getCompressedKnowledge: () => Promise<CompressedKnowledge | null>
+  getCompressionStaleness: () => Promise<boolean>
+  onCompressionProgress: (callback: (info: { phase: string; current: number; total: number }) => void) => () => void
 
   // Memory
   getMemories: () => Promise<Memory[]>

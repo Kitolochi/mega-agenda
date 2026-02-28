@@ -2,6 +2,7 @@ import { BrowserWindow } from 'electron'
 import { getBriefingData, getChatSettings } from './database'
 import { getRelevantMemories } from './memory'
 import { streamLLM } from './llm'
+import { getCompressedOverview } from './compressor'
 
 let activeAbort: (() => void) | null = null
 
@@ -29,6 +30,14 @@ export function buildContextSystemPrompt(messages?: { role: string; content: str
 
   if (data.recentNotes.length > 0) {
     parts.push(`Recent journal notes: ${data.recentNotes.map(n => `${n.date}: ${n.content.slice(0, 100)}`).join('; ')}`)
+  }
+
+  // Inject compressed knowledge overview
+  const compressedOverview = getCompressedOverview()
+  if (compressedOverview) {
+    parts.push('')
+    parts.push('Knowledge base overview:')
+    parts.push(compressedOverview)
   }
 
   // Inject relevant memories

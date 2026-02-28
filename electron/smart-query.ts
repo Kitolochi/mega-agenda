@@ -3,18 +3,43 @@ import { getChatSettings, getBriefingData, getRoadmapGoals, getMasterPlanTasks, 
 import { getRelevantMemories } from './memory'
 import { search } from './vector-store'
 import { streamLLM } from './llm'
+import { getCompressedOverview, getRelevantDomainSummaries, adaptiveRagBudget, deduplicateRagAgainstDomains, ScoredDomain } from './compressor'
 
 export async function streamSmartQuery(
   mainWindow: BrowserWindow,
   queryId: string,
   query: string
 ): Promise<void> {
-  // 1. RAG search over ~/.claude/memory/
+  // 0. Compressed knowledge (if available)
+  const compressedOverview = getCompressedOverview()
+  let domainSummariesContext = ''
+  let scoredDomains: ScoredDomain[] = []
+  try {
+    scoredDomains = await getRelevantDomainSummaries(query, 3)
+    if (scoredDomains.length > 0) {
+      domainSummariesContext = scoredDomains.map(sd =>
+        `### ${sd.domain.label}\n${sd.domain.summary}\nKey facts:\n${sd.domain.facts.map(f => '- ' + f).join('\n')}`
+      ).join('\n\n')
+    }
+  } catch {}
+
+  // 1. RAG search — adaptive budget based on domain match quality
+  const ragBudget = adaptiveRagBudget(scoredDomains)
   let ragContext = ''
   try {
-    const ragResults = await search(query, { topK: 15 })
+    const ragResults = await search(query, { topK: ragBudget })
     if (ragResults && ragResults.length > 0) {
-      ragContext = ragResults.map(r => `[${r.domain}/${r.heading}] ${r.text.slice(0, 300)}`).join('\n')
+      // Deduplicate: drop RAG chunks that overlap with matched domain summaries
+      if (scoredDomains.length > 0) {
+        const keep = await deduplicateRagAgainstDomains(
+          ragResults.map(r => r.text),
+          scoredDomains
+        )
+        const filtered = ragResults.filter((_, i) => keep[i])
+        ragContext = filtered.map(r => `[${r.domain}/${r.heading}] ${r.text.slice(0, 300)}`).join('\n')
+      } else {
+        ragContext = ragResults.map(r => `[${r.domain}/${r.heading}] ${r.text.slice(0, 300)}`).join('\n')
+      }
     }
   } catch {}
 
@@ -66,7 +91,13 @@ ${journalContext || '(No recent journal entries)'}
 
 ## Master Plan
 ${planContext}
-
+${compressedOverview ? `
+## Knowledge Overview
+${compressedOverview}
+` : ''}${domainSummariesContext ? `
+## Relevant Domain Details
+${domainSummariesContext}
+` : ''}
 ## Relevant Memories
 ${memoryContext || '(No relevant memories found)'}
 

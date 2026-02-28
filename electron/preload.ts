@@ -115,6 +115,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => { ipcRenderer.removeListener('terminal-data', handler) }
   },
 
+  // CLI Mode
+  getUseCliMode: () => ipcRenderer.invoke('get-use-cli-mode'),
+  setUseCliMode: (enabled: boolean) => ipcRenderer.invoke('set-use-cli-mode', enabled),
+  checkCliAvailable: () => ipcRenderer.invoke('check-cli-available'),
+
   // Chat conversations
   getChatConversations: () => ipcRenderer.invoke('get-chat-conversations'),
   getChatConversation: (id: string) => ipcRenderer.invoke('get-chat-conversation', id),
@@ -265,6 +270,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const handler = (_: any, info: any) => callback(info)
     ipcRenderer.on('index-progress', handler)
     return () => { ipcRenderer.removeListener('index-progress', handler) }
+  },
+
+  // Knowledge Compression
+  compressKnowledgeBase: () => ipcRenderer.invoke('compress-knowledge-base'),
+  getCompressedKnowledge: () => ipcRenderer.invoke('get-compressed-knowledge'),
+  getCompressionStaleness: () => ipcRenderer.invoke('get-compression-staleness'),
+  onCompressionProgress: (callback: (info: { phase: string; current: number; total: number }) => void) => {
+    const handler = (_: any, info: any) => callback(info)
+    ipcRenderer.on('compression-progress', handler)
+    return () => { ipcRenderer.removeListener('compression-progress', handler) }
   },
 
   // Context Files
