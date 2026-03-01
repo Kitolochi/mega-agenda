@@ -16,6 +16,8 @@ import AITasksBoard from '../AITasksBoard'
 import MemoryTab from '../MemoryTab'
 import MemoriesTab from '../MemoriesTab'
 import RoadmapTab from '../RoadmapTab'
+import LabTab from '../LabTab'
+import AccountsTab from '../bank-sync/AccountsTab'
 
 export default function ContentArea() {
   const { activeTab, selectedCategory, navigateToTab, setSelectedCategory, openAddFromCategory } = useAppStore()
@@ -32,6 +34,8 @@ export default function ContentArea() {
     if (activeTab === 'roadmap') return <RoadmapTab />
     if (activeTab === 'memory') return <MemoryTab />
     if (activeTab === 'memories') return <MemoriesTab />
+    if (activeTab === 'lab') return <LabTab />
+    if (activeTab === 'accounts') return <AccountsTab />
     if (activeTab === 'ai-tasks') return <AITasksBoard onTerminalCommand={handleTerminalCommand} />
     if (activeTab === 'social') return <SocialTab />
     if (activeTab === 'chat') return <ChatTab />

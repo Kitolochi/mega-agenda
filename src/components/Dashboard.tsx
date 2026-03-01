@@ -4,6 +4,7 @@ import CategoryCard from './CategoryCard'
 import TaskItem from './TaskItem'
 import MorningBriefing from './MorningBriefing'
 import ActivityHeatmap from './ActivityHeatmap'
+import DebtSummary from './bank-sync/DebtSummary'
 import { playClick } from '../utils/sounds'
 
 interface DashboardProps {
@@ -166,6 +167,11 @@ export default function Dashboard({
       {/* Activity Heatmap */}
       <div className="animate-stagger-in" style={{ animationDelay: '180ms' }}>
         <ActivityHeatmap />
+      </div>
+
+      {/* Debt Summary (shown only when bank connections exist) */}
+      <div className="animate-stagger-in" style={{ animationDelay: '210ms' }}>
+        <DebtSummary compact />
       </div>
 
       {/* View Tabs */}

@@ -8,6 +8,7 @@ import { registerAIHandlers } from './ai'
 import { registerMemoryHandlers } from './memory'
 import { registerSystemHandlers } from './system'
 import { registerKnowledgePackHandlers } from './knowledge-pack'
+import { registerBankSyncHandlers } from './bank-sync'
 
 export function registerAllHandlers(mainWindow: BrowserWindow) {
   registerTaskHandlers(mainWindow)
@@ -19,4 +20,5 @@ export function registerAllHandlers(mainWindow: BrowserWindow) {
   registerMemoryHandlers(mainWindow)
   registerSystemHandlers(mainWindow)
   registerKnowledgePackHandlers(mainWindow)
+  registerBankSyncHandlers(mainWindow)
 }

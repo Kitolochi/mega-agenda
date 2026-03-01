@@ -419,6 +419,8 @@ export interface KnowledgePack {
   clusters: KnowledgeCluster[]
   stats: {
     totalMemories: number
+    totalContextFiles: number
+    totalChunks: number
     totalFacts: number
     compressionRatio: number
     durationMs: number
@@ -431,6 +433,15 @@ export interface CompressionProgress {
   detail: string
 }
 
+export interface CompressionAudit {
+  coverageScore: number
+  totalOriginalItems: number
+  coveredItems: number
+  uncoveredItems: { text: string; source: string; bestMatchScore: number }[]
+  clusterCoverage: { label: string; itemCount: number; factCount: number; avgCoverage: number }[]
+  duplicatesRemoved: number
+}
+
 export interface MemoryHealth {
   totalMemories: number
   totalTokens: number
@@ -439,6 +450,67 @@ export interface MemoryHealth {
   status: 'healthy' | 'warning' | 'critical'
   staleMemoryCount: number
   recommendation: string
+}
+
+export interface SingleFileTestResult {
+  fileName: string
+  originalSize: number
+  originalText: string
+  chunks: number
+  clusters: KnowledgeCluster[]
+  totalFacts: number
+  overview: string
+  durationMs: number
+}
+
+export interface ContextFileInfo {
+  name: string
+  size: number
+  isStub: boolean
+}
+
+// Bank Sync Types
+export type BankProvider = 'simplefin' | 'teller'
+export type BankConnectionStatus = 'active' | 'error' | 'disconnected'
+
+export interface BankConnection {
+  id: string
+  provider: BankProvider
+  accessToken: string  // SimpleFIN access URL or Teller access token
+  status: BankConnectionStatus
+  errorMessage?: string
+  lastSynced?: string  // ISO 8601
+  createdAt: string
+  updatedAt: string
+}
+
+export type BankAccountType = 'checking' | 'savings' | 'credit_card' | 'loan' | 'mortgage' | 'investment' | 'other'
+
+export interface BankAccount {
+  id: string
+  connectionId: string
+  externalId: string  // Provider's account ID
+  name: string
+  institution: string
+  accountType: BankAccountType
+  balance: number      // Current balance in cents (negative = debt)
+  availableBalance?: number  // Available balance in cents
+  currency: string
+  lastSynced?: string
+}
+
+export interface BankTransaction {
+  id: string
+  accountId: string
+  externalId: string   // Provider's transaction ID
+  dedupHash: string    // For deduplication
+  amount: number       // In cents (negative = debit)
+  date: string         // YYYY-MM-DD
+  description: string
+  category?: string
+  merchant?: string
+  pending: boolean
+  importedAt: string
 }
 
 export interface ElectronAPI {
@@ -665,12 +737,18 @@ export interface ElectronAPI {
   // Knowledge Pack
   getKnowledgePacks: () => Promise<KnowledgePack[]>
   compressKnowledge: () => Promise<KnowledgePack>
+  auditCompression: () => Promise<CompressionAudit>
   getMemoryHealth: () => Promise<MemoryHealth>
   autoPruneMemories: () => Promise<number>
   startHealthMonitor: (intervalMs: number) => Promise<void>
   stopHealthMonitor: () => Promise<void>
   onCompressionProgress: (callback: (progress: CompressionProgress) => void) => () => void
   onMemoryHealthUpdate: (callback: (health: MemoryHealth) => void) => () => void
+
+  // Lab tools
+  compressSingleFile: (relativePath: string) => Promise<SingleFileTestResult>
+  testEmbeddingSimilarity: (textA: string, textB: string) => Promise<{ similarity: number; embeddingDim: number }>
+  listContextFiles: () => Promise<ContextFileInfo[]>
 
   // Memory
   getMemories: () => Promise<Memory[]>
@@ -687,6 +765,15 @@ export interface ElectronAPI {
   extractMemoriesFromCli: (sessionId: string) => Promise<Memory[]>
   extractMemoriesFromJournal: (date: string) => Promise<Memory[]>
   batchExtractMemories: () => Promise<Memory[]>
+
+  // Bank Sync
+  getBankConnections: () => Promise<BankConnection[]>
+  connectBank: (provider: BankProvider, token: string) => Promise<BankConnection>
+  deleteBankConnection: (id: string) => Promise<void>
+  syncBankConnection: (id: string) => Promise<{ accounts: BankAccount[]; newTransactions: number }>
+  syncAllBankConnections: () => Promise<void>
+  getBankAccounts: () => Promise<BankAccount[]>
+  getBankTransactions: (accountId?: string, limit?: number) => Promise<BankTransaction[]>
 }
 
 declare global {

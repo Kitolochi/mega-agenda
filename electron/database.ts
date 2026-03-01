@@ -1,5 +1,6 @@
 import path from 'path'
 import fs from 'fs'
+import crypto from 'crypto'
 import { app } from 'electron'
 
 interface Task {
@@ -256,6 +257,44 @@ export interface LLMSettings {
   fastModel: string
 }
 
+export interface BankConnection {
+  id: string
+  provider: 'simplefin' | 'teller'
+  accessToken: string
+  status: 'active' | 'error' | 'disconnected'
+  errorMessage?: string
+  lastSynced?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface BankAccount {
+  id: string
+  connectionId: string
+  externalId: string
+  name: string
+  institution: string
+  accountType: 'checking' | 'savings' | 'credit_card' | 'loan' | 'mortgage' | 'investment' | 'other'
+  balance: number
+  availableBalance?: number
+  currency: string
+  lastSynced?: string
+}
+
+export interface BankTransaction {
+  id: string
+  accountId: string
+  externalId: string
+  dedupHash: string
+  amount: number
+  date: string
+  description: string
+  category?: string
+  merchant?: string
+  pending: boolean
+  importedAt: string
+}
+
 interface Database {
   categories: Category[]
   tasks: Task[]
@@ -283,6 +322,9 @@ interface Database {
   memorySettings: MemorySettings
   welcomeDismissed: boolean
   llmSettings: LLMSettings
+  bankConnections: BankConnection[]
+  bankAccounts: BankAccount[]
+  bankTransactions: BankTransaction[]
 }
 
 let db: Database
@@ -582,6 +624,24 @@ export function initDatabase(): Database {
       primaryModel: 'claude-sonnet-4-5-20250929',
       fastModel: 'claude-haiku-4-5-20251001'
     }
+    saveDatabase()
+  }
+
+  // Initialize bankConnections if missing
+  if (!(db as any).bankConnections) {
+    db.bankConnections = []
+    saveDatabase()
+  }
+
+  // Initialize bankAccounts if missing
+  if (!(db as any).bankAccounts) {
+    db.bankAccounts = []
+    saveDatabase()
+  }
+
+  // Initialize bankTransactions if missing
+  if (!(db as any).bankTransactions) {
+    db.bankTransactions = []
     saveDatabase()
   }
 
@@ -1722,4 +1782,80 @@ export function updateMasterPlanTask(id: string, updates: Partial<MasterPlanTask
 export function clearMasterPlanTasks(planDate: string): void {
   db.masterPlanTasks = db.masterPlanTasks.filter(t => t.planDate !== planDate)
   saveDatabase()
+}
+
+// Bank Sync CRUD
+export function getBankConnections(): BankConnection[] {
+  return db.bankConnections || []
+}
+
+export function getBankConnection(id: string): BankConnection | null {
+  return db.bankConnections.find(c => c.id === id) || null
+}
+
+export function createBankConnection(provider: 'simplefin' | 'teller', accessToken: string): BankConnection {
+  const now = new Date().toISOString()
+  const conn: BankConnection = {
+    id: crypto.randomUUID(),
+    provider,
+    accessToken,
+    status: 'active',
+    createdAt: now,
+    updatedAt: now
+  }
+  db.bankConnections.push(conn)
+  saveDatabase()
+  return conn
+}
+
+export function updateBankConnection(id: string, updates: Partial<BankConnection>): BankConnection | null {
+  const idx = db.bankConnections.findIndex(c => c.id === id)
+  if (idx === -1) return null
+  db.bankConnections[idx] = { ...db.bankConnections[idx], ...updates, updatedAt: new Date().toISOString() }
+  saveDatabase()
+  return db.bankConnections[idx]
+}
+
+export function deleteBankConnection(id: string): void {
+  db.bankConnections = db.bankConnections.filter(c => c.id !== id)
+  // Also remove associated accounts and transactions
+  const accountIds = db.bankAccounts.filter(a => a.connectionId === id).map(a => a.id)
+  db.bankAccounts = db.bankAccounts.filter(a => a.connectionId !== id)
+  db.bankTransactions = db.bankTransactions.filter(t => !accountIds.includes(t.accountId))
+  saveDatabase()
+}
+
+export function getBankAccounts(): BankAccount[] {
+  return db.bankAccounts || []
+}
+
+export function upsertBankAccount(account: BankAccount): BankAccount {
+  const idx = db.bankAccounts.findIndex(a => a.connectionId === account.connectionId && a.externalId === account.externalId)
+  if (idx !== -1) {
+    db.bankAccounts[idx] = { ...db.bankAccounts[idx], ...account, lastSynced: new Date().toISOString() }
+    saveDatabase()
+    return db.bankAccounts[idx]
+  }
+  db.bankAccounts.push(account)
+  saveDatabase()
+  return account
+}
+
+export function getBankTransactions(accountId?: string, limit: number = 100): BankTransaction[] {
+  let txs = db.bankTransactions || []
+  if (accountId) txs = txs.filter(t => t.accountId === accountId)
+  return txs.sort((a, b) => b.date.localeCompare(a.date)).slice(0, limit)
+}
+
+export function upsertBankTransaction(tx: BankTransaction): { inserted: boolean } {
+  const existing = db.bankTransactions.find(t => t.dedupHash === tx.dedupHash)
+  if (existing) {
+    // Update existing — only refresh metadata
+    Object.assign(existing, { pending: tx.pending, description: tx.description, category: tx.category, merchant: tx.merchant })
+    saveDatabase()
+    return { inserted: false }
+  }
+  db.bankTransactions.push(tx)
+  saveDatabase()
+  return { inserted: true }
 }

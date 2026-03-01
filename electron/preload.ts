@@ -273,16 +273,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => { ipcRenderer.removeListener('index-progress', handler) }
   },
 
-  // Knowledge Compression
-  compressKnowledgeBase: () => ipcRenderer.invoke('compress-knowledge-base'),
-  getCompressedKnowledge: () => ipcRenderer.invoke('get-compressed-knowledge'),
-  getCompressionStaleness: () => ipcRenderer.invoke('get-compression-staleness'),
-  onCompressionProgress: (callback: (info: { phase: string; current: number; total: number }) => void) => {
-    const handler = (_: any, info: any) => callback(info)
-    ipcRenderer.on('compression-progress', handler)
-    return () => { ipcRenderer.removeListener('compression-progress', handler) }
-  },
-
   // Context Files
   getContextFiles: () => ipcRenderer.invoke('get-context-files'),
   saveContextFile: (name: string, content: string, folder?: string) => ipcRenderer.invoke('save-context-file', name, content, folder || ''),
@@ -311,6 +301,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Knowledge Pack
   getKnowledgePacks: () => ipcRenderer.invoke('get-knowledge-packs'),
   compressKnowledge: () => ipcRenderer.invoke('compress-knowledge'),
+  auditCompression: () => ipcRenderer.invoke('audit-compression'),
+
+  // Lab tools
+  compressSingleFile: (relativePath: string) => ipcRenderer.invoke('compress-single-file', relativePath),
+  testEmbeddingSimilarity: (textA: string, textB: string) => ipcRenderer.invoke('test-embedding-similarity', textA, textB),
+  listContextFiles: () => ipcRenderer.invoke('list-context-files'),
   getMemoryHealth: () => ipcRenderer.invoke('get-memory-health'),
   autoPruneMemories: () => ipcRenderer.invoke('auto-prune-memories'),
   startHealthMonitor: (intervalMs: number) => ipcRenderer.invoke('start-health-monitor', intervalMs),
@@ -325,6 +321,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('memory-health-update', handler)
     return () => { ipcRenderer.removeListener('memory-health-update', handler) }
   },
+
+  // Bank Sync
+  getBankConnections: () => ipcRenderer.invoke('get-bank-connections'),
+  connectBank: (provider: 'simplefin' | 'teller', token: string) => ipcRenderer.invoke('connect-bank', provider, token),
+  deleteBankConnection: (id: string) => ipcRenderer.invoke('delete-bank-connection', id),
+  syncBankConnection: (id: string) => ipcRenderer.invoke('sync-bank-connection', id),
+  syncAllBankConnections: () => ipcRenderer.invoke('sync-all-bank-connections'),
+  getBankAccounts: () => ipcRenderer.invoke('get-bank-accounts'),
+  getBankTransactions: (accountId?: string, limit?: number) => ipcRenderer.invoke('get-bank-transactions', accountId, limit),
 
   // Clipboard
   readClipboard: () => ipcRenderer.sendSync('read-clipboard'),
