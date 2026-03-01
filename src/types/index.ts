@@ -274,6 +274,14 @@ export interface WhisperStatus {
   progress: number
 }
 
+export type VoiceChatState = 'idle' | 'listening' | 'transcribing' | 'thinking' | 'speaking' | 'error'
+
+export interface VoiceChatMessage {
+  role: 'user' | 'assistant'
+  content: string
+  timestamp: string
+}
+
 export interface ReorgPlanItem {
   action: 'move' | 'merge' | 'delete'
   source: string
@@ -366,6 +374,7 @@ export interface TopicReport {
   type: 'question' | 'guidance'
   report: string
   generatedAt: string
+  model?: string
 }
 
 export interface RoadmapSubGoal {
@@ -394,6 +403,42 @@ export interface RoadmapGoal {
   contextFiles?: string[]  // array of filenames, e.g. ["learnings.md", "projects.md"]
   createdAt: string
   updatedAt: string
+}
+
+export interface KnowledgeCluster {
+  label: string
+  summary: string
+  facts: string[]
+  memoryCount: number
+}
+
+export interface KnowledgePack {
+  id: string
+  createdAt: string
+  overview: string
+  clusters: KnowledgeCluster[]
+  stats: {
+    totalMemories: number
+    totalFacts: number
+    compressionRatio: number
+    durationMs: number
+  }
+}
+
+export interface CompressionProgress {
+  phase: 'embedding' | 'dedup' | 'clustering' | 'summarizing' | 'extracting' | 'overview' | 'done'
+  percent: number
+  detail: string
+}
+
+export interface MemoryHealth {
+  totalMemories: number
+  totalTokens: number
+  tokenBudget: number
+  budgetUsagePercent: number
+  status: 'healthy' | 'warning' | 'critical'
+  staleMemoryCount: number
+  recommendation: string
 }
 
 export interface ElectronAPI {
@@ -606,6 +651,7 @@ export interface ElectronAPI {
 
   // Whisper (local voice transcription)
   transcribeAudio: (audioData: number[]) => Promise<string>
+  transcribeAudioBlob: (webmData: number[]) => Promise<string>
   getWhisperStatus: () => Promise<WhisperStatus>
 
   // RAG / Embeddings
@@ -616,11 +662,15 @@ export interface ElectronAPI {
   onEmbeddingProgress: (callback: (progress: number) => void) => () => void
   onIndexProgress: (callback: (info: { phase: string; current: number; total: number }) => void) => () => void
 
-  // Knowledge Compression
-  compressKnowledgeBase: () => Promise<CompressedKnowledge>
-  getCompressedKnowledge: () => Promise<CompressedKnowledge | null>
-  getCompressionStaleness: () => Promise<boolean>
-  onCompressionProgress: (callback: (info: { phase: string; current: number; total: number }) => void) => () => void
+  // Knowledge Pack
+  getKnowledgePacks: () => Promise<KnowledgePack[]>
+  compressKnowledge: () => Promise<KnowledgePack>
+  getMemoryHealth: () => Promise<MemoryHealth>
+  autoPruneMemories: () => Promise<number>
+  startHealthMonitor: (intervalMs: number) => Promise<void>
+  stopHealthMonitor: () => Promise<void>
+  onCompressionProgress: (callback: (progress: CompressionProgress) => void) => () => void
+  onMemoryHealthUpdate: (callback: (health: MemoryHealth) => void) => () => void
 
   // Memory
   getMemories: () => Promise<Memory[]>

@@ -1,6 +1,7 @@
 import { app } from 'electron'
 import path from 'path'
 import fs from 'fs'
+import { execFileSync } from 'child_process'
 
 // Types for the Whisper pipeline
 type WhisperPipeline = (audio: Float32Array, options?: { language?: string; task?: string }) => Promise<{ text: string }>
@@ -76,5 +77,56 @@ export async function transcribeAudio(audioData: Float32Array): Promise<string> 
   } catch (err: any) {
     console.error('Whisper transcription failed:', err)
     throw new Error('Transcription failed: ' + (err?.message || 'unknown error'))
+  }
+}
+
+/** Decode a webm/opus blob to 16 kHz mono PCM using ffmpeg, then transcribe */
+export async function transcribeAudioBlob(webmBytes: Uint8Array): Promise<string> {
+  if (!pipeline) {
+    throw new Error('Whisper model not loaded')
+  }
+
+  // Resolve ffmpeg binary from ffmpeg-static
+  let ffmpegPath: string
+  try {
+    ffmpegPath = require('ffmpeg-static')
+  } catch {
+    throw new Error('ffmpeg-static not installed')
+  }
+
+  const tmpDir = app.getPath('temp')
+  const ts = Date.now()
+  const tmpIn = path.join(tmpDir, `voice-${ts}.webm`)
+  const tmpOut = path.join(tmpDir, `voice-${ts}.raw`)
+
+  try {
+    fs.writeFileSync(tmpIn, Buffer.from(webmBytes))
+
+    // Convert webm → raw 32-bit float PCM, 16 kHz, mono
+    execFileSync(ffmpegPath, [
+      '-i', tmpIn,
+      '-f', 'f32le',
+      '-acodec', 'pcm_f32le',
+      '-ar', '16000',
+      '-ac', '1',
+      tmpOut,
+      '-y',
+    ], { stdio: 'pipe', timeout: 15000 })
+
+    const rawBytes = fs.readFileSync(tmpOut)
+    const pcm = new Float32Array(rawBytes.buffer, rawBytes.byteOffset, rawBytes.byteLength / 4)
+
+    if (pcm.length === 0) {
+      throw new Error('No audio data after decoding')
+    }
+
+    const result = await pipeline(pcm, { language: 'en', task: 'transcribe' })
+    return (result.text || '').trim()
+  } catch (err: any) {
+    console.error('Blob transcription failed:', err)
+    throw new Error('Transcription failed: ' + (err?.message || 'unknown error'))
+  } finally {
+    try { fs.unlinkSync(tmpIn) } catch {}
+    try { fs.unlinkSync(tmpOut) } catch {}
   }
 }

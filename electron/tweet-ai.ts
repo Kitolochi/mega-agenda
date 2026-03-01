@@ -31,7 +31,6 @@ Maintain this voice consistently.`
 }
 
 export async function brainstormTweet(
-  apiKey: string,
   topic: string,
   history: { role: string; content: string }[],
   persona?: TweetPersona
@@ -49,7 +48,6 @@ For each option, use a different rhetorical approach (e.g., bold claim, question
 }
 
 export async function brainstormThread(
-  apiKey: string,
   topic: string,
   history: { role: string; content: string }[],
   persona?: TweetPersona
@@ -74,7 +72,6 @@ Rules:
 }
 
 export async function refineTweet(
-  apiKey: string,
   currentText: string,
   instruction: string,
   history: { role: string; content: string }[],
@@ -96,7 +93,6 @@ Return 2-3 improved versions, each wrapped in backticks. Briefly note what you c
 }
 
 export async function analyzeTweet(
-  apiKey: string,
   text: string
 ): Promise<string> {
   const messages = [

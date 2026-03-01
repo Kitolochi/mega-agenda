@@ -32,10 +32,10 @@ export default function AllTasks({ tasks, categories, onToggleTask }: AllTasksPr
   }, {} as Record<string, { category: Category | undefined; tasks: Task[] }>)
 
   return (
-    <div className="h-full flex flex-col animate-fade-in">
+    <div className="h-full flex flex-col">
       {/* Filter tabs */}
-      <div className="px-4 pt-4 pb-3">
-        <div className="flex gap-1 bg-surface-2 rounded-lg p-0.5">
+      <div className="px-4 pt-4 pb-3 animate-stagger-in" style={{ animationDelay: '0ms' }}>
+        <div className="flex gap-1 bg-surface-2/80 rounded-xl p-0.5">
           <button
             onClick={() => setFilter('pending')}
             className={`flex-1 py-2 rounded-md text-xs font-medium transition-all duration-200 flex items-center justify-center gap-2 ${

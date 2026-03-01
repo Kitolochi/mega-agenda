@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Category, Task } from '../types'
+import { playCelebrate } from '../utils/sounds'
 
 interface AddTaskModalProps {
   categories: Category[]
@@ -21,6 +22,7 @@ export default function AddTaskModal({ categories, defaultCategoryId, onAdd, onC
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!title.trim()) return
+    playCelebrate()
     onAdd({
       category_id: categoryId,
       title: title.trim(),
@@ -46,14 +48,17 @@ export default function AddTaskModal({ categories, defaultCategoryId, onAdd, onC
   const inputClass = "w-full bg-surface-2 border border-white/[0.06] rounded-lg px-3 py-2 text-sm text-white/90 focus:outline-none focus:border-accent-blue/40 focus:bg-surface-3 transition-all placeholder-muted/50"
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
-      <div className="glass-card rounded-2xl w-full max-w-sm shadow-2xl shadow-black/40 max-h-[90vh] overflow-y-auto animate-slide-up">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in" onClick={onClose}>
+      <div className="glass-card-elevated rounded-2xl w-full max-w-sm shadow-2xl shadow-black/50 max-h-[90vh] overflow-y-auto animate-scale-in-bounce" onClick={e => e.stopPropagation()}>
+        {/* Gradient accent bar */}
+        <div className="h-[2px] gradient-bar" />
+
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.04]">
-          <h2 className="font-display font-semibold text-sm text-white/90">New Task</h2>
+          <h2 className="font-display font-semibold text-sm gradient-text">New Task</h2>
           <button
             onClick={onClose}
-            className="w-7 h-7 rounded-lg hover:bg-white/[0.06] flex items-center justify-center text-muted hover:text-white transition-all"
+            className="w-7 h-7 rounded-lg hover:bg-white/[0.06] flex items-center justify-center text-muted hover:text-white transition-all duration-200 hover:rotate-90"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -172,13 +177,13 @@ export default function AddTaskModal({ categories, defaultCategoryId, onAdd, onC
           <div className="flex gap-2 pt-1">
             <button
               type="button" onClick={onClose}
-              className="flex-1 px-4 py-2.5 bg-surface-3 hover:bg-surface-4 rounded-xl text-xs font-medium text-white/60 hover:text-white/80 transition-all"
+              className="flex-1 px-4 py-2.5 bg-surface-3 hover:bg-surface-4 rounded-xl text-xs font-medium text-white/60 hover:text-white/80 transition-all duration-200 press-effect"
             >
               Cancel
             </button>
             <button
               type="submit" disabled={!title.trim()}
-              className="flex-1 px-4 py-2.5 bg-gradient-to-r from-accent-blue to-accent-purple hover:opacity-90 disabled:opacity-30 disabled:cursor-not-allowed rounded-xl text-xs font-semibold text-white transition-all shadow-lg shadow-accent-blue/10"
+              className="flex-1 px-4 py-2.5 bg-gradient-to-r from-accent-blue to-accent-purple hover:shadow-lg hover:shadow-accent-blue/20 disabled:opacity-30 disabled:cursor-not-allowed rounded-xl text-xs font-semibold text-white transition-all duration-200 press-effect"
             >
               Add Task
             </button>

@@ -54,6 +54,9 @@ export default function TopicReportView({ goal, topicIndex, topicType, onReload 
           <div className="flex items-center justify-between mb-3">
             <span className="text-[10px] text-accent-purple font-semibold uppercase tracking-wider">Research Report</span>
             <div className="flex items-center gap-2">
+              <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-accent-blue/15 text-accent-blue font-medium">
+                {report.model || 'claude (legacy)'}
+              </span>
               <span className="text-[10px] text-muted">
                 {new Date(report.generatedAt).toLocaleDateString()} {new Date(report.generatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
               </span>

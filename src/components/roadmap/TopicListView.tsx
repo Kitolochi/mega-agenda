@@ -39,6 +39,10 @@ export default function TopicListView({ goal, onDrillToReport, onUpdateGoal, onD
     return goal.topicReports?.some(r => r.topic === topicText && r.type === type)
   }
 
+  const getReportModel = (topicText: string, type: 'question' | 'guidance') => {
+    return goal.topicReports?.find(r => r.topic === topicText && r.type === type)?.model
+  }
+
   if (editing) {
     return (
       <div className="rounded-xl border border-white/[0.08] bg-surface-1/60 overflow-hidden">
@@ -110,6 +114,7 @@ export default function TopicListView({ goal, onDrillToReport, onUpdateGoal, onD
           <div className="space-y-2">
             {goal.research_questions.map((q, i) => {
               const researched = hasReport(q, 'question')
+              const reportModel = getReportModel(q, 'question')
               const isResearching = researchingIdx === `question-${i}`
               return (
                 <div key={i} className="rounded-lg border border-white/[0.06] bg-surface-2/60 p-3 hover:bg-surface-2/80 transition-all">
@@ -118,6 +123,7 @@ export default function TopicListView({ goal, onDrillToReport, onUpdateGoal, onD
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-[9px] px-1.5 py-0.5 rounded-full font-medium bg-accent-blue/15 text-accent-blue">Research</span>
+                        {researched && <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-white/[0.06] text-muted">{reportModel || 'claude (legacy)'}</span>}
                       </div>
                       <p className="text-xs text-white/80 mb-2">{q}</p>
                       <div className="flex items-center gap-2">
@@ -158,6 +164,7 @@ export default function TopicListView({ goal, onDrillToReport, onUpdateGoal, onD
           <div className="space-y-2">
             {goal.guidance_needed.map((g, i) => {
               const researched = hasReport(g, 'guidance')
+              const reportModel = getReportModel(g, 'guidance')
               const isResearching = researchingIdx === `guidance-${i}`
               return (
                 <div key={i} className="rounded-lg border border-white/[0.06] bg-surface-2/60 p-3 hover:bg-surface-2/80 transition-all">
@@ -166,6 +173,7 @@ export default function TopicListView({ goal, onDrillToReport, onUpdateGoal, onD
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-[9px] px-1.5 py-0.5 rounded-full font-medium bg-accent-purple/15 text-accent-purple">Guidance</span>
+                        {researched && <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-white/[0.06] text-muted">{reportModel || 'claude (legacy)'}</span>}
                       </div>
                       <p className="text-xs text-white/80 mb-2">{g}</p>
                       <div className="flex items-center gap-2">

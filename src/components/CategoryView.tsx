@@ -16,19 +16,19 @@ export default function CategoryView({ category, tasks, onBack, onToggle, onDele
   const progress = tasks.length > 0 ? Math.round((completedTasks.length / tasks.length) * 100) : 0
 
   return (
-    <div className="h-full flex flex-col animate-fade-in">
+    <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="px-4 py-3.5 flex items-center gap-3 border-b border-white/[0.04]">
+      <div className="px-4 py-3.5 flex items-center gap-3 border-b border-white/[0.04] animate-stagger-in" style={{ animationDelay: '0ms' }}>
         <button
           onClick={onBack}
-          className="w-7 h-7 rounded-lg hover:bg-white/[0.06] flex items-center justify-center text-muted hover:text-white transition-all"
+          className="w-7 h-7 rounded-lg hover:bg-white/[0.06] flex items-center justify-center text-muted hover:text-white transition-all duration-200 hover:scale-110 active:scale-95"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
           </svg>
         </button>
         <div
-          className="w-8 h-8 rounded-lg flex items-center justify-center text-base"
+          className="w-8 h-8 rounded-lg flex items-center justify-center text-base transition-transform duration-200 hover:scale-110"
           style={{ backgroundColor: category.color + '15' }}
         >
           {category.icon}
@@ -38,8 +38,12 @@ export default function CategoryView({ category, tasks, onBack, onToggle, onDele
           <div className="flex items-center gap-2 mt-0.5">
             <div className="flex-1 h-[3px] bg-white/[0.04] rounded-full overflow-hidden max-w-[80px]">
               <div
-                className="h-full rounded-full transition-all duration-500"
-                style={{ width: `${progress}%`, backgroundColor: category.color }}
+                className="h-full rounded-full transition-all duration-700"
+                style={{
+                  width: `${progress}%`,
+                  background: `linear-gradient(90deg, ${category.color}, ${category.color}CC)`,
+                  boxShadow: progress > 0 ? `0 0 6px ${category.color}30` : 'none',
+                }}
               />
             </div>
             <span className="text-[10px] text-muted">{completedTasks.length}/{tasks.length}</span>
@@ -47,7 +51,7 @@ export default function CategoryView({ category, tasks, onBack, onToggle, onDele
         </div>
         <button
           onClick={onAddTask}
-          className="px-3 py-1.5 bg-surface-3 hover:bg-surface-4 rounded-lg text-xs font-medium text-white/70 hover:text-white transition-all"
+          className="px-3 py-1.5 bg-surface-3 hover:bg-surface-4 rounded-lg text-xs font-medium text-white/70 hover:text-white transition-all duration-200 press-effect"
         >
           + Add
         </button>

@@ -58,6 +58,13 @@ async function withRetry<T>(fn: () => Promise<T>, maxRetries: number = 3, baseDe
   throw new Error('Retry exhausted')
 }
 
+// --- JSON extraction helper (strips markdown code fences from LLM responses) ---
+
+function extractJSON(response: string): string {
+  // Strip markdown code fences (```json ... ``` or ``` ... ```)
+  return response.replace(/```(?:json)?\s*\n?/g, '').replace(/```/g, '').trim()
+}
+
 // --- Research Prompts ---
 
 function buildResearchPrompt(goalTitle: string, goalDescription: string, topic: string, topicType: 'question' | 'guidance'): string {
@@ -140,8 +147,7 @@ function researchTopicWithCli(
 export async function researchTopicSmart(
   goal: RoadmapGoal,
   topic: string,
-  topicType: 'question' | 'guidance',
-  claudeApiKey: string
+  topicType: 'question' | 'guidance'
 ): Promise<string> {
   const cliPath = findClaudeCli()
 
@@ -161,8 +167,7 @@ export async function researchTopicSmart(
 // --- Topic Generation ---
 
 export async function generateTopics(
-  goal: RoadmapGoal,
-  claudeApiKey: string
+  goal: RoadmapGoal
 ): Promise<{ research_questions: string[]; guidance_needed: string[] }> {
   const prompt = `You are helping someone break down a life/project goal into specific research topics. Given the goal below, generate comprehensive research questions and guidance needs.
 
@@ -182,7 +187,8 @@ IMPORTANT: Respond with ONLY a JSON object, no other text:
   const response = await withRetry(() => callLLM({ prompt, tier: 'primary', maxTokens: 4096 }))
 
   try {
-    const jsonMatch = response.match(/\{[\s\S]*\}/)
+    const cleaned = extractJSON(response)
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/)
     if (!jsonMatch) throw new Error('No JSON found in response')
     const parsed = JSON.parse(jsonMatch[0])
     return {
@@ -464,8 +470,7 @@ async function masterPlanWithCli(cliPath: string, goals: RoadmapGoal[]): Promise
 }
 
 export async function generateMasterPlan(
-  goals: RoadmapGoal[],
-  claudeApiKey: string
+  goals: RoadmapGoal[]
 ): Promise<string> {
   const cliPath = findClaudeCli()
 
@@ -485,8 +490,7 @@ export async function generateMasterPlan(
 // --- Action Plan ---
 
 export async function generateActionPlan(
-  goal: RoadmapGoal & { topicReports?: { topic: string; type: string; report: string; generatedAt: string }[] },
-  claudeApiKey: string
+  goal: RoadmapGoal & { topicReports?: { topic: string; type: string; report: string; generatedAt: string }[] }
 ): Promise<{ report: string }> {
   const reports = goal.topicReports || []
   if (reports.length === 0) {
@@ -525,8 +529,7 @@ Be direct and specific. No fluff.`
 // --- Context Questions ---
 
 export async function generateContextQuestions(
-  goals: RoadmapGoal[],
-  claudeApiKey: string
+  goals: RoadmapGoal[]
 ): Promise<{ goalId: string; questions: string[] }[]> {
   const goalsInfo = goals.map(g => `- "${g.title}" (${g.category}): ${g.description || 'No description'}`).join('\n')
 
@@ -549,7 +552,8 @@ Use these exact goal IDs: ${goals.map(g => g.id).join(', ')}`
   const response = await withRetry(() => callLLM({ prompt, tier: 'primary', maxTokens: 4096 }))
 
   try {
-    const jsonMatch = response.match(/\[[\s\S]*\]/)
+    const cleaned = extractJSON(response)
+    const jsonMatch = cleaned.match(/\[[\s\S]*\]/)
     if (!jsonMatch) throw new Error('No JSON found')
     return JSON.parse(jsonMatch[0])
   } catch {
@@ -569,8 +573,7 @@ Use these exact goal IDs: ${goals.map(g => g.id).join(', ')}`
 
 export async function extractTasksFromPlan(
   planContent: string,
-  goals: RoadmapGoal[],
-  claudeApiKey: string
+  goals: RoadmapGoal[]
 ): Promise<{ title: string; description: string; priority: 'critical' | 'high' | 'medium' | 'low'; goalId: string; goalTitle: string; phase: string }[]> {
   const goalMap = goals.map(g => `"${g.id}": "${g.title}"`).join(', ')
 
@@ -596,7 +599,8 @@ Order by priority (critical first), then by phase order. Focus on the Next 7-Day
   const response = await withRetry(() => callLLM({ prompt, tier: 'primary', maxTokens: 4096 }))
 
   try {
-    const jsonMatch = response.match(/\[[\s\S]*\]/)
+    const cleaned = extractJSON(response)
+    const jsonMatch = cleaned.match(/\[[\s\S]*\]/)
     if (!jsonMatch) throw new Error('No JSON found')
     const tasks = JSON.parse(jsonMatch[0])
     return tasks.map((t: any) => ({
@@ -616,8 +620,7 @@ Order by priority (critical first), then by phase order. Focus on the Next 7-Day
 
 export async function extractTasksFromActionPlan(
   actionPlanText: string,
-  goal: RoadmapGoal,
-  claudeApiKey: string
+  goal: RoadmapGoal
 ): Promise<{ title: string; description: string; priority: 'critical' | 'high' | 'medium' | 'low'; goalId: string; goalTitle: string; phase: string; taskType?: string }[]> {
   const prompt = `Extract 10-30 actionable tasks from this action plan for the goal "${goal.title}". Each task should be a concrete, executable action that could be given to an AI coding assistant or done by the user.
 
@@ -645,7 +648,8 @@ Order by priority (critical first), then by phase order. Focus on the most immed
   const response = await withRetry(() => callLLM({ prompt, tier: 'fast', maxTokens: 8000, timeout: 180000 }))
 
   try {
-    const jsonMatch = response.match(/\[[\s\S]*\]/)
+    const cleaned = extractJSON(response)
+    const jsonMatch = cleaned.match(/\[[\s\S]*\]/)
     if (!jsonMatch) throw new Error('No JSON found')
     const tasks = JSON.parse(jsonMatch[0])
     const validTaskTypes = ['research', 'code', 'writing', 'planning', 'communication']

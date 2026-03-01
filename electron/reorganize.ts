@@ -43,7 +43,7 @@ function scanFiles(dir: string, base: string): { path: string; content: string; 
   return results
 }
 
-export async function generateReorgPlan(claudeApiKey: string): Promise<ReorgPlan> {
+export async function generateReorgPlan(): Promise<ReorgPlan> {
   const memoryDir = getMemoryDir()
   const files = scanFiles(memoryDir, memoryDir)
 

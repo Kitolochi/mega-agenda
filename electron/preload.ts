@@ -254,6 +254,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Whisper (local voice transcription)
   transcribeAudio: (audioData: number[]) => ipcRenderer.invoke('transcribe-audio', audioData),
+  transcribeAudioBlob: (webmData: number[]) => ipcRenderer.invoke('transcribe-audio-blob', webmData),
   getWhisperStatus: () => ipcRenderer.invoke('get-whisper-status'),
 
   // RAG / Embeddings
@@ -306,6 +307,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
   extractMemoriesFromCli: (sessionId: string) => ipcRenderer.invoke('extract-memories-from-cli', sessionId),
   extractMemoriesFromJournal: (date: string) => ipcRenderer.invoke('extract-memories-from-journal', date),
   batchExtractMemories: () => ipcRenderer.invoke('batch-extract-memories'),
+
+  // Knowledge Pack
+  getKnowledgePacks: () => ipcRenderer.invoke('get-knowledge-packs'),
+  compressKnowledge: () => ipcRenderer.invoke('compress-knowledge'),
+  getMemoryHealth: () => ipcRenderer.invoke('get-memory-health'),
+  autoPruneMemories: () => ipcRenderer.invoke('auto-prune-memories'),
+  startHealthMonitor: (intervalMs: number) => ipcRenderer.invoke('start-health-monitor', intervalMs),
+  stopHealthMonitor: () => ipcRenderer.invoke('stop-health-monitor'),
+  onCompressionProgress: (callback: (progress: any) => void) => {
+    const handler = (_: any, progress: any) => callback(progress)
+    ipcRenderer.on('compression-progress', handler)
+    return () => { ipcRenderer.removeListener('compression-progress', handler) }
+  },
+  onMemoryHealthUpdate: (callback: (health: any) => void) => {
+    const handler = (_: any, health: any) => callback(health)
+    ipcRenderer.on('memory-health-update', handler)
+    return () => { ipcRenderer.removeListener('memory-health-update', handler) }
+  },
 
   // Clipboard
   readClipboard: () => ipcRenderer.sendSync('read-clipboard'),

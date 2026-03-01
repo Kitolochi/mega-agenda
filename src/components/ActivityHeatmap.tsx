@@ -60,7 +60,7 @@ export default function ActivityHeatmap() {
   }
 
   return (
-    <div className="glass-card rounded-xl p-3 relative">
+    <div className="glass-card rounded-xl p-3 relative hover-lift">
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-1.5">
           <span className="text-[10px] uppercase tracking-widest text-muted font-display font-medium">Activity</span>
@@ -84,7 +84,7 @@ export default function ActivityHeatmap() {
               return (
                 <div
                   key={di}
-                  className={`w-[10px] h-[10px] rounded-sm ${intensityColors[intensity]} cursor-pointer transition-all hover:ring-1 hover:ring-white/20`}
+                  className={`w-[10px] h-[10px] rounded-sm ${intensityColors[intensity]} cursor-pointer transition-all duration-200 hover:ring-1 hover:ring-white/20 hover:scale-150 hover:z-10`}
                   onMouseEnter={(e) => {
                     const rect = e.currentTarget.getBoundingClientRect()
                     setTooltip({
@@ -105,8 +105,8 @@ export default function ActivityHeatmap() {
 
       {tooltip && (
         <div
-          className="fixed z-50 px-2 py-1.5 rounded-lg bg-surface-4 border border-white/[0.08] shadow-xl pointer-events-none"
-          style={{ left: tooltip.x, top: tooltip.y - 40, transform: 'translateX(-50%)' }}
+          className="fixed z-50 px-2.5 py-2 rounded-xl bg-surface-4 border border-white/[0.08] shadow-2xl shadow-black/40 pointer-events-none animate-scale-in"
+          style={{ left: tooltip.x, top: tooltip.y - 44, transform: 'translateX(-50%)' }}
         >
           <p className="text-[10px] text-white/80 font-medium">{formatDate(tooltip.date)}</p>
           <p className="text-[9px] text-muted">

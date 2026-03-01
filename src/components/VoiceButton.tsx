@@ -59,11 +59,10 @@ export default function VoiceButton({ categories, onCommand, listeningRef }: Voi
   const [showMicPicker, setShowMicPicker] = useState(false)
   const pickerRef = useRef<HTMLDivElement>(null)
 
-  // Audio capture refs
+  // Audio capture refs — MediaRecorder approach (no real-time AudioContext)
   const mediaStreamRef = useRef<MediaStream | null>(null)
-  const audioContextRef = useRef<AudioContext | null>(null)
-  const processorRef = useRef<ScriptProcessorNode | null>(null)
-  const chunksRef = useRef<Float32Array[]>([])
+  const recorderRef = useRef<MediaRecorder | null>(null)
+  const chunksRef = useRef<Blob[]>([])
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Enumerate audio input devices
@@ -131,14 +130,10 @@ export default function VoiceButton({ categories, onCommand, listeningRef }: Voi
       clearTimeout(timeoutRef.current)
       timeoutRef.current = null
     }
-    if (processorRef.current) {
-      processorRef.current.disconnect()
-      processorRef.current = null
+    if (recorderRef.current && recorderRef.current.state !== 'inactive') {
+      try { recorderRef.current.stop() } catch {}
     }
-    if (audioContextRef.current) {
-      audioContextRef.current.close().catch(() => {})
-      audioContextRef.current = null
-    }
+    recorderRef.current = null
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach(t => t.stop())
       mediaStreamRef.current = null
@@ -200,12 +195,7 @@ export default function VoiceButton({ categories, onCommand, listeningRef }: Voi
     listeningRef.current = false
   }, [categories, onCommand, listeningRef])
 
-  const stopAndTranscribe = useCallback(async () => {
-    cleanup()
-
-    const chunks = chunksRef.current
-    chunksRef.current = []
-
+  const handleRecordingComplete = useCallback(async (chunks: Blob[], mimeType: string) => {
     if (chunks.length === 0) {
       setState('error')
       setStatusText('No speech detected')
@@ -214,40 +204,41 @@ export default function VoiceButton({ categories, onCommand, listeningRef }: Voi
       return
     }
 
-    // Concatenate all chunks into a single Float32Array
-    const totalLength = chunks.reduce((sum, c) => sum + c.length, 0)
-    const audioData = new Float32Array(totalLength)
-    let offset = 0
-    for (const chunk of chunks) {
-      audioData.set(chunk, offset)
-      offset += chunk.length
-    }
-
-    // Transcribe via Whisper
     setState('processing')
     setStatusText('Transcribing...')
+
     try {
-      const text = await window.electronAPI.transcribeAudio(Array.from(audioData))
+      // Send raw webm blob to main process — ffmpeg decodes it there,
+      // completely avoiding AudioContext in the renderer (which crashes Electron on Windows)
+      const blob = new Blob(chunks, { type: mimeType })
+      const arrayBuffer = await blob.arrayBuffer()
+      const bytes = Array.from(new Uint8Array(arrayBuffer))
+
+      const text = await window.electronAPI.transcribeAudioBlob(bytes)
       await processTranscript(text)
     } catch (err: any) {
+      console.error('Voice transcription error:', err)
       setState('error')
       setStatusText('Transcription failed')
       setTimeout(() => { setState('idle'); setTranscript(''); setStatusText('') }, 2000)
       listeningRef.current = false
     }
-  }, [cleanup, processTranscript, listeningRef])
+  }, [processTranscript, listeningRef])
 
   const stopListening = useCallback(() => {
-    if (state === 'listening') {
-      stopAndTranscribe()
-    } else {
-      cleanup()
-      setState('idle')
-      setTranscript('')
-      setStatusText('')
-      listeningRef.current = false
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current)
+      timeoutRef.current = null
     }
-  }, [state, stopAndTranscribe, cleanup, listeningRef])
+    // Stopping the recorder triggers its onstop → handleRecordingComplete
+    if (recorderRef.current && recorderRef.current.state !== 'inactive') {
+      recorderRef.current.stop()
+    }
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach(t => t.stop())
+      mediaStreamRef.current = null
+    }
+  }, [])
 
   const startListening = useCallback(async () => {
     if (!whisperReady || !navigator.mediaDevices?.getUserMedia) {
@@ -269,33 +260,33 @@ export default function VoiceButton({ categories, onCommand, listeningRef }: Voi
       const stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints })
       mediaStreamRef.current = stream
 
-      // Create AudioContext at 16kHz (Whisper's expected sample rate)
-      const audioContext = new AudioContext({ sampleRate: 16000 })
-      audioContextRef.current = audioContext
-
-      const source = audioContext.createMediaStreamSource(stream)
-
-      // ScriptProcessor to collect raw PCM chunks
-      const processor = audioContext.createScriptProcessor(4096, 1, 1)
-      processorRef.current = processor
+      // Use MediaRecorder instead of AudioContext + ScriptProcessorNode
+      // This avoids real-time audio processing that can crash Electron's renderer
+      const recorder = new MediaRecorder(stream)
+      recorderRef.current = recorder
       chunksRef.current = []
 
-      processor.onaudioprocess = (e: AudioProcessingEvent) => {
-        const inputData = e.inputBuffer.getChannelData(0)
-        chunksRef.current.push(new Float32Array(inputData))
+      recorder.ondataavailable = (e: BlobEvent) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data)
       }
 
-      source.connect(processor)
-      processor.connect(audioContext.destination)
+      recorder.onstop = () => {
+        const recorded = chunksRef.current
+        const mime = recorder.mimeType
+        chunksRef.current = []
+        handleRecordingComplete(recorded, mime)
+      }
+
+      recorder.start()
 
       setState('listening')
       setTranscript('')
       setStatusText('')
       listeningRef.current = true
 
-      // Auto-stop after 8 seconds
+      // Auto-stop after max duration
       timeoutRef.current = setTimeout(() => {
-        stopAndTranscribe()
+        stopListening()
       }, MAX_RECORDING_MS)
     } catch (err: any) {
       setState('error')
@@ -312,7 +303,7 @@ export default function VoiceButton({ categories, onCommand, listeningRef }: Voi
       setTimeout(() => { setState('idle'); setTranscript(''); setStatusText('') }, 2000)
       listeningRef.current = false
     }
-  }, [whisperReady, whisperLoading, selectedDeviceId, stopAndTranscribe, listeningRef])
+  }, [whisperReady, whisperLoading, selectedDeviceId, stopListening, handleRecordingComplete, listeningRef])
 
   const toggle = useCallback(() => {
     if (state === 'listening') {

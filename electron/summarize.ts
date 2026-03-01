@@ -6,7 +6,7 @@ interface ArticleInput {
   description: string
 }
 
-export async function summarizeAI(_apiKey: string, articles: ArticleInput[]): Promise<string> {
+export async function summarizeAI(articles: ArticleInput[]): Promise<string> {
   const list = articles.slice(0, 40).map((a, i) =>
     `${i + 1}. ${a.title}${a.description ? ` — ${a.description.slice(0, 150)}` : ''}`
   ).join('\n')
@@ -16,7 +16,7 @@ export async function summarizeAI(_apiKey: string, articles: ArticleInput[]): Pr
   return callLLM({ prompt, tier: 'fast', maxTokens: 1024 })
 }
 
-export async function summarizeGeo(_apiKey: string, articles: ArticleInput[]): Promise<string> {
+export async function summarizeGeo(articles: ArticleInput[]): Promise<string> {
   const list = articles.slice(0, 40).map((a, i) =>
     `${i + 1}. ${a.title}${a.description ? ` — ${a.description.slice(0, 150)}` : ''}`
   ).join('\n')
@@ -26,7 +26,7 @@ export async function summarizeGeo(_apiKey: string, articles: ArticleInput[]): P
   return callLLM({ prompt, tier: 'fast', maxTokens: 1024 })
 }
 
-export async function parseVoiceCommand(_apiKey: string, transcript: string, categoryNames: string[]): Promise<any> {
+export async function parseVoiceCommand(transcript: string, categoryNames: string[]): Promise<any> {
   const prompt = `You are a voice command parser for a task management app. Parse the user's spoken command into a structured JSON response.
 
 The app has these categories: ${categoryNames.join(', ')}
@@ -64,7 +64,7 @@ Examples:
   }
 }
 
-export async function generateMorningBriefing(_apiKey: string, data: {
+export async function generateMorningBriefing(data: {
   overdueTasks: { title: string; priority: number }[]
   todayTasks: { title: string; priority: number }[]
   highPriorityTasks: { title: string; priority: number }[]
@@ -97,7 +97,7 @@ Rules:
   return callLLM({ prompt, tier: 'fast', maxTokens: 1024 })
 }
 
-export async function generateWeeklyReview(_apiKey: string, data: {
+export async function generateWeeklyReview(data: {
   completedTasks: { title: string; category: string; priority: number }[]
   focusMinutes: number
   notesCount: number

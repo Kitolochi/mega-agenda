@@ -4,6 +4,7 @@ import CategoryCard from './CategoryCard'
 import TaskItem from './TaskItem'
 import MorningBriefing from './MorningBriefing'
 import ActivityHeatmap from './ActivityHeatmap'
+import { playClick } from '../utils/sounds'
 
 interface DashboardProps {
   categories: Category[]
@@ -28,16 +29,30 @@ function ProgressRing({ percent, size = 72, stroke = 5 }: { percent: number; siz
     return '#3a3a46'
   }
 
+  const color = getColor(percent)
+
   return (
     <div className="relative" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="transform -rotate-90">
+        {/* Background track */}
         <circle
           cx={size / 2} cy={size / 2} r={radius}
           fill="none" stroke="rgba(255,255,255,0.04)" strokeWidth={stroke}
         />
+        {/* Glow layer */}
         <circle
           cx={size / 2} cy={size / 2} r={radius}
-          fill="none" stroke={getColor(percent)} strokeWidth={stroke}
+          fill="none" stroke={color} strokeWidth={stroke + 4}
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          strokeLinecap="round"
+          className="progress-ring-circle"
+          style={{ filter: 'blur(4px)', opacity: 0.3 }}
+        />
+        {/* Main arc */}
+        <circle
+          cx={size / 2} cy={size / 2} r={radius}
+          fill="none" stroke={color} strokeWidth={stroke}
           strokeDasharray={circumference}
           strokeDashoffset={offset}
           strokeLinecap="round"
@@ -79,14 +94,16 @@ export default function Dashboard({
   }
 
   return (
-    <div className="p-4 space-y-3 animate-fade-in">
+    <div className="p-4 space-y-3">
       {/* Morning Briefing */}
-      <MorningBriefing />
+      <div className="animate-stagger-in" style={{ animationDelay: '0ms' }}>
+        <MorningBriefing />
+      </div>
 
       {/* Hero Stats Row */}
-      <div className="flex gap-3">
+      <div className="flex gap-3 animate-stagger-in" style={{ animationDelay: '60ms' }}>
         {/* Progress Ring Card */}
-        <div className="glass-card rounded-xl p-4 flex-1 flex items-center gap-4">
+        <div className="glass-card-elevated rounded-xl p-4 flex-1 flex items-center gap-4 hover-lift">
           <ProgressRing percent={overallProgress} />
           <div className="flex-1 min-w-0">
             <p className="text-[10px] uppercase tracking-widest text-muted font-display font-medium mb-0.5">Progress</p>
@@ -98,7 +115,7 @@ export default function Dashboard({
                 { color: 'bg-subtle', count: lowCount, label: 'Low' },
               ].map(p => (
                 <div key={p.label} className="flex items-center gap-1.5">
-                  <span className={`w-1.5 h-1.5 rounded-full ${p.color}`} />
+                  <span className={`w-1.5 h-1.5 rounded-full ${p.color} ${p.count > 0 ? 'animate-pulse-glow' : ''}`} />
                   <span className="text-[10px] text-muted">{p.count}</span>
                 </div>
               ))}
@@ -109,11 +126,11 @@ export default function Dashboard({
 
       {/* Streak & Weekly Stats */}
       {stats && (
-        <div className="flex gap-2">
-          <div className={`flex-1 glass-card rounded-xl p-3 relative overflow-hidden ${stats.currentStreak > 0 ? 'streak-shimmer' : ''}`}>
+        <div className="flex gap-2 animate-stagger-in" style={{ animationDelay: '120ms' }}>
+          <div className={`flex-1 glass-card stat-card rounded-xl p-3 relative overflow-hidden hover-lift ${stats.currentStreak > 0 ? 'streak-shimmer' : ''}`}>
             <div className="flex items-center gap-2.5 relative z-10">
               <div className="w-8 h-8 rounded-lg bg-accent-orange/10 flex items-center justify-center">
-                <span className="text-base">{stats.currentStreak > 0 ? '🔥' : '💤'}</span>
+                <span className={`text-base ${stats.currentStreak > 0 ? 'animate-pulse-glow' : ''}`}>{stats.currentStreak > 0 ? '🔥' : '💤'}</span>
               </div>
               <div>
                 <p className="text-base font-display font-bold text-white">{stats.currentStreak}</p>
@@ -121,7 +138,7 @@ export default function Dashboard({
               </div>
             </div>
           </div>
-          <div className="flex-1 glass-card rounded-xl p-3">
+          <div className="flex-1 glass-card stat-card rounded-xl p-3 hover-lift">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-lg bg-accent-purple/10 flex items-center justify-center">
                 <span className="text-base">⚡</span>
@@ -132,7 +149,7 @@ export default function Dashboard({
               </div>
             </div>
           </div>
-          <div className="flex-1 glass-card rounded-xl p-3">
+          <div className="flex-1 glass-card stat-card rounded-xl p-3 hover-lift">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-lg bg-accent-emerald/10 flex items-center justify-center">
                 <span className="text-base">✓</span>
@@ -147,21 +164,23 @@ export default function Dashboard({
       )}
 
       {/* Activity Heatmap */}
-      <ActivityHeatmap />
+      <div className="animate-stagger-in" style={{ animationDelay: '180ms' }}>
+        <ActivityHeatmap />
+      </div>
 
       {/* View Tabs */}
-      <div className="flex gap-0.5 bg-surface-2 rounded-lg p-0.5">
+      <div className="flex gap-0.5 bg-surface-2/80 rounded-xl p-0.5 animate-stagger-in" style={{ animationDelay: '240ms' }}>
         {[
-          { mode: 'categories' as ViewMode, label: 'All', activeClass: 'bg-surface-4 text-white shadow-sm' },
-          { mode: 'high' as ViewMode, label: 'Urgent', activeClass: 'bg-accent-red/15 text-accent-red shadow-sm' },
-          { mode: 'medium' as ViewMode, label: 'Medium', activeClass: 'bg-accent-amber/15 text-accent-amber shadow-sm' },
-          { mode: 'low' as ViewMode, label: 'Later', activeClass: 'bg-surface-4 text-white/70 shadow-sm' },
+          { mode: 'categories' as ViewMode, label: 'All', activeClass: 'bg-surface-4 text-white shadow-md shadow-black/20' },
+          { mode: 'high' as ViewMode, label: 'Urgent', activeClass: 'bg-accent-red/15 text-accent-red shadow-md shadow-accent-red/5' },
+          { mode: 'medium' as ViewMode, label: 'Medium', activeClass: 'bg-accent-amber/15 text-accent-amber shadow-md shadow-accent-amber/5' },
+          { mode: 'low' as ViewMode, label: 'Later', activeClass: 'bg-surface-4 text-white/70 shadow-md shadow-black/20' },
         ].map(tab => (
           <button
             key={tab.mode}
-            onClick={() => setViewMode(tab.mode)}
-            className={`flex-1 py-1.5 px-2 rounded-md text-[11px] font-medium transition-all duration-200 ${
-              viewMode === tab.mode ? tab.activeClass : 'text-muted hover:text-white/60'
+            onClick={() => { setViewMode(tab.mode); playClick() }}
+            className={`flex-1 py-1.5 px-2 rounded-lg text-[11px] font-medium transition-all duration-200 press-effect ${
+              viewMode === tab.mode ? tab.activeClass : 'text-muted hover:text-white/60 hover:bg-white/[0.03]'
             }`}
           >
             {tab.label}
@@ -171,9 +190,9 @@ export default function Dashboard({
 
       {/* Content */}
       {viewMode === 'categories' ? (
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 gap-2.5">
           {categories.map((category, i) => (
-            <div key={category.id} className="animate-slide-up" style={{ animationDelay: `${i * 30}ms` }}>
+            <div key={category.id} className="animate-stagger-in" style={{ animationDelay: `${300 + i * 50}ms` }}>
               <CategoryCard
                 category={category}
                 tasks={getTasksForCategory(category.id)}

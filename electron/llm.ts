@@ -88,6 +88,14 @@ export interface LLMWebSearchOptions extends LLMCallOptions {
   maxSearches?: number
 }
 
+// --- Model info helper ---
+
+export function getCurrentModelInfo(tier: 'primary' | 'fast' | 'chat' = 'primary'): { provider: string; model: string } {
+  const settings = getLLMSettings()
+  const model = tier === 'fast' ? settings.fastModel : settings.primaryModel
+  return { provider: settings.provider, model }
+}
+
 // --- Helpers ---
 
 function getApiKeyForProvider(settings: LLMSettings): string {

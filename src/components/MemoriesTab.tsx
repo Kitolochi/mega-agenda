@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Memory, MemoryTopic, MemorySettings } from '../types'
+import { Memory, MemoryTopic, MemorySettings, MemoryHealth } from '../types'
+import KnowledgePackView from './KnowledgePackView'
 
+type SubTab = 'memories' | 'knowledge'
 type SourceFilter = 'all' | 'chat' | 'cli_session' | 'journal' | 'task' | 'ai_task' | 'manual'
 type SortMode = 'newest' | 'importance'
 
@@ -31,6 +33,8 @@ const TOPIC_PRESET_COLORS = [
 ]
 
 export default function MemoriesTab() {
+  const [subTab, setSubTab] = useState<SubTab>('memories')
+  const [healthStatus, setHealthStatus] = useState<MemoryHealth['status'] | null>(null)
   const [memories, setMemories] = useState<Memory[]>([])
   const [topics, setTopics] = useState<MemoryTopic[]>([])
   const [settings, setSettings] = useState<MemorySettings | null>(null)
@@ -55,17 +59,27 @@ export default function MemoriesTab() {
   const [formImportance, setFormImportance] = useState<1 | 2 | 3>(2)
 
   const loadData = useCallback(async () => {
-    const [mems, tops, sets] = await Promise.all([
+    const [mems, tops, sets, health] = await Promise.all([
       window.electronAPI.getMemories(),
       window.electronAPI.getMemoryTopics(),
       window.electronAPI.getMemorySettings(),
+      window.electronAPI.getMemoryHealth(),
     ])
     setMemories(mems)
     setTopics(tops)
     setSettings(sets)
+    setHealthStatus(health.status)
   }, [])
 
   useEffect(() => { loadData() }, [loadData])
+
+  // Listen for health status changes
+  useEffect(() => {
+    const unsub = window.electronAPI.onMemoryHealthUpdate((h: MemoryHealth) => {
+      setHealthStatus(h.status)
+    })
+    return unsub
+  }, [])
 
   const filtered = memories.filter(m => {
     if (sourceFilter !== 'all' && m.sourceType !== sourceFilter) return false
@@ -228,8 +242,40 @@ export default function MemoriesTab() {
     await loadData()
   }
 
+  const healthDotColor = healthStatus === 'healthy' ? 'bg-emerald-400' : healthStatus === 'warning' ? 'bg-amber-400' : healthStatus === 'critical' ? 'bg-red-400' : 'bg-white/20'
+
   return (
-    <div className="h-full flex flex-col p-4">
+    <div className="h-full flex flex-col">
+      {/* Sub-tab toggle */}
+      <div className="flex items-center gap-1 px-4 pt-3 pb-2">
+        <button
+          onClick={() => setSubTab('memories')}
+          className={`px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all ${
+            subTab === 'memories'
+              ? 'bg-surface-3 text-white'
+              : 'text-muted hover:text-white/70'
+          }`}
+        >
+          Memories
+        </button>
+        <button
+          onClick={() => setSubTab('knowledge')}
+          className={`px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all flex items-center gap-1.5 ${
+            subTab === 'knowledge'
+              ? 'bg-surface-3 text-white'
+              : 'text-muted hover:text-white/70'
+          }`}
+        >
+          Knowledge Pack
+          <div className={`w-1.5 h-1.5 rounded-full ${healthDotColor}`} />
+        </button>
+      </div>
+
+      {/* Knowledge Pack sub-tab */}
+      {subTab === 'knowledge' ? (
+        <KnowledgePackView />
+      ) : (
+      <div className="flex-1 flex flex-col p-4 overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
@@ -671,6 +717,8 @@ export default function MemoriesTab() {
           </div>
         )}
       </div>
+      </div>
+      )}
     </div>
   )
 }

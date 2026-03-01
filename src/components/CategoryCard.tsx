@@ -1,5 +1,6 @@
 import { Category, Task } from '../types'
 import TaskItem from './TaskItem'
+import { playClick } from '../utils/sounds'
 
 interface CategoryCardProps {
   category: Category
@@ -19,16 +20,19 @@ export default function CategoryCard({
 
   return (
     <div
-      className="glass-card rounded-xl overflow-hidden cursor-pointer transition-all duration-200 hover:translate-y-[-1px] group"
+      className="glass-card rounded-xl overflow-hidden cursor-pointer hover-lift group"
     >
-      {/* Accent line */}
-      <div className="h-[2px]" style={{ background: `linear-gradient(90deg, ${category.color}, transparent)` }} />
+      {/* Accent line — animated gradient */}
+      <div
+        className="h-[2px] transition-all duration-500 group-hover:h-[3px]"
+        style={{ background: `linear-gradient(90deg, ${category.color}, ${category.color}40, transparent)` }}
+      />
 
       {/* Header */}
-      <div className="px-3 py-2.5 flex items-center justify-between" onClick={onClick}>
+      <div className="px-3 py-2.5 flex items-center justify-between" onClick={() => { onClick(); playClick() }}>
         <div className="flex items-center gap-2">
           <div
-            className="w-7 h-7 rounded-lg flex items-center justify-center text-sm"
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-sm transition-transform duration-200 group-hover:scale-110"
             style={{ backgroundColor: category.color + '15' }}
           >
             {category.icon}
@@ -39,8 +43,8 @@ export default function CategoryCard({
           </div>
         </div>
         <button
-          onClick={(e) => { e.stopPropagation(); onAddTask() }}
-          className="w-6 h-6 rounded-lg bg-surface-3/50 hover:bg-surface-4 flex items-center justify-center text-muted hover:text-white text-xs opacity-0 group-hover:opacity-100 transition-all"
+          onClick={(e) => { e.stopPropagation(); onAddTask(); playClick() }}
+          className="w-6 h-6 rounded-lg bg-surface-3/70 hover:bg-surface-4 flex items-center justify-center text-muted hover:text-white text-xs opacity-0 group-hover:opacity-100 transition-all duration-200 hover:scale-110 active:scale-95"
         >
           +
         </button>
@@ -51,8 +55,12 @@ export default function CategoryCard({
         <div className="px-3 pb-1.5">
           <div className="h-[3px] bg-white/[0.03] rounded-full overflow-hidden">
             <div
-              className="h-full rounded-full transition-all duration-500 ease-out"
-              style={{ width: `${progress}%`, backgroundColor: category.color }}
+              className="h-full rounded-full transition-all duration-700 ease-out"
+              style={{
+                width: `${progress}%`,
+                background: `linear-gradient(90deg, ${category.color}, ${category.color}CC)`,
+                boxShadow: progress > 0 ? `0 0 8px ${category.color}30` : 'none',
+              }}
             />
           </div>
         </div>
