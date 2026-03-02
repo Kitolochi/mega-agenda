@@ -1,5 +1,5 @@
 import { ipcMain, BrowserWindow } from 'electron'
-import { getKnowledgePacks, compressKnowledgeNative } from '../knowledge-pack'
+import { getKnowledgePacks, compressKnowledgeNative, auditCompression, compressSingleFile, compressFolder, testEmbeddingSimilarity, listContextFiles } from '../knowledge-pack'
 import { getMemoryHealth, autoPrune, startHealthMonitor, stopHealthMonitor } from '../memory-health'
 
 export function registerKnowledgePackHandlers(mainWindow: BrowserWindow) {
@@ -12,6 +12,36 @@ export function registerKnowledgePackHandlers(mainWindow: BrowserWindow) {
       mainWindow.webContents.send('compression-progress', progress)
     })
     return pack
+  })
+
+  ipcMain.handle('audit-compression', async () => {
+    const audit = await auditCompression((progress) => {
+      mainWindow.webContents.send('compression-progress', progress)
+    })
+    return audit
+  })
+
+  // Lab tools
+  ipcMain.handle('compress-single-file', async (_, relativePath: string) => {
+    const result = await compressSingleFile(relativePath, (progress) => {
+      mainWindow.webContents.send('compression-progress', progress)
+    })
+    return result
+  })
+
+  ipcMain.handle('test-embedding-similarity', async (_, textA: string, textB: string) => {
+    return testEmbeddingSimilarity(textA, textB)
+  })
+
+  ipcMain.handle('compress-folder', async (_, folder: string) => {
+    const result = await compressFolder(folder, (progress) => {
+      mainWindow.webContents.send('compression-progress', progress)
+    })
+    return result
+  })
+
+  ipcMain.handle('list-context-files', () => {
+    return listContextFiles()
   })
 
   ipcMain.handle('get-memory-health', () => {

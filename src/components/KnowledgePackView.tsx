@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { KnowledgePack, CompressionProgress, MemoryHealth } from '../types'
+import { KnowledgePack, CompressionProgress, CompressionAudit, MemoryHealth } from '../types'
 
 const STATUS_COLORS: Record<string, { bg: string; dot: string; text: string }> = {
   healthy: { bg: 'bg-emerald-500/10', dot: 'bg-emerald-400', text: 'text-emerald-400' },
@@ -15,6 +15,9 @@ export default function KnowledgePackView() {
   const [expandedCluster, setExpandedCluster] = useState<string | null>(null)
   const [pruning, setPruning] = useState(false)
   const [pruneResult, setPruneResult] = useState<number | null>(null)
+  const [auditing, setAuditing] = useState(false)
+  const [audit, setAudit] = useState<CompressionAudit | null>(null)
+  const [showAuditDetails, setShowAuditDetails] = useState(false)
 
   const loadData = useCallback(async () => {
     const [p, h] = await Promise.all([
@@ -71,6 +74,18 @@ export default function KnowledgePackView() {
       /* ignore */
     }
     setPruning(false)
+  }
+
+  const handleAudit = async () => {
+    setAuditing(true)
+    setAudit(null)
+    try {
+      const result = await window.electronAPI.auditCompression()
+      setAudit(result)
+    } catch (err: any) {
+      console.error('Audit failed:', err)
+    }
+    setAuditing(false)
   }
 
   const latestPack = packs[0] || null
@@ -147,11 +162,102 @@ export default function KnowledgePackView() {
         </button>
 
         {latestPack && !compressing && (
-          <span className="text-[9px] text-muted/50">
-            Last compressed {new Date(latestPack.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-          </span>
+          <>
+            <button
+              onClick={handleAudit}
+              disabled={auditing}
+              className="px-3 py-2 rounded-xl text-[11px] font-semibold bg-surface-3 hover:bg-surface-4 text-muted hover:text-white transition-all disabled:opacity-40"
+            >
+              {auditing ? 'Auditing...' : 'Audit Quality'}
+            </button>
+            <span className="text-[9px] text-muted/50">
+              Last compressed {new Date(latestPack.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+            </span>
+          </>
         )}
       </div>
+
+      {/* Audit Results */}
+      {audit && (
+        <div className="bg-surface-2 rounded-xl border border-white/[0.06] p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <div className={`w-2 h-2 rounded-full ${audit.coverageScore >= 70 ? 'bg-emerald-400' : audit.coverageScore >= 40 ? 'bg-amber-400' : 'bg-red-400'}`} />
+              <span className="text-[11px] font-semibold text-white/90">Compression Quality Audit</span>
+            </div>
+            <button onClick={() => setAudit(null)} className="text-[9px] text-muted hover:text-white">Dismiss</button>
+          </div>
+
+          {/* Coverage Score */}
+          <div className="flex items-center gap-4 mb-3">
+            <div className="text-center">
+              <div className={`text-2xl font-bold ${audit.coverageScore >= 70 ? 'text-emerald-400' : audit.coverageScore >= 40 ? 'text-amber-400' : 'text-red-400'}`}>
+                {audit.coverageScore}%
+              </div>
+              <div className="text-[9px] text-muted">Coverage</div>
+            </div>
+            <div className="flex-1 grid grid-cols-3 gap-2 text-center">
+              <div>
+                <div className="text-[13px] font-semibold text-white/80">{audit.coveredItems}</div>
+                <div className="text-[8px] text-muted">Covered</div>
+              </div>
+              <div>
+                <div className="text-[13px] font-semibold text-white/80">{audit.uncoveredItems.length}</div>
+                <div className="text-[8px] text-muted">Gaps</div>
+              </div>
+              <div>
+                <div className="text-[13px] font-semibold text-white/80">{audit.totalOriginalItems}</div>
+                <div className="text-[8px] text-muted">Total</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Coverage bar */}
+          <div className="w-full h-2 bg-white/[0.06] rounded-full overflow-hidden mb-3">
+            <div
+              className={`h-full rounded-full transition-all ${audit.coverageScore >= 70 ? 'bg-emerald-400' : audit.coverageScore >= 40 ? 'bg-amber-400' : 'bg-red-400'}`}
+              style={{ width: `${audit.coverageScore}%` }}
+            />
+          </div>
+
+          {/* Cluster breakdown */}
+          <div className="space-y-1 mb-3">
+            {audit.clusterCoverage.map((c, i) => (
+              <div key={i} className="flex items-center justify-between text-[9px]">
+                <span className="text-white/70 truncate flex-1">{c.label}</span>
+                <span className="text-muted ml-2">{c.itemCount} items → {c.factCount} facts</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Uncovered items (expandable) */}
+          {audit.uncoveredItems.length > 0 && (
+            <div>
+              <button
+                onClick={() => setShowAuditDetails(!showAuditDetails)}
+                className="text-[9px] text-amber-400/70 hover:text-amber-400 transition-colors"
+              >
+                {showAuditDetails ? 'Hide' : 'Show'} {audit.uncoveredItems.length} uncovered items
+              </button>
+              {showAuditDetails && (
+                <div className="mt-2 max-h-48 overflow-auto space-y-1.5">
+                  {audit.uncoveredItems.map((item, i) => (
+                    <div key={i} className="p-2 rounded-lg bg-surface-3 text-[9px]">
+                      <div className="flex items-center justify-between mb-0.5">
+                        <span className="text-muted/60 font-mono">{item.source}</span>
+                        <span className={`font-mono ${item.bestMatchScore < 0.3 ? 'text-red-400/70' : 'text-amber-400/70'}`}>
+                          {(item.bestMatchScore * 100).toFixed(0)}% match
+                        </span>
+                      </div>
+                      <p className="text-white/60 leading-relaxed">{item.text}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Progress bar */}
       {compressing && progress && (
@@ -231,10 +337,14 @@ export default function KnowledgePackView() {
           </div>
 
           {/* Stats Footer */}
-          <div className="flex items-center justify-center gap-4 py-2 text-[9px] text-muted/40">
-            <span>{latestPack.stats.totalMemories} memories compressed</span>
+          <div className="flex items-center justify-center gap-4 py-2 text-[9px] text-muted/40 flex-wrap">
+            <span>{latestPack.stats.totalMemories} memories</span>
             <span>|</span>
-            <span>{latestPack.stats.totalFacts} facts extracted</span>
+            <span>{latestPack.stats.totalContextFiles || 0} context files</span>
+            <span>|</span>
+            <span>{latestPack.stats.totalChunks || latestPack.stats.totalMemories} chunks</span>
+            <span>|</span>
+            <span>{latestPack.stats.totalFacts} facts</span>
             <span>|</span>
             <span>{latestPack.clusters.length} clusters</span>
             <span>|</span>
@@ -251,7 +361,7 @@ export default function KnowledgePackView() {
           </div>
           <h3 className="text-sm font-medium text-white/80 mb-1">No Knowledge Pack Yet</h3>
           <p className="text-[11px] text-muted mb-4 max-w-[320px]">
-            Compress your memories into a structured knowledge base with clusters, facts, and an overview. This deduplicates and organizes your knowledge.
+            Compress your memories and context files (~/.claude/memory/) into a structured knowledge base with clusters, facts, and an overview.
           </p>
           <button
             onClick={handleCompress}

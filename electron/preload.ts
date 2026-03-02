@@ -305,6 +305,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Lab tools
   compressSingleFile: (relativePath: string) => ipcRenderer.invoke('compress-single-file', relativePath),
+  compressFolder: (folder: string) => ipcRenderer.invoke('compress-folder', folder),
   testEmbeddingSimilarity: (textA: string, textB: string) => ipcRenderer.invoke('test-embedding-similarity', textA, textB),
   listContextFiles: () => ipcRenderer.invoke('list-context-files'),
   getMemoryHealth: () => ipcRenderer.invoke('get-memory-health'),

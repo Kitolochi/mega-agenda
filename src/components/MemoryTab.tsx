@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { ContextFile, CompressedKnowledge } from '../types'
+import { ContextFile, KnowledgePack } from '../types'
 
 function formatFileSize(bytes: number): string {
   if (bytes === 0) return '0 B'
@@ -22,34 +22,34 @@ export default function MemoryTab() {
   const [deletingFolder, setDeletingFolder] = useState<string | null>(null)
 
   // Compression state
-  const [compressedKnowledge, setCompressedKnowledge] = useState<CompressedKnowledge | null>(null)
+  const [knowledgePack, setKnowledgePack] = useState<KnowledgePack | null>(null)
   const [isCompressing, setIsCompressing] = useState(false)
-  const [compressionProgress, setCompressionProgress] = useState<{ phase: string; current: number; total: number } | null>(null)
-  const [isStale, setIsStale] = useState(false)
+  const [compressionProgress, setCompressionProgress] = useState<{ phase: string; percent: number; detail: string } | null>(null)
   const [showOverview, setShowOverview] = useState(false)
 
   const loadData = useCallback(async () => {
     const ctxFiles = await window.electronAPI.getContextFiles()
     setContextFiles(ctxFiles)
-    // Load compression data
+    // Load latest knowledge pack
     try {
-      const compressed = await window.electronAPI.getCompressedKnowledge()
-      setCompressedKnowledge(compressed)
-      if (compressed) {
-        const stale = await window.electronAPI.getCompressionStaleness()
-        setIsStale(stale)
-      }
+      const packs = await window.electronAPI.getKnowledgePacks()
+      setKnowledgePack(packs?.[0] || null)
     } catch {}
   }, [])
 
   useEffect(() => { loadData() }, [loadData])
 
   useEffect(() => {
-    const unsub = window.electronAPI.onCompressionProgress((info) => {
+    const unsub = window.electronAPI.onCompressionProgress((info: any) => {
       setCompressionProgress(info)
+      if (info.phase === 'done') {
+        setIsCompressing(false)
+        setCompressionProgress(null)
+        loadData()
+      }
     })
     return unsub
-  }, [])
+  }, [loadData])
 
   // Breadcrumb segments from currentFolder
   const breadcrumbs = useMemo(() => {
@@ -157,25 +157,19 @@ export default function MemoryTab() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
             </svg>
             <span className="text-[11px] font-medium text-white/80">Knowledge Compression</span>
-            {isStale && compressedKnowledge && (
-              <span className="px-1.5 py-0.5 rounded text-[8px] font-medium bg-yellow-500/20 text-yellow-400">
-                Stale
-              </span>
-            )}
           </div>
           <button
             onClick={async () => {
               setIsCompressing(true)
               setCompressionProgress(null)
               try {
-                const result = await window.electronAPI.compressKnowledgeBase()
-                setCompressedKnowledge(result)
-                setIsStale(false)
+                await window.electronAPI.compressKnowledge()
               } catch (err: any) {
                 console.error('Compression failed:', err)
               } finally {
                 setIsCompressing(false)
                 setCompressionProgress(null)
+                loadData()
               }
             }}
             disabled={isCompressing}
@@ -197,26 +191,28 @@ export default function MemoryTab() {
             <div className="flex-1 h-1 rounded-full bg-surface-3 overflow-hidden">
               <div
                 className="h-full bg-accent-purple/60 rounded-full transition-all"
-                style={{ width: compressionProgress.total > 0 ? `${Math.round((compressionProgress.current / compressionProgress.total) * 100)}%` : '0%' }}
+                style={{ width: `${compressionProgress.percent}%` }}
               />
             </div>
-            <span className="text-[9px] text-muted flex-shrink-0">{compressionProgress.phase}</span>
+            <span className="text-[9px] text-muted flex-shrink-0">{compressionProgress.detail || compressionProgress.phase}</span>
           </div>
         )}
 
         {/* Stats */}
-        {compressedKnowledge && !isCompressing && (
+        {knowledgePack && !isCompressing && (
           <div className="mt-2">
             <div className="flex items-center gap-3 text-[9px] text-muted">
-              <span>{compressedKnowledge.stats.ratio}x compression</span>
+              <span>{knowledgePack.stats.totalMemories} memories</span>
               <span className="text-white/[0.15]">|</span>
-              <span>{compressedKnowledge.stats.chunksProcessed} chunks</span>
+              <span>{knowledgePack.stats.totalContextFiles || 0} files</span>
               <span className="text-white/[0.15]">|</span>
-              <span>{compressedKnowledge.stats.duplicatesRemoved} dupes removed</span>
+              <span>{knowledgePack.stats.totalChunks || knowledgePack.stats.totalMemories} chunks</span>
               <span className="text-white/[0.15]">|</span>
-              <span>{compressedKnowledge.stats.clustersFound} clusters</span>
+              <span>{knowledgePack.stats.totalFacts} facts</span>
               <span className="text-white/[0.15]">|</span>
-              <span>{new Date(compressedKnowledge.lastCompressed).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+              <span>{knowledgePack.clusters.length} clusters</span>
+              <span className="text-white/[0.15]">|</span>
+              <span>{new Date(knowledgePack.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
             </div>
 
             {/* Collapsible overview */}
@@ -228,7 +224,7 @@ export default function MemoryTab() {
             </button>
             {showOverview && (
               <div className="mt-1.5 p-2 rounded-lg bg-surface-3 text-[10px] text-white/70 leading-relaxed">
-                {compressedKnowledge.overview}
+                {knowledgePack.overview}
               </div>
             )}
           </div>

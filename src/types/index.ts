@@ -467,6 +467,19 @@ export interface ContextFileInfo {
   name: string
   size: number
   isStub: boolean
+  authority: number
+}
+
+export interface FolderCompressionResult {
+  folder: string
+  fileCount: number
+  filesUsed: { name: string; authority: number; chunksContributed: number }[]
+  clusters: KnowledgeCluster[]
+  overview: string
+  totalFacts: number
+  dedupRemoved: number
+  conflictsResolved: boolean
+  durationMs: number
 }
 
 // Bank Sync Types
@@ -747,6 +760,7 @@ export interface ElectronAPI {
 
   // Lab tools
   compressSingleFile: (relativePath: string) => Promise<SingleFileTestResult>
+  compressFolder: (folder: string) => Promise<FolderCompressionResult>
   testEmbeddingSimilarity: (textA: string, textB: string) => Promise<{ similarity: number; embeddingDim: number }>
   listContextFiles: () => Promise<ContextFileInfo[]>
 
