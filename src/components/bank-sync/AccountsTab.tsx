@@ -3,8 +3,10 @@ import type { BankConnection, BankAccount, BankTransaction } from '../../types'
 import ConnectBankDialog from './ConnectBankDialog'
 import ConnectionStatus from './ConnectionStatus'
 import DebtSummary from './DebtSummary'
+import StatementsView from './StatementsView'
+import SpendingView from './SpendingView'
 
-type ViewSection = 'overview' | 'transactions'
+type ViewSection = 'overview' | 'statements' | 'spending'
 
 export default function AccountsTab() {
   const [connections, setConnections] = useState<BankConnection[]>([])
@@ -13,13 +15,14 @@ export default function AccountsTab() {
   const [showConnect, setShowConnect] = useState(false)
   const [activeSection, setActiveSection] = useState<ViewSection>('overview')
   const [selectedAccountId, setSelectedAccountId] = useState<string | undefined>()
+  const [refreshing, setRefreshing] = useState(false)
 
   const loadData = useCallback(async () => {
     try {
       const [conns, accts, txs] = await Promise.all([
         window.electronAPI.getBankConnections(),
         window.electronAPI.getBankAccounts(),
-        window.electronAPI.getBankTransactions(selectedAccountId, 50),
+        window.electronAPI.getBankTransactions(undefined, 10000),
       ])
       setConnections(conns)
       setAccounts(accts)
@@ -27,7 +30,7 @@ export default function AccountsTab() {
     } catch {
       // Silently fail
     }
-  }, [selectedAccountId])
+  }, [])
 
   useEffect(() => { loadData() }, [loadData])
 
@@ -37,6 +40,18 @@ export default function AccountsTab() {
       await loadData()
     } catch {
       await loadData() // Reload to show error state
+    }
+  }
+
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    try {
+      await window.electronAPI.syncAllBankConnections()
+      await loadData()
+    } catch {
+      await loadData()
+    } finally {
+      setRefreshing(false)
     }
   }
 
@@ -64,15 +79,29 @@ export default function AccountsTab() {
             </p>
           </div>
         </div>
-        <button
-          onClick={() => setShowConnect(true)}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-accent-emerald/20 text-accent-emerald hover:bg-accent-emerald/30 border border-accent-emerald/20 transition-all"
-        >
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-          </svg>
-          Connect Bank
-        </button>
+        <div className="flex items-center gap-2">
+          {accounts.length > 0 && (
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-surface-2/80 text-muted hover:text-white hover:bg-surface-3 border border-white/[0.06] transition-all disabled:opacity-50"
+            >
+              <svg className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182M2.985 19.644l3.181-3.182" />
+              </svg>
+              {refreshing ? 'Syncing...' : 'Refresh'}
+            </button>
+          )}
+          <button
+            onClick={() => setShowConnect(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-accent-emerald/20 text-accent-emerald hover:bg-accent-emerald/30 border border-accent-emerald/20 transition-all"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+            Connect Bank
+          </button>
+        </div>
       </div>
 
       {/* Section tabs */}
@@ -80,7 +109,8 @@ export default function AccountsTab() {
         <div className="flex gap-2">
           {([
             { id: 'overview' as const, label: 'Overview' },
-            { id: 'transactions' as const, label: 'Transactions' },
+            { id: 'statements' as const, label: 'Statements' },
+            { id: 'spending' as const, label: 'Spending' },
           ]).map(s => (
             <button
               key={s.id}
@@ -147,70 +177,22 @@ export default function AccountsTab() {
         </div>
       )}
 
-      {activeSection === 'transactions' && (
-        <div className="space-y-3">
-          {/* Account filter */}
-          {accounts.length > 1 && (
-            <div className="flex gap-2 flex-wrap">
-              <button
-                onClick={() => setSelectedAccountId(undefined)}
-                className={`px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all ${
-                  !selectedAccountId
-                    ? 'bg-accent-blue/20 text-accent-blue border border-accent-blue/20'
-                    : 'bg-surface-2/50 text-muted hover:text-white/70 border border-white/[0.06]'
-                }`}
-              >
-                All
-              </button>
-              {accounts.map(a => (
-                <button
-                  key={a.id}
-                  onClick={() => setSelectedAccountId(a.id)}
-                  className={`px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all ${
-                    selectedAccountId === a.id
-                      ? 'bg-accent-blue/20 text-accent-blue border border-accent-blue/20'
-                      : 'bg-surface-2/50 text-muted hover:text-white/70 border border-white/[0.06]'
-                  }`}
-                >
-                  {a.name}
-                </button>
-              ))}
-            </div>
-          )}
+      {activeSection === 'statements' && (
+        <StatementsView
+          transactions={transactions}
+          accounts={accounts}
+          selectedAccountId={selectedAccountId}
+          onSelectAccount={setSelectedAccountId}
+        />
+      )}
 
-          {/* Transaction list */}
-          {transactions.length > 0 ? (
-            <div className="bg-surface-2/50 border border-white/[0.06] rounded-xl overflow-hidden">
-              <div className="grid grid-cols-[1fr_auto_auto] gap-3 px-4 py-2 border-b border-white/[0.04] text-[10px] text-muted uppercase tracking-wider">
-                <span>Description</span>
-                <span>Date</span>
-                <span className="text-right">Amount</span>
-              </div>
-              {transactions.map(tx => (
-                <div key={tx.id} className="grid grid-cols-[1fr_auto_auto] gap-3 px-4 py-2.5 border-b border-white/[0.03] last:border-0 hover:bg-white/[0.02] transition-colors">
-                  <div className="min-w-0">
-                    <p className="text-sm text-white truncate">{tx.merchant || tx.description}</p>
-                    {tx.merchant && tx.description !== tx.merchant && (
-                      <p className="text-[10px] text-muted truncate">{tx.description}</p>
-                    )}
-                    {tx.pending && (
-                      <span className="text-[9px] px-1 py-0.5 rounded bg-accent-amber/20 text-accent-amber">Pending</span>
-                    )}
-                  </div>
-                  <span className="text-xs text-muted self-center whitespace-nowrap">{tx.date}</span>
-                  <span className={`text-sm font-medium self-center text-right ${tx.amount < 0 ? 'text-accent-red' : 'text-accent-emerald'}`}>
-                    {tx.amount < 0 ? '-' : '+'}${formatCents(Math.abs(tx.amount))}
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-12">
-              <p className="text-sm text-muted">No transactions yet</p>
-              <p className="text-xs text-muted/60 mt-1">Transactions will appear after syncing</p>
-            </div>
-          )}
-        </div>
+      {activeSection === 'spending' && (
+        <SpendingView
+          transactions={transactions}
+          accounts={accounts}
+          selectedAccountId={selectedAccountId}
+          onSelectAccount={setSelectedAccountId}
+        />
       )}
 
       <ConnectBankDialog
@@ -220,8 +202,4 @@ export default function AccountsTab() {
       />
     </div>
   )
-}
-
-function formatCents(cents: number): string {
-  return (cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
