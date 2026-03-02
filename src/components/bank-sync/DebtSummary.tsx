@@ -102,12 +102,20 @@ export default function DebtSummary({ compact = false }: DebtSummaryProps) {
 
         {/* Per-account breakdown */}
         <div className="space-y-1.5">
-          {debtAccounts.map(a => (
-            <div key={a.id} className="flex items-center justify-between text-xs">
-              <span className="text-muted truncate flex-1">{a.name}</span>
-              <span className="text-accent-red font-medium ml-2">${formatCents(Math.abs(a.balance))}</span>
-            </div>
-          ))}
+          {debtAccounts.map(a => {
+            const avail = a.accountType === 'credit_card' && a.availableBalance != null ? a.availableBalance : null
+            return (
+              <div key={a.id} className="flex items-center justify-between text-xs">
+                <div className="truncate flex-1">
+                  <span className="text-muted">{a.name}</span>
+                  {avail != null && (
+                    <span className="text-[10px] text-muted/60 ml-1">(${formatCents(avail)} avail)</span>
+                  )}
+                </div>
+                <span className="text-accent-red font-medium ml-2">${formatCents(Math.abs(a.balance))}</span>
+              </div>
+            )
+          })}
         </div>
 
         {lastSync && (
@@ -205,11 +213,24 @@ function AccountRow({ account }: { account: BankAccount }) {
     other: 'Other',
   }
 
+  // For credit cards: available credit = availableBalance (what the provider reports as available)
+  // Credit limit = available + owed
+  const isCreditCard = account.accountType === 'credit_card'
+  const availableCredit = isCreditCard && account.availableBalance != null ? account.availableBalance : null
+  const creditLimit = availableCredit != null ? availableCredit + Math.abs(account.balance) : null
+
   return (
     <div className="flex items-center justify-between bg-surface-1/30 rounded-lg px-3 py-2.5">
       <div className="flex-1 min-w-0">
         <p className="text-sm text-white truncate">{account.name}</p>
-        <p className="text-[10px] text-muted">{account.institution} &middot; {typeLabels[account.accountType] || account.accountType}</p>
+        <p className="text-[10px] text-muted">
+          {account.institution} &middot; {typeLabels[account.accountType] || account.accountType}
+          {creditLimit != null && (
+            <span className="ml-1.5 text-muted/80">
+              &middot; ${formatCents(availableCredit!)} of ${formatCents(creditLimit)} available
+            </span>
+          )}
+        </p>
       </div>
       <span className={`text-sm font-medium ml-3 ${isNegative ? 'text-accent-red' : 'text-accent-emerald'}`}>
         {isNegative ? '-' : ''}${formatCents(Math.abs(account.balance))}
