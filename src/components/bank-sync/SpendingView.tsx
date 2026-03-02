@@ -28,12 +28,38 @@ export default function SpendingView({ transactions, accounts, selectedAccountId
   }, [accounts])
 
   // Build a set of inter-account transfer IDs to exclude from spending.
-  // A transfer is a debit on one account that has a matching credit (same amount, same/next day)
-  // on another account — e.g. paying your credit card from checking.
+  // Matches debit/credit pairs across accounts when:
+  //   1. Same amount, within 1 day
+  //   2. Account types form a valid transfer pair (e.g. checking → credit card)
+  //   3. At least one side has a transfer-like description
   const transferIds = useMemo(() => {
     const ids = new Set<string>()
 
-    // Normalize all amounts, then find matching debit/credit pairs across accounts
+    const TRANSFER_KEYWORDS = [
+      'payment', 'pymt', 'transfer', 'autopay', 'auto pay', 'bill pay',
+      'external withdrawal', 'external deposit', 'online pymt',
+      'capital one', 'discover', 'chase', 'citi', 'amex', 'wells fargo',
+      'bank of america', 'truliant', 'credit card',
+    ]
+
+    function looksLikeTransfer(desc: string, merchant?: string): boolean {
+      const text = `${merchant || ''} ${desc}`.toLowerCase()
+      return TRANSFER_KEYWORDS.some(kw => text.includes(kw))
+    }
+
+    // Valid transfer directions: depository ↔ credit/loan, or depository ↔ depository
+    const DEPOSITORY = new Set(['checking', 'savings'])
+    const DEBT = new Set(['credit_card', 'loan', 'mortgage'])
+    function isValidTransferPair(typeA?: string, typeB?: string): boolean {
+      if (!typeA || !typeB) return false
+      // Depository to/from debt account (card payments)
+      if (DEPOSITORY.has(typeA) && DEBT.has(typeB)) return true
+      if (DEBT.has(typeA) && DEPOSITORY.has(typeB)) return true
+      // Depository to depository (internal transfers)
+      if (DEPOSITORY.has(typeA) && DEPOSITORY.has(typeB)) return true
+      return false
+    }
+
     const normalized = transactions.map(tx => ({
       ...tx,
       norm: normalizeAmount(tx.amount, acctTypeMap[tx.accountId]),
@@ -49,18 +75,30 @@ export default function SpendingView({ transactions, accounts, selectedAccountId
     }
 
     for (const tx of normalized) {
-      if (tx.norm >= 0) continue // only debits
+      if (tx.norm >= 0) continue
       const absKey = `${Math.abs(tx.norm)}`
       const matches = credits[absKey]
       if (!matches) continue
+
+      const txType = acctTypeMap[tx.accountId]
       for (const credit of matches) {
         if (credit.accountId === tx.accountId) continue
+        const creditType = acctTypeMap[credit.accountId]
+
+        // Must be a valid account type pair
+        if (!isValidTransferPair(txType, creditType)) continue
+
+        // Must be within 1 day
         const dayDiff = Math.abs(new Date(tx.date).getTime() - new Date(credit.date).getTime()) / 86400000
-        if (dayDiff <= 2) {
-          ids.add(tx.id)
-          ids.add(credit.id)
-          break
-        }
+        if (dayDiff > 1) continue
+
+        // At least one side must have a transfer-like description
+        if (!looksLikeTransfer(tx.description, tx.merchant) &&
+            !looksLikeTransfer(credit.description, credit.merchant)) continue
+
+        ids.add(tx.id)
+        ids.add(credit.id)
+        break
       }
     }
     return ids
