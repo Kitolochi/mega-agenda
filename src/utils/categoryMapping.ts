@@ -147,7 +147,9 @@ export const SPENDING_CATEGORIES: Record<string, SpendingCategory> = {
     keywords: [
       'transfer', 'zelle', 'venmo', 'paypal', 'cash app',
       'wire', 'ach', 'payment from', 'payment to', 'autopay',
-      'balance transfer', 'credit card payment',
+      'balance transfer', 'credit card payment', 'payment thank you',
+      'online payment', 'bill pay', 'pymt', 'auto pay',
+      'loan payment', 'mortgage payment',
     ],
   },
   other: {
@@ -190,4 +192,23 @@ export function categorizeTransaction(
 
 export function getCategoryInfo(key: string): SpendingCategory {
   return SPENDING_CATEGORIES[key] || SPENDING_CATEGORIES.other
+}
+
+/**
+ * Normalize a transaction amount so that spending is always negative and income
+ * is always positive, regardless of account type.
+ *
+ * Credit card accounts have inverted signs from Teller:
+ *   - Purchases are positive (increases balance/debt) → should be negative (spending)
+ *   - Payments are negative (decreases debt) → should be positive (income/transfer)
+ *
+ * Depository accounts (checking/savings) already use the standard convention.
+ */
+export type AccountType = 'checking' | 'savings' | 'credit_card' | 'loan' | 'mortgage' | 'investment' | 'other'
+
+export function normalizeAmount(amount: number, accountType?: AccountType): number {
+  if (accountType === 'credit_card' || accountType === 'loan' || accountType === 'mortgage') {
+    return -amount  // Flip sign: positive purchase → negative spending
+  }
+  return amount
 }

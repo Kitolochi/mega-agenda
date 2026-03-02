@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import type { BankTransaction, BankAccount } from '../../types'
-import { categorizeTransaction, getCategoryInfo } from '../../utils/categoryMapping'
+import { categorizeTransaction, getCategoryInfo, normalizeAmount } from '../../utils/categoryMapping'
 
 interface SubscriptionsViewProps {
   transactions: BankTransaction[]
@@ -55,18 +55,22 @@ const FREQ_DAYS: Record<string, number> = {
   irregular: 31,
 }
 
-function detectSubscriptions(transactions: BankTransaction[]): DetectedSubscription[] {
+function detectSubscriptions(
+  transactions: BankTransaction[],
+  acctTypeMap: Record<string, BankAccount['accountType']>,
+): DetectedSubscription[] {
   // Group debits by normalized merchant
   const groups: Record<string, { date: string; amount: number; desc: string; merchant?: string; category?: string }[]> = {}
 
   for (const tx of transactions) {
-    if (tx.amount >= 0) continue // only debits
+    const norm = normalizeAmount(tx.amount, acctTypeMap[tx.accountId])
+    if (norm >= 0) continue // only spending (normalized debits)
     const key = (tx.merchant || tx.description).toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 30)
     if (!key) continue
     if (!groups[key]) groups[key] = []
     groups[key].push({
       date: tx.date,
-      amount: Math.abs(tx.amount),
+      amount: Math.abs(norm),
       desc: tx.description,
       merchant: tx.merchant,
       category: tx.category,
@@ -134,7 +138,13 @@ export default function SubscriptionsView({ transactions, accounts }: Subscripti
   const [showInactive, setShowInactive] = useState(false)
   const [expanded, setExpanded] = useState<string | null>(null)
 
-  const subscriptions = useMemo(() => detectSubscriptions(transactions), [transactions])
+  const acctTypeMap = useMemo(() => {
+    const m: Record<string, BankAccount['accountType']> = {}
+    for (const a of accounts) m[a.id] = a.accountType
+    return m
+  }, [accounts])
+
+  const subscriptions = useMemo(() => detectSubscriptions(transactions, acctTypeMap), [transactions, acctTypeMap])
 
   const active = subscriptions.filter(s => s.active)
   const inactive = subscriptions.filter(s => !s.active)

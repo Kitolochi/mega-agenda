@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import type { BankTransaction, BankAccount } from '../../types'
 import DateRangeBar, { type DateRange, type DatePreset, getDefaultRange } from './DateRangeBar'
-import { categorizeTransaction, getCategoryInfo } from '../../utils/categoryMapping'
+import { categorizeTransaction, getCategoryInfo, normalizeAmount } from '../../utils/categoryMapping'
 
 interface StatementsViewProps {
   transactions: BankTransaction[]
@@ -35,15 +35,22 @@ export default function StatementsView({ transactions, accounts, selectedAccount
       .sort((a, b) => b.date.localeCompare(a.date))
   }, [transactions, range, selectedAccountId, search])
 
+  const acctTypeMap = useMemo(() => {
+    const m: Record<string, BankAccount['accountType']> = {}
+    for (const a of accounts) m[a.id] = a.accountType
+    return m
+  }, [accounts])
+
   const stats = useMemo(() => {
     let spending = 0
     let income = 0
     for (const tx of filtered) {
-      if (tx.amount < 0) spending += Math.abs(tx.amount)
-      else income += tx.amount
+      const norm = normalizeAmount(tx.amount, acctTypeMap[tx.accountId])
+      if (norm < 0) spending += Math.abs(norm)
+      else income += norm
     }
     return { spending, income, net: income - spending }
-  }, [filtered])
+  }, [filtered, acctTypeMap])
 
   const visible = filtered.slice(0, showCount)
   const hasMore = filtered.length > showCount
@@ -126,7 +133,8 @@ export default function StatementsView({ transactions, accounts, selectedAccount
             <span className="text-right">Amount</span>
           </div>
           {visible.map(tx => {
-            const catKey = categorizeTransaction(tx.description, tx.merchant, tx.amount, tx.category)
+            const norm = normalizeAmount(tx.amount, acctTypeMap[tx.accountId])
+            const catKey = categorizeTransaction(tx.description, tx.merchant, norm, tx.category)
             const cat = getCategoryInfo(catKey)
             return (
               <div key={tx.id} className="grid grid-cols-[1fr_auto_auto_auto] gap-3 px-4 py-2.5 border-b border-white/[0.03] last:border-0 hover:bg-white/[0.02] transition-colors">
@@ -146,8 +154,8 @@ export default function StatementsView({ transactions, accounts, selectedAccount
                   {cat.name}
                 </span>
                 <span className="text-xs text-muted self-center whitespace-nowrap">{tx.date}</span>
-                <span className={`text-sm font-medium self-center text-right ${tx.amount < 0 ? 'text-accent-red' : 'text-accent-emerald'}`}>
-                  {tx.amount < 0 ? '-' : '+'}${formatCents(Math.abs(tx.amount))}
+                <span className={`text-sm font-medium self-center text-right ${norm < 0 ? 'text-accent-red' : 'text-accent-emerald'}`}>
+                  {norm < 0 ? '-' : '+'}${formatCents(Math.abs(norm))}
                 </span>
               </div>
             )

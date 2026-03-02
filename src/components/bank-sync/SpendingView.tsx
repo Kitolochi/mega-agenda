@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import type { BankTransaction, BankAccount } from '../../types'
 import DateRangeBar, { type DateRange, type DatePreset, getDefaultRange } from './DateRangeBar'
-import { categorizeTransaction, getCategoryInfo, SPENDING_CATEGORIES } from '../../utils/categoryMapping'
+import { categorizeTransaction, getCategoryInfo, SPENDING_CATEGORIES, normalizeAmount } from '../../utils/categoryMapping'
 import DonutChart, { type DonutSegment } from './DonutChart'
 
 interface SpendingViewProps {
@@ -20,6 +20,52 @@ export default function SpendingView({ transactions, accounts, selectedAccountId
   const [range, setRange] = useState<DateRange>(getDefaultRange('3m'))
   const [hoveredCategory, setHoveredCategory] = useState<string | null>(null)
 
+  // Build account type lookup for normalizing amounts
+  const acctTypeMap = useMemo(() => {
+    const m: Record<string, BankAccount['accountType']> = {}
+    for (const a of accounts) m[a.id] = a.accountType
+    return m
+  }, [accounts])
+
+  // Build a set of inter-account transfer IDs to exclude from spending.
+  // A transfer is a debit on one account that has a matching credit (same amount, same/next day)
+  // on another account — e.g. paying your credit card from checking.
+  const transferIds = useMemo(() => {
+    const ids = new Set<string>()
+
+    // Normalize all amounts, then find matching debit/credit pairs across accounts
+    const normalized = transactions.map(tx => ({
+      ...tx,
+      norm: normalizeAmount(tx.amount, acctTypeMap[tx.accountId]),
+    }))
+
+    // Index credits (positive normalized) by abs amount
+    const credits: Record<string, typeof normalized> = {}
+    for (const tx of normalized) {
+      if (tx.norm <= 0) continue
+      const key = `${Math.abs(tx.norm)}`
+      if (!credits[key]) credits[key] = []
+      credits[key].push(tx)
+    }
+
+    for (const tx of normalized) {
+      if (tx.norm >= 0) continue // only debits
+      const absKey = `${Math.abs(tx.norm)}`
+      const matches = credits[absKey]
+      if (!matches) continue
+      for (const credit of matches) {
+        if (credit.accountId === tx.accountId) continue
+        const dayDiff = Math.abs(new Date(tx.date).getTime() - new Date(credit.date).getTime()) / 86400000
+        if (dayDiff <= 2) {
+          ids.add(tx.id)
+          ids.add(credit.id)
+          break
+        }
+      }
+    }
+    return ids
+  }, [transactions, acctTypeMap])
+
   // Filter and categorize
   const { categoryData, topMerchants, totalSpending } = useMemo(() => {
     const catTotals: Record<string, { amount: number; count: number }> = {}
@@ -28,10 +74,13 @@ export default function SpendingView({ transactions, accounts, selectedAccountId
     for (const tx of transactions) {
       if (tx.date < range.start || tx.date > range.end) continue
       if (selectedAccountId && tx.accountId !== selectedAccountId) continue
-      if (tx.amount >= 0) continue // Only spending (debits)
+      if (transferIds.has(tx.id)) continue // Skip inter-account transfers
 
-      const absAmount = Math.abs(tx.amount)
-      const catKey = categorizeTransaction(tx.description, tx.merchant, tx.amount, tx.category)
+      const norm = normalizeAmount(tx.amount, acctTypeMap[tx.accountId])
+      if (norm >= 0) continue // Only spending (normalized debits)
+
+      const absAmount = Math.abs(norm)
+      const catKey = categorizeTransaction(tx.description, tx.merchant, norm, tx.category)
 
       // Skip income and transfers from analysis
       if (catKey === 'income' || catKey === 'transfer') continue
@@ -61,7 +110,7 @@ export default function SpendingView({ transactions, accounts, selectedAccountId
       .slice(0, 10)
 
     return { categoryData, topMerchants, totalSpending }
-  }, [transactions, range, selectedAccountId])
+  }, [transactions, range, selectedAccountId, transferIds])
 
   const donutSegments: DonutSegment[] = categoryData.map(c => ({
     key: c.key,
