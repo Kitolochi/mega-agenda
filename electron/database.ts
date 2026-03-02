@@ -374,6 +374,14 @@ export function initDatabase(): Database {
     if (!db.categories.find(c => c.id === 7)) {
       db.categories.push({ id: 7, name: 'Daily', color: '#14b8a6', icon: '📋', sort_order: 7 })
     }
+    // Clean orphaned bank transactions (accountId not in bankAccounts)
+    if (db.bankAccounts && db.bankTransactions) {
+      const validIds = new Set(db.bankAccounts.map((a: any) => a.id))
+      const before = db.bankTransactions.length
+      db.bankTransactions = db.bankTransactions.filter((t: any) => validIds.has(t.accountId))
+      const removed = before - db.bankTransactions.length
+      if (removed > 0) console.log(`[db] Cleaned ${removed} orphaned bank transactions`)
+    }
     saveDatabase()
   } else {
     db = {
@@ -1829,16 +1837,20 @@ export function getBankAccounts(): BankAccount[] {
   return db.bankAccounts || []
 }
 
-export function upsertBankAccount(account: BankAccount): BankAccount {
+export function upsertBankAccount(account: Omit<BankAccount, 'id'> & { id?: string }): BankAccount {
   const idx = db.bankAccounts.findIndex(a => a.connectionId === account.connectionId && a.externalId === account.externalId)
   if (idx !== -1) {
-    db.bankAccounts[idx] = { ...db.bankAccounts[idx], ...account, lastSynced: new Date().toISOString() }
+    // Preserve existing ID — never overwrite with a new UUID
+    const { id: _ignoreId, ...updates } = account
+    db.bankAccounts[idx] = { ...db.bankAccounts[idx], ...updates, lastSynced: new Date().toISOString() }
     saveDatabase()
     return db.bankAccounts[idx]
   }
-  db.bankAccounts.push(account)
+  // New account — assign stable ID
+  const newAccount = { ...account, id: account.id || crypto.randomUUID() } as BankAccount
+  db.bankAccounts.push(newAccount)
   saveDatabase()
-  return account
+  return newAccount
 }
 
 export function getBankTransactions(accountId?: string, limit: number = 100): BankTransaction[] {

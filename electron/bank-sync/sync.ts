@@ -51,9 +51,8 @@ export async function syncConnection(connectionId: string): Promise<{ accounts: 
     let newTxCount = 0
 
     for (const extAcct of fetchResult.accounts) {
-      // Upsert account
+      // Upsert account (omit id — let upsert preserve existing or generate new)
       const account = upsertBankAccount({
-        id: crypto.randomUUID(),
         connectionId: conn.id,
         externalId: extAcct.externalId,
         name: extAcct.name,
@@ -67,8 +66,9 @@ export async function syncConnection(connectionId: string): Promise<{ accounts: 
       syncedAccounts.push(account)
 
       // Import transactions with deduplication
+      // Use externalId (stable across syncs) instead of internal UUID for dedup hash
       for (const tx of extAcct.transactions) {
-        const dedupHash = generateDedupHash(account.id, tx.date, tx.amount, tx.description)
+        const dedupHash = generateDedupHash(extAcct.externalId, tx.date, tx.amount, tx.description)
         const result = upsertBankTransaction({
           id: crypto.randomUUID(),
           accountId: account.id,
