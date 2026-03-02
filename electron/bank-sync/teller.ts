@@ -1,4 +1,7 @@
 import https from 'https'
+import fs from 'fs'
+import path from 'path'
+import { app } from 'electron'
 
 interface TellerAccount {
   id: string
@@ -30,6 +33,24 @@ interface TellerTransaction {
   type: string
   category: string[]
   merchant_name?: string
+}
+
+/** Load mTLS certificate and private key from the app's teller directory */
+function loadCertificates(): { cert: Buffer; key: Buffer } {
+  const tellerDir = path.join(app.getPath('userData'), 'teller')
+  const certPath = path.join(tellerDir, 'certificate.pem')
+  const keyPath = path.join(tellerDir, 'private_key.pem')
+
+  if (!fs.existsSync(certPath) || !fs.existsSync(keyPath)) {
+    throw new Error(
+      `Teller certificates not found. Place certificate.pem and private_key.pem in:\n${tellerDir}`
+    )
+  }
+
+  return {
+    cert: fs.readFileSync(certPath),
+    key: fs.readFileSync(keyPath),
+  }
 }
 
 /**
@@ -126,14 +147,24 @@ function dollarsToCents(amount: string): number {
   return Math.round(parseFloat(amount) * 100)
 }
 
-function tellerGet(path: string, accessToken: string): Promise<string> {
+/**
+ * Make an authenticated GET request to the Teller API.
+ * Uses mTLS (client certificate) + HTTP Basic Auth (token as username, empty password).
+ */
+function tellerGet(apiPath: string, accessToken: string): Promise<string> {
+  const { cert, key } = loadCertificates()
+
   return new Promise((resolve, reject) => {
-    const options = {
+    const options: https.RequestOptions = {
       hostname: 'api.teller.io',
-      path,
+      path: apiPath,
       method: 'GET',
+      // mTLS — client certificate authentication
+      cert,
+      key,
+      // HTTP Basic Auth — token as username, empty password
       headers: {
-        'Authorization': `Bearer ${accessToken}`,
+        'Authorization': 'Basic ' + Buffer.from(`${accessToken}:`).toString('base64'),
         'Accept': 'application/json',
       },
     }

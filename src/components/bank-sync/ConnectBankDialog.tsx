@@ -168,10 +168,13 @@ export default function ConnectBankDialog({ open, onClose, onConnected }: Connec
             <div className="space-y-4">
               <div>
                 <p className="text-sm text-white/70 mb-3">
-                  1. Get your Teller access token from <button onClick={() => window.electronAPI.openExternal('https://teller.io')} className="text-accent-blue hover:underline">teller.io</button>
+                  1. Sign up at <button onClick={() => window.electronAPI.openExternal('https://teller.io')} className="text-accent-blue hover:underline">teller.io</button> and enroll your bank
+                </p>
+                <p className="text-sm text-white/70 mb-3">
+                  2. Place your <strong className="text-white">certificate.pem</strong> and <strong className="text-white">private_key.pem</strong> in <code className="text-[10px] bg-surface-1 px-1.5 py-0.5 rounded text-accent-blue">%APPDATA%/mega-agenda/teller/</code>
                 </p>
                 <p className="text-sm text-white/70 mb-4">
-                  2. Paste your <strong className="text-white">Access Token</strong> below:
+                  3. Paste your <strong className="text-white">Access Token</strong> below (starts with <code className="text-[10px] bg-surface-1 px-1 py-0.5 rounded text-muted">token_</code>):
                 </p>
               </div>
               <div>
