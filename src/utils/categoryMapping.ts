@@ -90,7 +90,7 @@ export const SPENDING_CATEGORIES: Record<string, SpendingCategory> = {
     colorHex: '#34D399',
     keywords: [
       'electric', 'power', 'energy', 'duke energy', 'dominion',
-      'water', 'sewer', 'gas bill', 'natural gas', 'atmos',
+      'water', 'sewer', 'gas bill', 'natural gas', 'atmos', 'piedmontng', 'piedmont natural',
       'internet', 'comcast', 'xfinity', 'att', 'at&t', 'verizon',
       'spectrum', 'tmobile', 't-mobile', 'sprint', 'mint mobile',
       'phone bill', 'wireless', 'broadband', 'fiber',
@@ -116,6 +116,7 @@ export const SPENDING_CATEGORIES: Record<string, SpendingCategory> = {
       'urgent care', 'labcorp', 'quest diag', 'copay',
       'prescription', 'therapy', 'counseling', 'mental health',
       'gym', 'fitness', 'planet fitness', 'ymca', 'peloton',
+      'chiroprac', 'thorne research', 'cornerstone ent',
     ],
   },
   insurance: {
@@ -150,6 +151,9 @@ export const SPENDING_CATEGORIES: Record<string, SpendingCategory> = {
       'balance transfer', 'credit card payment', 'payment thank you',
       'online payment', 'bill pay', 'pymt', 'auto pay',
       'loan payment', 'mortgage payment',
+      'discover dc pymnts', 'discover pymt', 'discover payment',
+      'capital one online pmt', 'capital one mobile pmt',
+      'amex epayment', 'chase epay', 'citi autopay',
     ],
   },
   other: {

@@ -381,6 +381,18 @@ export function initDatabase(): Database {
       db.bankTransactions = db.bankTransactions.filter((t: any) => validIds.has(t.accountId))
       const removed = before - db.bankTransactions.length
       if (removed > 0) console.log(`[db] Cleaned ${removed} orphaned bank transactions`)
+
+      // Deduplicate by externalId (keep the first occurrence, remove later copies)
+      const seenExtIds = new Set<string>()
+      const beforeDedup = db.bankTransactions.length
+      db.bankTransactions = db.bankTransactions.filter((t: any) => {
+        if (!t.externalId) return true // keep transactions without externalId
+        if (seenExtIds.has(t.externalId)) return false
+        seenExtIds.add(t.externalId)
+        return true
+      })
+      const dupsRemoved = beforeDedup - db.bankTransactions.length
+      if (dupsRemoved > 0) console.log(`[db] Removed ${dupsRemoved} duplicate bank transactions`)
     }
     saveDatabase()
   } else {

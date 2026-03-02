@@ -88,9 +88,9 @@ export default function SpendingView({ transactions, accounts, selectedAccountId
         // Must be a valid account type pair
         if (!isValidTransferPair(txType, creditType)) continue
 
-        // Must be within 1 day
+        // Must be within 3 days (card payments can take a few days to post)
         const dayDiff = Math.abs(new Date(tx.date).getTime() - new Date(credit.date).getTime()) / 86400000
-        if (dayDiff > 1) continue
+        if (dayDiff > 3) continue
 
         // At least one side must have a transfer-like description
         if (!looksLikeTransfer(tx.description, tx.merchant) &&
