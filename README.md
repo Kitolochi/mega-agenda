@@ -1,6 +1,6 @@
 # Mega Agenda
 
-A personal productivity powerhouse that lives in your system tray. Task management, AI chat, goal research, Twitter posting, RSS feeds, embedded terminal, voice commands, and more — all in a single compact Electron window.
+A personal productivity powerhouse that lives in your system tray. Task management, AI chat, goal research, bank account sync, Twitter posting, RSS feeds, embedded terminal, voice commands, and more — all in a single compact Electron window.
 
 Built with Electron + React + TypeScript + Tailwind CSS + Claude AI.
 
@@ -16,6 +16,7 @@ Built with Electron + React + TypeScript + Tailwind CSS + Claude AI.
 - AI-generated morning briefing (overdue tasks, priorities, streak info)
 - Progress ring with motivational messages
 - 90-day activity heatmap
+- Live debt summary card (auto-syncs from connected bank accounts)
 - Weekly stats and streak tracking
 - Category grid for quick navigation
 
@@ -25,6 +26,17 @@ Built with Electron + React + TypeScript + Tailwind CSS + Claude AI.
 - Navigate between days or jump to today
 - AI-powered weekly reviews with task counts, focus time, and category breakdowns
 - Historical review archive
+
+### Bank Accounts (Live Sync)
+- **SimpleFIN Bridge** integration — 16,000+ banks via MX aggregator ($15/year, read-only)
+- **Teller** integration — direct bank connections (free, real-time)
+- Connect wizard: choose provider, paste token, auto-sync
+- Live debt/balance tracking across all connected accounts
+- Financial overview: total debt, total assets, per-account breakdown
+- Transaction list with account filtering and pending indicators
+- Connection status monitoring with manual sync
+- Auto-sync on dashboard load when stale (>1 hour)
+- MD5-based transaction deduplication
 
 ### Feed Reader (RSS + Twitter)
 - Multi-section feed aggregation (AI/LLMs, World News)
@@ -46,10 +58,12 @@ Built with Electron + React + TypeScript + Tailwind CSS + Claude AI.
 ### Chat (Claude AI)
 - Multiple conversation threads with persistent history
 - Streaming responses with abort support
+- Multi-provider LLM support (Claude, Gemini, Groq, OpenRouter)
 - Model selection (Sonnet 4.5, Haiku 4.5, Opus 4.6)
 - System prompt modes: default, context-aware (includes tasks/streak/notes), or custom
 - Token usage tracking per message
 - Memory integration — extract and inject memories into context
+- Smart Query (`/ask`) — RAG-powered Q&A with semantic search over knowledge base
 
 ### Code Terminal
 - Embedded terminal powered by node-pty + xterm.js
@@ -73,6 +87,7 @@ Built with Electron + React + TypeScript + Tailwind CSS + Claude AI.
 - Individual topic reports saved as markdown
 - Action plan synthesis from all research
 - Context questionnaire for personalization
+- Goal workspaces with deliverables and git tracking
 
 ### Master Plan
 - Cross-goal master plan synthesis using all research + context files
@@ -99,6 +114,13 @@ Built with Electron + React + TypeScript + Tailwind CSS + Claude AI.
 - Topic management: rename, recolor, merge, delete
 - Search by title/content/topic, filter by source type
 - Memory injection into chat context
+- Knowledge pack compression — cluster and summarize memories into dense packs
+- Memory health monitoring with auto-pruning
+
+### Lab (Experimental Tools)
+- Single-file compression testing
+- Embedding similarity testing
+- Compression audit with coverage scoring
 
 ### CLI History Viewer
 - Browse all Claude Code CLI sessions from `~/.claude/projects/`
@@ -130,7 +152,8 @@ Built with Electron + React + TypeScript + Tailwind CSS + Claude AI.
 - Session counter for the day
 
 ### Settings
-- Claude API key storage and verification
+- Multi-provider LLM configuration (Claude, Gemini, Groq, OpenRouter)
+- API key storage and verification per provider
 - Twitter OAuth credentials (API keys, access tokens)
 - Category management (add/delete with icons and colors)
 - RSS feed management with suggested feeds
@@ -145,6 +168,7 @@ Built with Electron + React + TypeScript + Tailwind CSS + Claude AI.
 | T | Tasks |
 | L | List view |
 | J | Journal |
+| B | Bank accounts |
 | F | Feed |
 | M | Social / Twitter |
 | H | Chat |
@@ -163,19 +187,61 @@ Built with Electron + React + TypeScript + Tailwind CSS + Claude AI.
 ### Tech Stack
 - **Frontend:** React 18, TypeScript, Tailwind CSS, Vite
 - **Backend:** Electron 28 (main + preload + renderer)
-- **Database:** SQLite (via better-sqlite3, bundled)
-- **AI:** Claude API (Sonnet 4.5 / Haiku 4.5 / Opus 4.6) for chat, research, summaries, memory extraction, and master plan generation
+- **State:** Zustand stores (app, task, chat, social)
+- **Database:** JSON file (`mega-agenda.json`) persisted to `%APPDATA%/mega-agenda/`
+- **AI:** Multi-provider LLM support — Claude API (Sonnet 4.5 / Haiku 4.5 / Opus 4.6), Gemini, Groq, OpenRouter
 - **Embeddings:** @xenova/transformers with MiniLM-L6-v2 (384-dim, ~22MB, cached locally)
 - **Terminal:** node-pty + xterm.js
 - **Speech:** Local Whisper via @xenova/transformers (migrating from Web Speech API, which is unsupported in Electron 28)
 - **Twitter:** Twitter API v2 (OAuth 1.0a for posting, bearer token for reading)
+- **Bank Sync:** SimpleFIN Bridge (16K+ banks via MX) + Teller (direct connections)
 
 ### Data Storage
-- **SQLite DB:** `~/.claude/mega-agenda.db` — tasks, categories, notes, stats, settings, conversations, drafts, goals, memories
+- **JSON DB:** `%APPDATA%/mega-agenda/mega-agenda.json` — tasks, categories, notes, stats, settings, conversations, drafts, goals, memories, bank connections, bank accounts, transactions
 - **Context files:** `~/.claude/memory/` — markdown knowledge base with domain folders and goal research
 - **Master plans:** `~/.claude/master-plans/` — dated plan files
 - **Vector index:** `%APPDATA%/mega-agenda/vector-index.json` — embedding vectors for semantic search
-- **Model cache:** `%APPDATA%/mega-agenda/models/` — cached MiniLM model
+- **Model cache:** `%APPDATA%/mega-agenda/models/` — cached MiniLM and Whisper models
+
+### Project Structure
+```
+electron/                  # Main process
+  main.ts                  # Entry point, BrowserWindow, model loading
+  preload.ts               # contextBridge API (window.electronAPI)
+  database.ts              # JSON DB with all CRUD operations
+  llm.ts                   # Multi-provider LLM (Claude, Gemini, Groq, OpenRouter)
+  research.ts              # Goal research, master plan, RAG
+  embeddings.ts            # MiniLM-L6-v2 local embeddings
+  whisper.ts               # Local Whisper transcription
+  vector-store.ts          # Local vector index for semantic search
+  knowledge-pack.ts        # Knowledge compression and clustering
+  memory.ts                # Memory extraction from sources
+  smart-query.ts           # RAG-powered Q&A streaming
+  bank-sync/               # Bank account sync
+    simplefin.ts           # SimpleFIN API client
+    teller.ts              # Teller API client
+    sync.ts                # Sync orchestrator with deduplication
+  ipc/                     # IPC handler modules
+    index.ts               # Handler registration barrel
+    tasks.ts, notes.ts, chat.ts, twitter.ts, rss.ts,
+    ai.ts, memory.ts, system.ts, knowledge-pack.ts, bank-sync.ts
+
+src/                       # Renderer (React)
+  App.tsx                  # Root component
+  types/index.ts           # Shared types + ElectronAPI interface
+  store/                   # Zustand stores (app, task, chat, social)
+  hooks/                   # Custom hooks (9 files)
+  utils/                   # Utilities (cn, formatting, markdown, sounds, tts)
+  components/
+    layout/                # AppShell, TitleBar, TabNavigation, ContentArea
+    bank-sync/             # AccountsTab, ConnectBankDialog, DebtSummary, ConnectionStatus
+    chat/                  # ChatView, ChatSidebar, ChatMessages, ChatInput, SmartQuery
+    roadmap/               # GoalForm, GoalDetail, Timeline, TopicList, Execution, MasterPlan
+    social/                # TweetEditor, ThreadEditor, DraftSelector, PersonaSelector, AIAssist
+    settings/              # Settings, AIProvider, Categories, Feeds, Twitter
+    ui/                    # Primitives (Button, Input, Card, Badge, Dialog, etc.)
+    ...                    # Dashboard, Tasks, Feed, Terminal, Memories, Lab, etc.
+```
 
 ### Window Management
 - Frameless window with custom title bar
@@ -208,5 +274,7 @@ The executable will be in `release/`.
 
 ### Optional Setup
 - **Claude API Key** — Required for AI features (chat, research, summaries, master plan). Set in Settings tab.
+- **Multi-LLM Providers** — Optionally configure Gemini, Groq, or OpenRouter as alternative providers in Settings.
 - **Twitter Credentials** — Required for tweet posting. Set bearer token for reading, OAuth for posting in Settings.
 - **Claude Code CLI** — Install globally for CLI-first research and task launching: `npm install -g @anthropic-ai/claude-code`
+- **SimpleFIN Bridge** — $15/year for live bank sync. Sign up at [simplefin.org](https://beta-bridge.simplefin.org), connect banks, paste setup token in Accounts tab.
