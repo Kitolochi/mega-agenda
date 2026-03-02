@@ -93,9 +93,9 @@ export default function DebtSummary({ compact = false }: DebtSummaryProps) {
           <span className="text-2xl font-display font-bold text-accent-red">
             ${formatCents(totalDebt)}
           </span>
-          {totalAssets > 0 && (
+          {totalAssets !== 0 && (
             <span className="text-xs text-muted ml-2">
-              Assets: <span className="text-accent-emerald">${formatCents(totalAssets)}</span>
+              Assets: <span className={totalAssets < 0 ? 'text-accent-red' : 'text-accent-emerald'}>{totalAssets < 0 ? '-' : ''}${formatCents(Math.abs(totalAssets))}</span>
             </span>
           )}
         </div>
@@ -154,7 +154,7 @@ export default function DebtSummary({ compact = false }: DebtSummaryProps) {
         </div>
         <div className="bg-surface-1/50 rounded-lg p-3">
           <p className="text-[10px] text-muted uppercase tracking-wider mb-1">Total Assets</p>
-          <p className="text-xl font-display font-bold text-accent-emerald">${formatCents(totalAssets)}</p>
+          <p className={`text-xl font-display font-bold ${totalAssets < 0 ? 'text-accent-red' : 'text-accent-emerald'}`}>{totalAssets < 0 ? '-' : ''}${formatCents(Math.abs(totalAssets))}</p>
         </div>
       </div>
 
@@ -193,7 +193,7 @@ export default function DebtSummary({ compact = false }: DebtSummaryProps) {
 
 function AccountRow({ account }: { account: BankAccount }) {
   const isDebt = account.accountType === 'credit_card' || account.accountType === 'loan' || account.accountType === 'mortgage'
-  const displayBalance = Math.abs(account.balance)
+  const isNegative = isDebt || account.balance < 0
 
   const typeLabels: Record<string, string> = {
     checking: 'Checking',
@@ -211,8 +211,8 @@ function AccountRow({ account }: { account: BankAccount }) {
         <p className="text-sm text-white truncate">{account.name}</p>
         <p className="text-[10px] text-muted">{account.institution} &middot; {typeLabels[account.accountType] || account.accountType}</p>
       </div>
-      <span className={`text-sm font-medium ml-3 ${isDebt ? 'text-accent-red' : 'text-accent-emerald'}`}>
-        {isDebt ? '-' : ''}${formatCents(displayBalance)}
+      <span className={`text-sm font-medium ml-3 ${isNegative ? 'text-accent-red' : 'text-accent-emerald'}`}>
+        {isNegative ? '-' : ''}${formatCents(Math.abs(account.balance))}
       </span>
     </div>
   )
