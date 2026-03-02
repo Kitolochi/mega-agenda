@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import type { BankProvider } from '../../types'
 
 interface ConnectBankDialogProps {
@@ -7,17 +7,34 @@ interface ConnectBankDialogProps {
   onConnected: () => void
 }
 
-type Step = 'choose' | 'simplefin' | 'teller' | 'connecting' | 'done' | 'error'
+type Step = 'choose' | 'simplefin' | 'teller-loading' | 'teller-manual' | 'connecting' | 'done' | 'error'
+
+const TELLER_APP_ID = 'app_ppav7fais4ha52ph76000'
+
+/** Dynamically load the Teller Connect script once */
+function loadTellerScript(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if ((window as any).TellerConnect) { resolve(); return }
+    const existing = document.querySelector('script[src*="teller.io/connect"]')
+    if (existing) { existing.addEventListener('load', () => resolve()); return }
+    const script = document.createElement('script')
+    script.src = 'https://cdn.teller.io/connect/connect.js'
+    script.onload = () => resolve()
+    script.onerror = () => reject(new Error('Failed to load Teller Connect'))
+    document.head.appendChild(script)
+  })
+}
 
 export default function ConnectBankDialog({ open, onClose, onConnected }: ConnectBankDialogProps) {
   const [step, setStep] = useState<Step>('choose')
   const [token, setToken] = useState('')
   const [error, setError] = useState('')
+  const tellerRef = useRef<any>(null)
 
   if (!open) return null
 
-  const handleConnect = async (provider: BankProvider) => {
-    if (!token.trim()) {
+  const handleConnect = async (provider: BankProvider, accessToken: string) => {
+    if (!accessToken.trim()) {
       setError('Please enter a token')
       return
     }
@@ -26,7 +43,7 @@ export default function ConnectBankDialog({ open, onClose, onConnected }: Connec
     setError('')
 
     try {
-      await window.electronAPI.connectBank(provider, token.trim())
+      await window.electronAPI.connectBank(provider, accessToken.trim())
       setStep('done')
       setTimeout(() => {
         onConnected()
@@ -35,6 +52,39 @@ export default function ConnectBankDialog({ open, onClose, onConnected }: Connec
     } catch (err: any) {
       setError(err.message || 'Connection failed')
       setStep('error')
+    }
+  }
+
+  const handleTellerConnect = async () => {
+    setStep('teller-loading')
+    setError('')
+
+    try {
+      await loadTellerScript()
+
+      const TellerConnect = (window as any).TellerConnect
+      if (!TellerConnect) throw new Error('Teller Connect not available')
+
+      tellerRef.current = TellerConnect.setup({
+        applicationId: TELLER_APP_ID,
+        environment: 'development',
+        products: ['transactions'],
+        onSuccess: (enrollment: { accessToken: string }) => {
+          handleConnect('teller', enrollment.accessToken)
+        },
+        onExit: () => {
+          if (step === 'teller-loading') setStep('choose')
+        },
+        onFailure: (failure: { type: string; message: string }) => {
+          setError(failure.message || 'Teller enrollment failed')
+          setStep('error')
+        },
+      })
+
+      tellerRef.current.open()
+    } catch {
+      // If script fails to load, fall back to manual token entry
+      setStep('teller-manual')
     }
   }
 
@@ -104,7 +154,7 @@ export default function ConnectBankDialog({ open, onClose, onConnected }: Connec
               </button>
 
               <button
-                onClick={() => setStep('teller')}
+                onClick={handleTellerConnect}
                 className="w-full p-4 rounded-xl bg-surface-3/50 border border-white/[0.06] hover:border-accent-blue/30 hover:bg-surface-3 transition-all text-left group"
               >
                 <div className="flex items-center gap-3">
@@ -154,7 +204,7 @@ export default function ConnectBankDialog({ open, onClose, onConnected }: Connec
                   Back
                 </button>
                 <button
-                  onClick={() => handleConnect('simplefin')}
+                  onClick={() => handleConnect('simplefin', token)}
                   disabled={!token.trim()}
                   className="flex-1 px-4 py-2 rounded-lg text-xs font-medium bg-accent-emerald/20 text-accent-emerald hover:bg-accent-emerald/30 border border-accent-emerald/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                 >
@@ -164,17 +214,28 @@ export default function ConnectBankDialog({ open, onClose, onConnected }: Connec
             </div>
           )}
 
-          {step === 'teller' && (
+          {step === 'teller-loading' && (
+            <div className="flex flex-col items-center py-8 gap-3">
+              <div className="w-10 h-10 rounded-full border-2 border-accent-blue/30 border-t-accent-blue animate-spin" />
+              <p className="text-sm text-white/70">Opening Teller Connect...</p>
+              <p className="text-xs text-muted">Select your bank and sign in</p>
+              <button
+                onClick={() => setStep('choose')}
+                className="mt-2 px-3 py-1.5 rounded-lg text-[11px] text-muted hover:text-white bg-surface-3/50 hover:bg-surface-3 border border-white/[0.06] transition-all"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+
+          {step === 'teller-manual' && (
             <div className="space-y-4">
+              <div className="p-3 rounded-lg bg-accent-amber/10 border border-accent-amber/20">
+                <p className="text-xs text-accent-amber">Teller Connect widget couldn't load. You can paste an access token manually instead.</p>
+              </div>
               <div>
                 <p className="text-sm text-white/70 mb-3">
-                  1. Sign up at <button onClick={() => window.electronAPI.openExternal('https://teller.io')} className="text-accent-blue hover:underline">teller.io</button> and enroll your bank
-                </p>
-                <p className="text-sm text-white/70 mb-3">
-                  2. Place your <strong className="text-white">certificate.pem</strong> and <strong className="text-white">private_key.pem</strong> in <code className="text-[10px] bg-surface-1 px-1.5 py-0.5 rounded text-accent-blue">%APPDATA%/mega-agenda/teller/</code>
-                </p>
-                <p className="text-sm text-white/70 mb-4">
-                  3. Paste your <strong className="text-white">Access Token</strong> below (starts with <code className="text-[10px] bg-surface-1 px-1 py-0.5 rounded text-muted">token_</code>):
+                  Make sure your <strong className="text-white">certificate.pem</strong> and <strong className="text-white">private_key.pem</strong> are in <code className="text-[10px] bg-surface-1 px-1.5 py-0.5 rounded text-accent-blue">%APPDATA%/mega-agenda/teller/</code>
                 </p>
               </div>
               <div>
@@ -194,7 +255,7 @@ export default function ConnectBankDialog({ open, onClose, onConnected }: Connec
                   Back
                 </button>
                 <button
-                  onClick={() => handleConnect('teller')}
+                  onClick={() => handleConnect('teller', token)}
                   disabled={!token.trim()}
                   className="flex-1 px-4 py-2 rounded-lg text-xs font-medium bg-accent-blue/20 text-accent-blue hover:bg-accent-blue/30 border border-accent-blue/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                 >

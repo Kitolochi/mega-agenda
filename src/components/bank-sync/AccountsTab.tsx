@@ -5,8 +5,9 @@ import ConnectionStatus from './ConnectionStatus'
 import DebtSummary from './DebtSummary'
 import StatementsView from './StatementsView'
 import SpendingView from './SpendingView'
+import SubscriptionsView from './SubscriptionsView'
 
-type ViewSection = 'overview' | 'statements' | 'spending'
+type ViewSection = 'overview' | 'statements' | 'spending' | 'subscriptions'
 
 export default function AccountsTab() {
   const [connections, setConnections] = useState<BankConnection[]>([])
@@ -111,6 +112,7 @@ export default function AccountsTab() {
             { id: 'overview' as const, label: 'Overview' },
             { id: 'statements' as const, label: 'Statements' },
             { id: 'spending' as const, label: 'Spending' },
+            { id: 'subscriptions' as const, label: 'Subscriptions' },
           ]).map(s => (
             <button
               key={s.id}
@@ -192,6 +194,13 @@ export default function AccountsTab() {
           accounts={accounts}
           selectedAccountId={selectedAccountId}
           onSelectAccount={setSelectedAccountId}
+        />
+      )}
+
+      {activeSection === 'subscriptions' && (
+        <SubscriptionsView
+          transactions={transactions}
+          accounts={accounts}
         />
       )}
 
