@@ -91,9 +91,11 @@ Built with Electron + React + TypeScript + Tailwind CSS + Claude AI.
 
 ### Master Plan
 - Cross-goal master plan synthesis using all research + context files
-- **RAG-powered smart context retrieval** — semantic search selects the most relevant chunks instead of brute-forcing all files
-- Local embeddings (MiniLM-L6-v2, 384-dim) with vector index (~1,174 chunks)
-- Falls back to brute-force if embeddings unavailable
+- **Hybrid RAG-powered smart context retrieval** — vector semantic search + BM25 full-text search, merged via Reciprocal Rank Fusion
+- Local embeddings (MiniLM-L6-v2, 384-dim) with LanceDB vector index (~13,400+ chunks)
+- BM25 full-text index (MiniSearch) with fuzzy matching and prefix search
+- Claude Code session indexing — 968+ past sessions parsed and searchable alongside memory files
+- Falls back to vector-only or BM25-only if either index is unavailable
 - Task extraction from plan (10-30 actionable items)
 - Execution dashboard with task launching via Claude Code CLI
 - Auto-polling to match launched tasks with CLI sessions
@@ -191,6 +193,7 @@ Built with Electron + React + TypeScript + Tailwind CSS + Claude AI.
 - **Database:** JSON file (`mega-agenda.json`) persisted to `%APPDATA%/mega-agenda/`
 - **AI:** Multi-provider LLM support — Claude API (Sonnet 4.5 / Haiku 4.5 / Opus 4.6), Gemini, Groq, OpenRouter
 - **Embeddings:** @xenova/transformers with MiniLM-L6-v2 (384-dim, ~22MB, cached locally)
+- **Search:** Hybrid — LanceDB vector + MiniSearch BM25, merged via Reciprocal Rank Fusion (RRF, k=60)
 - **Terminal:** node-pty + xterm.js
 - **Speech:** Local Whisper via @xenova/transformers (migrating from Web Speech API, which is unsupported in Electron 28)
 - **Twitter:** Twitter API v2 (OAuth 1.0a for posting, bearer token for reading)
@@ -200,7 +203,9 @@ Built with Electron + React + TypeScript + Tailwind CSS + Claude AI.
 - **JSON DB:** `%APPDATA%/mega-agenda/mega-agenda.json` — tasks, categories, notes, stats, settings, conversations, drafts, goals, memories, bank connections, bank accounts, transactions
 - **Context files:** `~/.claude/memory/` — markdown knowledge base with domain folders and goal research
 - **Master plans:** `~/.claude/master-plans/` — dated plan files
-- **Vector index:** `%APPDATA%/mega-agenda/vector-index.json` — embedding vectors for semantic search
+- **Vector DB:** `%APPDATA%/mega-agenda/vector-db/` — LanceDB vector index for semantic search
+- **BM25 index:** `%APPDATA%/mega-agenda/bm25-index.json` — MiniSearch full-text index
+- **Hash sidecars:** `%APPDATA%/mega-agenda/vector-db-hashes.json` + `vector-db-session-hashes.json` — incremental indexing
 - **Model cache:** `%APPDATA%/mega-agenda/models/` — cached MiniLM and Whisper models
 
 ### Project Structure
@@ -213,10 +218,12 @@ electron/                  # Main process
   research.ts              # Goal research, master plan, RAG
   embeddings.ts            # MiniLM-L6-v2 local embeddings
   whisper.ts               # Local Whisper transcription
-  vector-store.ts          # Local vector index for semantic search
+  vector-store.ts          # Hybrid search: LanceDB vector + BM25, RRF fusion
+  bm25-index.ts            # MiniSearch BM25 full-text index with disk persistence
+  session-parser.ts        # Claude Code JSONL session parser → searchable chunks
   knowledge-pack.ts        # Knowledge compression and clustering
   memory.ts                # Memory extraction from sources
-  smart-query.ts           # RAG-powered Q&A streaming
+  smart-query.ts           # RAG-powered Q&A streaming (hybrid search)
   bank-sync/               # Bank account sync
     simplefin.ts           # SimpleFIN API client
     teller.ts              # Teller API client

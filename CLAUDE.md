@@ -9,6 +9,7 @@ Personal life management Electron app -- dashboard for tasks, goals, notes, AI c
 - **Database**: JSON file persisted via fs.writeFileSync (`%APPDATA%/mega-agenda/mega-agenda.json`)
 - **AI**: Multi-provider LLM (Claude, Gemini, Groq, OpenRouter) via `electron/llm.ts`
 - **Embeddings**: @xenova/transformers (MiniLM-L6-v2, 384-dim local embeddings)
+- **Search**: Hybrid — LanceDB vector search + MiniSearch BM25, merged via Reciprocal Rank Fusion (RRF)
 - **Speech**: Local Whisper via @xenova/transformers (Xenova/whisper-tiny.en)
 - **Terminal**: xterm.js + node-pty
 - **Bank Sync**: SimpleFIN Bridge + Teller APIs
@@ -21,10 +22,12 @@ Personal life management Electron app -- dashboard for tasks, goals, notes, AI c
 - `electron/research.ts` -- Goal research, master plan synthesis, RAG context retrieval
 - `electron/embeddings.ts` -- Local embedding model (Xenova/all-MiniLM-L6-v2)
 - `electron/whisper.ts` -- Local Whisper transcription (Xenova/whisper-tiny.en)
-- `electron/vector-store.ts` -- Local vector index for semantic search
+- `electron/vector-store.ts` -- Hybrid search: LanceDB vector + BM25, RRF fusion, session indexing
+- `electron/bm25-index.ts` -- MiniSearch BM25 full-text index with disk persistence
+- `electron/session-parser.ts` -- Claude Code JSONL session parser (968+ sessions → searchable chunks)
 - `electron/knowledge-pack.ts` -- Knowledge compression, clustering, fact extraction
 - `electron/memory.ts` -- Memory extraction from chat/CLI/journal sources
-- `electron/smart-query.ts` -- RAG-powered Q&A streaming
+- `electron/smart-query.ts` -- RAG-powered Q&A streaming (hybrid search, transparent to consumers)
 - `electron/bank-sync/` -- SimpleFIN + Teller API clients and sync orchestrator
 - `electron/ipc/` -- 10 handler modules registered via `registerAllHandlers()`
 - `src/App.tsx` -- Root component with tab navigation
