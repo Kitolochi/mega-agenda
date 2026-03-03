@@ -72,10 +72,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Research
   researchRoadmapGoal: (goalId: string) => ipcRenderer.invoke('research-roadmap-goal', goalId),
+  onResearchProgress: (callback: (data: any) => void) => {
+    const handler = (_: any, data: any) => callback(data)
+    ipcRenderer.on('research-progress', handler)
+    return () => { ipcRenderer.removeListener('research-progress', handler) }
+  },
+  cancelResearch: () => ipcRenderer.invoke('cancel-research'),
   researchRoadmapTopic: (goalId: string, topicIndex: number, topicType: 'question' | 'guidance') =>
     ipcRenderer.invoke('research-roadmap-topic', goalId, topicIndex, topicType),
   generateActionPlan: (goalId: string) => ipcRenderer.invoke('generate-action-plan', goalId),
-  generateTopics: (goalId: string) => ipcRenderer.invoke('generate-topics', goalId),
+  generateTopics: (goalId: string, direction?: string) => ipcRenderer.invoke('generate-topics', goalId, direction),
+  removeTopicReport: (goalId: string, topic: string, topicType: string) => ipcRenderer.invoke('remove-topic-report', goalId, topic, topicType),
+  purgeStubReports: (goalId: string) => ipcRenderer.invoke('purge-stub-reports', goalId),
+  categorizeGoalTopics: (goalId: string) => ipcRenderer.invoke('categorize-goal-topics', goalId),
 
   // Activity Log
   getActivityLog: (days?: number) => ipcRenderer.invoke('get-activity-log', days),

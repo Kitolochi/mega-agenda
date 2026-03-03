@@ -199,6 +199,7 @@ interface RoadmapGoal {
   topicReports: TopicReport[]
   personalContext?: string
   contextFiles?: string[]
+  activityLog?: { id: string; type: string; description: string; timestamp: string }[]
   createdAt: string
   updatedAt: string
 }
@@ -1638,10 +1639,26 @@ export function updateRoadmapGoal(id: string, updates: Partial<RoadmapGoal>): Ro
   if (updates.topicReports !== undefined) goal.topicReports = updates.topicReports
   if (updates.personalContext !== undefined) goal.personalContext = updates.personalContext
   if (updates.contextFiles !== undefined) goal.contextFiles = updates.contextFiles
+  if ((updates as any).activityLog !== undefined) (goal as any).activityLog = (updates as any).activityLog
   goal.updatedAt = new Date().toISOString()
   saveDatabase()
   syncRoadmapFiles()
   return goal
+}
+
+export function addGoalActivity(goalId: string, type: string, description: string): void {
+  const goal = db.roadmapGoals.find(g => g.id === goalId)
+  if (!goal) return
+  const log = ((goal as any).activityLog || []) as { id: string; type: string; description: string; timestamp: string }[]
+  log.unshift({
+    id: crypto.randomUUID(),
+    type,
+    description,
+    timestamp: new Date().toISOString(),
+  })
+  if (log.length > 50) log.length = 50;
+  (goal as any).activityLog = log
+  saveDatabase()
 }
 
 export function deleteRoadmapGoal(id: string): void {

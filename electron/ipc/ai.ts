@@ -3,13 +3,15 @@ import path from 'path'
 import fs from 'fs'
 import { spawn, execSync } from 'child_process'
 import { app } from 'electron'
-import { getClaudeApiKey, saveClaudeApiKey, getLLMSettings, saveLLMSettings, getRoadmapGoals, updateRoadmapGoal, getMasterPlan, saveMasterPlan, clearMasterPlan, getMasterPlanTasks, createMasterPlanTask, updateMasterPlanTask, clearMasterPlanTasks, getCategories, getWeeklyReviewData } from '../database'
+import { getClaudeApiKey, saveClaudeApiKey, getLLMSettings, saveLLMSettings, getRoadmapGoals, updateRoadmapGoal, getMasterPlan, saveMasterPlan, clearMasterPlan, getMasterPlanTasks, createMasterPlanTask, updateMasterPlanTask, clearMasterPlanTasks, getCategories, getWeeklyReviewData, addGoalActivity } from '../database'
 import { summarizeAI, summarizeGeo, verifyClaudeKey, parseVoiceCommand } from '../summarize'
 import { verifyLLMKey, PROVIDER_MODELS, PROVIDER_CHAT_MODELS, getCurrentModelInfo, isLLMConfigured } from '../llm'
-import { researchTopicSmart, generateActionPlan, generateTopics, generateMasterPlan, findClaudeCli, generateContextQuestions, extractTasksFromPlan, extractTasksFromActionPlan, saveMasterPlanFile } from '../research'
+import { researchTopicSmart, generateActionPlan, generateTopics, categorizeTopics, generateMasterPlan, findClaudeCli, generateContextQuestions, extractTasksFromPlan, extractTasksFromActionPlan, saveMasterPlanFile } from '../research'
 import { findSessionByPromptFragment } from '../cli-logs'
 import { extractMemoriesFromAgentResult } from '../memory'
 import { streamSmartQuery } from '../smart-query'
+
+let researchAborted = false
 
 // --- Helper functions ---
 
@@ -243,38 +245,72 @@ export function registerAIHandlers(mainWindow: BrowserWindow) {
   })
 
   // Generate Topics for a Goal
-  ipcMain.handle('generate-topics', async (_, goalId: string) => {
+  ipcMain.handle('generate-topics', async (_, goalId: string, direction?: string) => {
     const goals = getRoadmapGoals()
     const goal = goals.find(g => g.id === goalId)
     if (!goal) throw new Error('Goal not found')
 
     if (!isLLMConfigured()) throw new Error('No AI provider configured. Set it in Settings.')
 
-    const result = await generateTopics(goal)
+    const result = await generateTopics(goal, direction)
 
     const existingQ = new Set(goal.research_questions)
     const existingG = new Set(goal.guidance_needed)
     const newQuestions = result.research_questions.filter(q => !existingQ.has(q))
     const newGuidance = result.guidance_needed.filter(g => !existingG.has(g))
 
+    const updatedQuestions = [...goal.research_questions, ...newQuestions]
+    const updatedGuidance = [...goal.guidance_needed, ...newGuidance]
+
     updateRoadmapGoal(goalId, {
-      research_questions: [...goal.research_questions, ...newQuestions],
-      guidance_needed: [...goal.guidance_needed, ...newGuidance],
+      research_questions: updatedQuestions,
+      guidance_needed: updatedGuidance,
     } as any)
+
+    const totalAdded = newQuestions.length + newGuidance.length
+    if (totalAdded > 0) {
+      addGoalActivity(goalId, 'topics_found', `Found ${totalAdded} topic${totalAdded !== 1 ? 's' : ''}`)
+    }
+
+    // Auto-categorize topics after generation
+    try {
+      const freshGoal = getRoadmapGoals().find(g => g.id === goalId)
+      if (freshGoal) {
+        const groups = await categorizeTopics(freshGoal)
+        updateRoadmapGoal(goalId, { topicGroups: groups } as any)
+      }
+    } catch (err) {
+      console.error('Auto-categorize failed (non-fatal):', err)
+    }
 
     return {
       added: { questions: newQuestions.length, guidance: newGuidance.length },
-      total: { questions: goal.research_questions.length + newQuestions.length, guidance: goal.guidance_needed.length + newGuidance.length }
+      total: { questions: updatedQuestions.length, guidance: updatedGuidance.length }
     }
   })
 
-  // Research All Topics for a Goal
+  // Categorize topics into thematic groups
+  ipcMain.handle('categorize-goal-topics', async (_, goalId: string) => {
+    const goals = getRoadmapGoals()
+    const goal = goals.find(g => g.id === goalId)
+    if (!goal) throw new Error('Goal not found')
+
+    if (!isLLMConfigured()) throw new Error('No AI provider configured. Set it in Settings.')
+
+    const groups = await categorizeTopics(goal)
+    updateRoadmapGoal(goalId, { topicGroups: groups } as any)
+    return groups
+  })
+
+  // Research All Topics for a Goal (sequential with progress events)
   ipcMain.handle('research-roadmap-goal', async (_, goalId: string) => {
     const goals = getRoadmapGoals()
     const goal = goals.find(g => g.id === goalId)
     if (!goal) throw new Error('Goal not found')
 
     if (!isLLMConfigured()) throw new Error('No AI provider configured. Set it in Settings.')
+
+    researchAborted = false
 
     const allTopics = [
       ...goal.research_questions.map((q, i) => ({ text: q, type: 'question' as const, index: i })),
@@ -287,48 +323,66 @@ export function registerAIHandlers(mainWindow: BrowserWindow) {
 
     if (toResearch.length === 0) return { researched: 0, total: allTopics.length }
 
-    const usingCli = !!findClaudeCli()
-    console.log(`Researching ${toResearch.length} topics for "${goal.title}" (${usingCli ? 'CLI + API fallback' : 'API only'})`)
+    const sendProgress = (data: any) => {
+      try {
+        const wins = BrowserWindow.getAllWindows()
+        if (wins.length > 0) wins[0].webContents.send('research-progress', data)
+      } catch {}
+    }
 
-    const batchSize = 3
+    console.log(`Researching ${toResearch.length} topics for "${goal.title}" (sequential)`)
+
     let researched = 0
 
-    for (let i = 0; i < toResearch.length; i += batchSize) {
-      const batch = toResearch.slice(i, i + batchSize)
+    for (let i = 0; i < toResearch.length; i++) {
+      if (researchAborted) {
+        sendProgress({ goalId, currentTopic: '', currentTopicType: 'question', completedCount: researched, totalCount: toResearch.length, status: 'cancelled' })
+        break
+      }
 
-      const results = await Promise.allSettled(
-        batch.map(t => researchTopicSmart(goal, t.text, t.type))
-      )
+      const topic = toResearch[i]
 
-      const freshGoal = getRoadmapGoals().find(g => g.id === goalId)
-      if (!freshGoal) break
+      sendProgress({ goalId, currentTopic: topic.text, currentTopicType: topic.type, completedCount: researched, totalCount: toResearch.length, status: 'researching' })
 
-      const topicReports = [...(freshGoal.topicReports || [])]
-      const now = new Date().toISOString()
-      const modelInfo = getCurrentModelInfo('primary')
-      const modelLabel = `${modelInfo.provider}/${modelInfo.model}`
+      try {
+        const report = await researchTopicSmart(goal, topic.text, topic.type)
 
-      results.forEach((result, j) => {
-        if (result.status === 'fulfilled') {
-          const topic = batch[j]
-          const idx = topicReports.findIndex(r => r.topic === topic.text && r.type === topic.type)
-          const report = { topic: topic.text, type: topic.type, report: result.value, generatedAt: now, model: modelLabel }
-          if (idx >= 0) topicReports[idx] = report
-          else topicReports.push(report)
-          researched++
-          console.log(`  [${researched}/${toResearch.length}] Completed: ${topic.text.slice(0, 60)}...`)
-        } else {
-          console.error(`  Failed: ${batch[j].text.slice(0, 60)}... - ${result.reason}`)
-        }
-      })
+        const freshGoal = getRoadmapGoals().find(g => g.id === goalId)
+        if (!freshGoal) break
 
-      updateRoadmapGoal(goalId, { topicReports } as any)
+        const topicReports = [...(freshGoal.topicReports || [])]
+        const now = new Date().toISOString()
+        const modelInfo = getCurrentModelInfo('primary')
+        const modelLabel = `${modelInfo.provider}/${modelInfo.model}`
+
+        const idx = topicReports.findIndex(r => r.topic === topic.text && r.type === topic.type)
+        const newReport = { topic: topic.text, type: topic.type, report, generatedAt: now, model: modelLabel }
+        if (idx >= 0) topicReports[idx] = newReport
+        else topicReports.push(newReport)
+
+        updateRoadmapGoal(goalId, { topicReports } as any)
+        researched++
+        addGoalActivity(goalId, 'topic_researched', `Researched: ${topic.text.slice(0, 80)}`)
+        console.log(`  [${researched}/${toResearch.length}] Completed: ${topic.text.slice(0, 60)}...`)
+      } catch (err: any) {
+        console.error(`  Failed: ${topic.text.slice(0, 60)}... - ${err}`)
+        sendProgress({ goalId, currentTopic: topic.text, currentTopicType: topic.type, completedCount: researched, totalCount: toResearch.length, status: 'failed', error: err?.message || String(err) })
+      }
+    }
+
+    if (!researchAborted) {
+      sendProgress({ goalId, currentTopic: '', currentTopicType: 'question', completedCount: researched, totalCount: toResearch.length, status: 'completed' })
     }
 
     const finalGoal = getRoadmapGoals().find(g => g.id === goalId)
     if (finalGoal) writeGoalContextFile(finalGoal)
 
     return { researched, total: allTopics.length }
+  })
+
+  // Cancel ongoing research
+  ipcMain.handle('cancel-research', async () => {
+    researchAborted = true
   })
 
   // Research Single Topic
@@ -354,11 +408,65 @@ export function registerAIHandlers(mainWindow: BrowserWindow) {
     if (existingIdx >= 0) topicReports[existingIdx] = newReport
     else topicReports.push(newReport)
     updateRoadmapGoal(goalId, { topicReports } as any)
+    addGoalActivity(goalId, 'topic_researched', `Researched: ${topicText.slice(0, 80)}`)
 
     const freshGoal = getRoadmapGoals().find(g => g.id === goalId)
     if (freshGoal) writeGoalContextFile(freshGoal)
 
     return { report, generatedAt, model: modelLabel }
+  })
+
+  // Remove a single topic report
+  ipcMain.handle('remove-topic-report', (_, goalId: string, topic: string, topicType: string) => {
+    const goals = getRoadmapGoals()
+    const goal = goals.find(g => g.id === goalId)
+    if (!goal) throw new Error('Goal not found')
+
+    const topicReports = (goal.topicReports || []).filter(
+      r => !(r.topic === topic && r.type === topicType)
+    )
+    updateRoadmapGoal(goalId, { topicReports } as any)
+
+    const freshGoal = getRoadmapGoals().find(g => g.id === goalId)
+    if (freshGoal) writeGoalContextFile(freshGoal)
+
+    return { removed: 1, remaining: topicReports.length }
+  })
+
+  // Purge low-quality stub reports from a goal
+  ipcMain.handle('purge-stub-reports', (_, goalId: string) => {
+    const goals = getRoadmapGoals()
+    const goal = goals.find(g => g.id === goalId)
+    if (!goal) throw new Error('Goal not found')
+
+    const STUB_PATTERNS = [
+      /what would you like me to/i,
+      /please provide a file path/i,
+      /I can see you're working on/i,
+      /what would you like me to help/i,
+      /I don't have enough context/i,
+      /could you provide more/i,
+      /please share the file/i,
+    ]
+    const MIN_REPORT_LENGTH = 800
+
+    const original = goal.topicReports || []
+    const kept = original.filter(r => {
+      if (r.type === 'action_plan') return true // always keep action plans
+      const text = r.report || ''
+      if (text.length < MIN_REPORT_LENGTH) return false
+      if (STUB_PATTERNS.some(p => p.test(text))) return false
+      return true
+    })
+
+    const removed = original.length - kept.length
+    if (removed > 0) {
+      updateRoadmapGoal(goalId, { topicReports: kept } as any)
+      const freshGoal = getRoadmapGoals().find(g => g.id === goalId)
+      if (freshGoal) writeGoalContextFile(freshGoal)
+    }
+
+    return { removed, remaining: kept.length }
   })
 
   // Generate Action Plan
@@ -383,6 +491,7 @@ export function registerAIHandlers(mainWindow: BrowserWindow) {
       topicReports.push(planReport)
     }
     updateRoadmapGoal(goalId, { topicReports } as any)
+    addGoalActivity(goalId, 'action_plan_generated', 'Generated action plan')
 
     const freshGoal = getRoadmapGoals().find(g => g.id === goalId)
     if (freshGoal) writeGoalContextFile(freshGoal)
@@ -546,6 +655,7 @@ export function registerAIHandlers(mainWindow: BrowserWindow) {
         ...(t.taskType ? { taskType: t.taskType as any } : {}),
       }))
     }
+    addGoalActivity(goalId, 'tasks_extracted', `Extracted ${created.length} task${created.length !== 1 ? 's' : ''}`)
     return created
   })
 
@@ -669,6 +779,9 @@ export function registerAIHandlers(mainWindow: BrowserWindow) {
       launched.push(task.id)
     }
 
+    if (launched.length > 0) {
+      addGoalActivity(goalId, 'tasks_launched', `Launched ${launched.length} task${launched.length !== 1 ? 's' : ''}`)
+    }
     return { launched: launched.length, taskIds: launched }
   })
 

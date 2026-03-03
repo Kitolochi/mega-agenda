@@ -72,10 +72,15 @@ export function installElectronMock() {
     getProviderChatModels: async () => ({}),
 
     // Research
-    researchRoadmapGoal: async () => ({ report: '', filePath: '' }),
+    researchRoadmapGoal: async () => ({ researched: 0, total: 0 }),
+    onResearchProgress: noopUnsub as any,
+    cancelResearch: noop as any,
     researchRoadmapTopic: async () => ({ report: '', generatedAt: '' }),
     generateActionPlan: async () => ({ report: '', generatedAt: '' }),
     generateTopics: async () => ({ added: { questions: 0, guidance: 0 }, total: { questions: 0, guidance: 0 } }),
+    removeTopicReport: async () => ({ removed: 1, remaining: 0 }),
+    purgeStubReports: async () => ({ removed: 0, remaining: 0 }),
+    categorizeGoalTopics: async () => [],
 
     // Tweet posting
     postTweet: async () => ({ success: false, error: 'Mock mode' }),

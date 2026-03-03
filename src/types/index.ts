@@ -369,6 +369,23 @@ export interface ContextFile {
 export type RoadmapGoalCategory = 'career' | 'health' | 'financial' | 'relationships' | 'learning' | 'projects' | 'personal' | 'creative'
 export type RoadmapGoalStatus = 'not_started' | 'in_progress' | 'completed' | 'on_hold'
 
+export interface GoalActivityEntry {
+  id: string
+  type: 'topics_found' | 'topic_researched' | 'action_plan_generated' | 'tasks_extracted' | 'tasks_launched' | 'task_completed'
+  description: string
+  timestamp: string
+}
+
+export interface ResearchQueueProgress {
+  goalId: string
+  currentTopic: string
+  currentTopicType: 'question' | 'guidance'
+  completedCount: number
+  totalCount: number
+  status: 'researching' | 'completed' | 'failed' | 'cancelled'
+  error?: string
+}
+
 export interface TopicReport {
   topic: string
   type: 'question' | 'guidance'
@@ -401,8 +418,15 @@ export interface RoadmapGoal {
   topicReports: TopicReport[]
   personalContext?: string
   contextFiles?: string[]  // array of filenames, e.g. ["learnings.md", "projects.md"]
+  topicGroups?: TopicGroup[]
+  activityLog?: GoalActivityEntry[]
   createdAt: string
   updatedAt: string
+}
+
+export interface TopicGroup {
+  label: string
+  topics: { text: string; type: 'question' | 'guidance' }[]
 }
 
 export interface KnowledgeCluster {
@@ -567,10 +591,15 @@ export interface ElectronAPI {
   parseVoiceCommand: (apiKey: string, transcript: string, categoryNames: string[]) => Promise<VoiceCommand>
 
   // Research
-  researchRoadmapGoal: (goalId: string) => Promise<{ report: string; filePath: string }>
+  researchRoadmapGoal: (goalId: string) => Promise<{ researched: number; total: number }>
+  onResearchProgress: (callback: (data: ResearchQueueProgress) => void) => () => void
+  cancelResearch: () => Promise<void>
   researchRoadmapTopic: (goalId: string, topicIndex: number, topicType: 'question' | 'guidance') => Promise<{ report: string; generatedAt: string }>
   generateActionPlan: (goalId: string) => Promise<{ report: string; generatedAt: string }>
-  generateTopics: (goalId: string) => Promise<{ added: { questions: number; guidance: number }; total: { questions: number; guidance: number } }>
+  generateTopics: (goalId: string, direction?: string) => Promise<{ added: { questions: number; guidance: number }; total: { questions: number; guidance: number } }>
+  removeTopicReport: (goalId: string, topic: string, topicType: string) => Promise<{ removed: number; remaining: number }>
+  purgeStubReports: (goalId: string) => Promise<{ removed: number; remaining: number }>
+  categorizeGoalTopics: (goalId: string) => Promise<TopicGroup[]>
 
   // Tweet posting
   postTweet: (text: string, replyToTweetId?: string) => Promise<{ success: boolean; tweetId?: string; error?: string }>
