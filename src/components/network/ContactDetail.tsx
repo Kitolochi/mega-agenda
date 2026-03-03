@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNetworkStore } from '../../store'
+import { ContactMapping } from '../../types'
 import Badge from '../ui/Badge'
 import Button from '../ui/Button'
 import EmptyState from '../ui/EmptyState'
@@ -8,13 +9,27 @@ import ContactForm from './ContactForm'
 import InteractionForm from './InteractionForm'
 import InteractionItem from './InteractionItem'
 
+const PROVIDER_LABELS: Record<string, { name: string; color: string; badge: 'blue' | 'purple' | 'emerald' | 'amber' }> = {
+  telegram: { name: 'Telegram', color: '#229ED9', badge: 'blue' },
+  discord: { name: 'Discord', color: '#5865F2', badge: 'purple' },
+  twitter: { name: 'Twitter', color: '#1DA1F2', badge: 'blue' },
+  sms: { name: 'SMS', color: '#22C55E', badge: 'emerald' },
+}
+
 export default function ContactDetail() {
   const { contacts, interactions, selectedContactId, selectContact, updateContact, deleteContact, createInteraction, deleteInteraction } = useNetworkStore()
   const [editOpen, setEditOpen] = useState(false)
   const [logOpen, setLogOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [linkedAccounts, setLinkedAccounts] = useState<ContactMapping[]>([])
 
   const contact = contacts.find(c => c.id === selectedContactId)
+
+  useEffect(() => {
+    if (!contact) return
+    window.electronAPI.getContactMappings(contact.id).then(setLinkedAccounts).catch(() => {})
+  }, [contact?.id])
+
   if (!contact) return null
 
   const contactInteractions = interactions.filter(i => i.contactIds.includes(contact.id))
@@ -101,6 +116,23 @@ export default function ContactDetail() {
             </div>
           )}
         </div>
+
+        {/* Linked social accounts */}
+        {linkedAccounts.length > 0 && (
+          <div className="mt-4 pt-4 border-t border-white/[0.06]">
+            <span className="text-[10px] text-muted block mb-2">Linked Accounts</span>
+            <div className="flex flex-wrap gap-1.5">
+              {linkedAccounts.map(mapping => {
+                const meta = PROVIDER_LABELS[mapping.provider]
+                return (
+                  <Badge key={mapping.id} variant={meta?.badge || 'default'}>
+                    {meta?.name || mapping.provider}: {mapping.externalName}
+                  </Badge>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         {contact.notes && (
           <div className="mt-4 pt-4 border-t border-white/[0.06]">

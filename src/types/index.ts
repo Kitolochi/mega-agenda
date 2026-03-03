@@ -554,6 +554,31 @@ export interface PipelineCard {
   updatedAt: string
 }
 
+// Social Connector Types
+export type SocialProvider = 'telegram' | 'discord' | 'twitter' | 'sms'
+export type SocialConnectionStatus = 'connected' | 'disconnected' | 'syncing' | 'error'
+
+export interface SocialConnection {
+  id: string
+  provider: SocialProvider
+  accountId: string
+  accountName: string
+  status: SocialConnectionStatus
+  lastSyncAt: string | null
+  credentials: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ContactMapping {
+  id: string
+  contactId: string
+  provider: SocialProvider
+  externalId: string
+  externalName: string
+  createdAt: string
+}
+
 // Bank Sync Types
 export type BankProvider = 'simplefin' | 'teller'
 export type BankConnectionStatus = 'active' | 'error' | 'disconnected'
@@ -875,6 +900,20 @@ export interface ElectronAPI {
   updatePipelineCard: (id: string, updates: Partial<PipelineCard>) => Promise<PipelineCard | null>
   movePipelineCard: (id: string, stage: string) => Promise<PipelineCard | null>
   deletePipelineCard: (id: string) => Promise<void>
+
+  // Social Connectors
+  getSocialConnections: () => Promise<SocialConnection[]>
+  connectSocialProvider: (provider: SocialProvider, credentials: any) => Promise<SocialConnection>
+  disconnectSocialProvider: (connectionId: string) => Promise<void>
+  deleteSocialConnection: (connectionId: string) => Promise<void>
+  syncSocialProvider: (connectionId: string) => Promise<{ newContacts: number; newInteractions: number }>
+  getContactMappings: (contactId?: string) => Promise<ContactMapping[]>
+  deleteContactMapping: (id: string) => Promise<void>
+  telegramSendCode: (phone: string, apiId: number, apiHash: string) => Promise<{ phoneCodeHash: string }>
+  telegramVerifyCode: (phone: string, code: string, phoneCodeHash: string, apiId: number, apiHash: string) => Promise<{ session: string; accountId: string; accountName: string }>
+  smsDetectDb: () => Promise<{ found: boolean; path: string | null }>
+  getSocialSyncStatus: (connectionId: string) => Promise<{ status: SocialConnectionStatus; lastSyncAt: string | null }>
+  twitterSyncContacts: () => Promise<{ newContacts: number; newInteractions: number }>
 
   // Bank Sync
   getBankConnections: () => Promise<BankConnection[]>

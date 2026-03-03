@@ -1,13 +1,15 @@
 import { create } from 'zustand'
-import { NetworkContact, ContactInteraction, Pipeline, PipelineCard } from '../types'
+import { NetworkContact, ContactInteraction, Pipeline, PipelineCard, SocialConnection, SocialProvider } from '../types'
 
-export type NetworkView = 'contacts' | 'contact-detail' | 'pipeline'
+export type NetworkView = 'contacts' | 'contact-detail' | 'pipeline' | 'connections'
 
 interface NetworkState {
   contacts: NetworkContact[]
   interactions: ContactInteraction[]
   pipelines: Pipeline[]
   pipelineCards: PipelineCard[]
+  socialConnections: SocialConnection[]
+  syncingProviders: Set<SocialProvider>
   loading: boolean
   view: NetworkView
   selectedContactId: string | null
@@ -16,6 +18,11 @@ interface NetworkState {
   tagFilter: string | null
 
   loadData: () => Promise<void>
+  loadSocialConnections: () => Promise<void>
+  connectProvider: (provider: SocialProvider, credentials: any) => Promise<SocialConnection>
+  disconnectProvider: (connectionId: string) => Promise<void>
+  syncProvider: (connectionId: string) => Promise<{ newContacts: number; newInteractions: number }>
+  deleteConnection: (connectionId: string) => Promise<void>
   setView: (view: NetworkView) => void
   selectContact: (id: string | null) => void
   selectPipeline: (id: string | null) => void
@@ -49,6 +56,8 @@ export const useNetworkStore = create<NetworkState>((set, get) => ({
   interactions: [],
   pipelines: [],
   pipelineCards: [],
+  socialConnections: [],
+  syncingProviders: new Set(),
   loading: false,
   view: 'contacts',
   selectedContactId: null,
@@ -59,16 +68,62 @@ export const useNetworkStore = create<NetworkState>((set, get) => ({
   loadData: async () => {
     set({ loading: true })
     try {
-      const [contacts, interactions, pipelines, pipelineCards] = await Promise.all([
+      const [contacts, interactions, pipelines, pipelineCards, socialConnections] = await Promise.all([
         window.electronAPI.getNetworkContacts(),
         window.electronAPI.getContactInteractions(),
         window.electronAPI.getPipelines(),
         window.electronAPI.getPipelineCards(),
+        window.electronAPI.getSocialConnections(),
       ])
-      set({ contacts, interactions, pipelines, pipelineCards, loading: false })
+      set({ contacts, interactions, pipelines, pipelineCards, socialConnections, loading: false })
     } catch {
       set({ loading: false })
     }
+  },
+
+  loadSocialConnections: async () => {
+    try {
+      const socialConnections = await window.electronAPI.getSocialConnections()
+      set({ socialConnections })
+    } catch {
+      // ignore
+    }
+  },
+
+  connectProvider: async (provider, credentials) => {
+    const conn = await window.electronAPI.connectSocialProvider(provider, credentials)
+    await get().loadSocialConnections()
+    return conn
+  },
+
+  disconnectProvider: async (connectionId) => {
+    await window.electronAPI.disconnectSocialProvider(connectionId)
+    await get().loadSocialConnections()
+  },
+
+  syncProvider: async (connectionId) => {
+    const conn = get().socialConnections.find(c => c.id === connectionId)
+    if (conn) {
+      set(s => ({ syncingProviders: new Set([...s.syncingProviders, conn.provider]) }))
+    }
+    try {
+      const result = await window.electronAPI.syncSocialProvider(connectionId)
+      await get().loadData() // Reload everything — new contacts/interactions may have been created
+      return result
+    } finally {
+      if (conn) {
+        set(s => {
+          const next = new Set(s.syncingProviders)
+          next.delete(conn.provider)
+          return { syncingProviders: next }
+        })
+      }
+    }
+  },
+
+  deleteConnection: async (connectionId) => {
+    await window.electronAPI.deleteSocialConnection(connectionId)
+    await get().loadSocialConnections()
   },
 
   setView: (view) => set({ view }),

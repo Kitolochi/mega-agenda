@@ -319,6 +319,20 @@ export function installElectronMock() {
     movePipelineCard: async () => null,
     deletePipelineCard: noop as any,
 
+    // Social Connectors
+    getSocialConnections: emptyArray as any,
+    connectSocialProvider: async () => ({} as any),
+    disconnectSocialProvider: noop as any,
+    deleteSocialConnection: noop as any,
+    syncSocialProvider: async () => ({ newContacts: 0, newInteractions: 0 }),
+    getContactMappings: emptyArray as any,
+    deleteContactMapping: noop as any,
+    telegramSendCode: async () => ({ phoneCodeHash: '' }),
+    telegramVerifyCode: async () => ({ session: '', accountId: '', accountName: '' }),
+    smsDetectDb: async () => ({ found: false, path: null }),
+    getSocialSyncStatus: async () => ({ status: 'disconnected' as const, lastSyncAt: null }),
+    twitterSyncContacts: async () => ({ newContacts: 0, newInteractions: 0 }),
+
     // Bank Sync
     getBankConnections: emptyArray as any,
     connectBank: async () => ({} as any),

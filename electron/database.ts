@@ -296,6 +296,30 @@ export interface BankTransaction {
   importedAt: string
 }
 
+type SocialProvider = 'telegram' | 'discord' | 'twitter' | 'sms'
+type SocialConnectionStatus = 'connected' | 'disconnected' | 'syncing' | 'error'
+
+interface SocialConnection {
+  id: string
+  provider: SocialProvider
+  accountId: string
+  accountName: string
+  status: SocialConnectionStatus
+  lastSyncAt: string | null
+  credentials: string
+  createdAt: string
+  updatedAt: string
+}
+
+interface ContactMapping {
+  id: string
+  contactId: string
+  provider: SocialProvider
+  externalId: string
+  externalName: string
+  createdAt: string
+}
+
 type InteractionType = 'call' | 'email' | 'meeting' | 'message' | 'note'
 
 interface NetworkContact {
@@ -377,6 +401,8 @@ interface Database {
   contactInteractions: ContactInteraction[]
   pipelines: Pipeline[]
   pipelineCards: PipelineCard[]
+  socialConnections: SocialConnection[]
+  contactMappings: ContactMapping[]
 }
 
 let db: Database
@@ -732,6 +758,18 @@ export function initDatabase(): Database {
   }
   if (!(db as any).pipelineCards) {
     db.pipelineCards = []
+    saveDatabase()
+  }
+
+  // Initialize socialConnections if missing
+  if (!(db as any).socialConnections) {
+    db.socialConnections = []
+    saveDatabase()
+  }
+
+  // Initialize contactMappings if missing
+  if (!(db as any).contactMappings) {
+    db.contactMappings = []
     saveDatabase()
   }
 
@@ -2117,6 +2155,74 @@ export function movePipelineCard(id: string, stage: string): PipelineCard | null
 
 export function deletePipelineCard(id: string): void {
   db.pipelineCards = db.pipelineCards.filter(c => c.id !== id)
+  saveDatabase()
+}
+
+// ── Social Connectors CRUD ──
+
+export function getSocialConnections(): SocialConnection[] {
+  return db.socialConnections || []
+}
+
+export function getSocialConnection(id: string): SocialConnection | null {
+  return (db.socialConnections || []).find(c => c.id === id) || null
+}
+
+export function createSocialConnection(data: Omit<SocialConnection, 'id' | 'createdAt' | 'updatedAt'>): SocialConnection {
+  const now = new Date().toISOString()
+  const conn: SocialConnection = {
+    ...data,
+    id: crypto.randomUUID(),
+    createdAt: now,
+    updatedAt: now,
+  }
+  db.socialConnections.push(conn)
+  saveDatabase()
+  return conn
+}
+
+export function updateSocialConnection(id: string, updates: Partial<SocialConnection>): SocialConnection | null {
+  const conn = db.socialConnections.find(c => c.id === id)
+  if (!conn) return null
+  if (updates.status !== undefined) conn.status = updates.status
+  if (updates.lastSyncAt !== undefined) conn.lastSyncAt = updates.lastSyncAt
+  if (updates.credentials !== undefined) conn.credentials = updates.credentials
+  if (updates.accountId !== undefined) conn.accountId = updates.accountId
+  if (updates.accountName !== undefined) conn.accountName = updates.accountName
+  conn.updatedAt = new Date().toISOString()
+  saveDatabase()
+  return conn
+}
+
+export function deleteSocialConnection(id: string): void {
+  db.socialConnections = db.socialConnections.filter(c => c.id !== id)
+  // Also remove contact mappings for this provider
+  const conn = db.socialConnections.find(c => c.id === id)
+  // mappings are left intact — they link contacts to external IDs and remain useful
+  saveDatabase()
+}
+
+export function getContactMappings(contactId?: string): ContactMapping[] {
+  let mappings = db.contactMappings || []
+  if (contactId) {
+    mappings = mappings.filter(m => m.contactId === contactId)
+  }
+  return mappings
+}
+
+export function createContactMapping(data: Omit<ContactMapping, 'id' | 'createdAt'>): ContactMapping {
+  const mapping: ContactMapping = {
+    ...data,
+    id: crypto.randomUUID(),
+    createdAt: new Date().toISOString(),
+  }
+  db.contactMappings.push(mapping)
+  saveDatabase()
+  return mapping
+}
+
+export function deleteContactMapping(id: string): void {
+  db.contactMappings = db.contactMappings.filter(m => m.id !== id)
   saveDatabase()
 }
 

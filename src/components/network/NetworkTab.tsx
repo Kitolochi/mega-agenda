@@ -4,6 +4,7 @@ import LoadingSpinner from '../ui/LoadingSpinner'
 import ContactList from './ContactList'
 import ContactDetail from './ContactDetail'
 import PipelineBoard from './PipelineBoard'
+import SocialConnectionsPanel from './SocialConnectionsPanel'
 
 export default function NetworkTab() {
   const { view, setView, loading, loadData } = useNetworkStore()
@@ -45,6 +46,16 @@ export default function NetworkTab() {
           >
             Pipeline
           </button>
+          <button
+            onClick={() => setView('connections')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              view === 'connections'
+                ? 'bg-accent-blue/20 text-accent-blue'
+                : 'text-muted hover:text-white/70 hover:bg-white/[0.06]'
+            }`}
+          >
+            Connections
+          </button>
         </div>
       )}
 
@@ -53,6 +64,7 @@ export default function NetworkTab() {
         {view === 'contacts' && <ContactList />}
         {view === 'contact-detail' && <ContactDetail />}
         {view === 'pipeline' && <PipelineBoard />}
+        {view === 'connections' && <SocialConnectionsPanel />}
       </div>
     </div>
   )

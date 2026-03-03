@@ -351,6 +351,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
   movePipelineCard: (id: string, stage: string) => ipcRenderer.invoke('move-pipeline-card', id, stage),
   deletePipelineCard: (id: string) => ipcRenderer.invoke('delete-pipeline-card', id),
 
+  // Social Connectors
+  getSocialConnections: () => ipcRenderer.invoke('social-get-connections'),
+  connectSocialProvider: (provider: string, credentials: any) => ipcRenderer.invoke('social-connect-provider', provider, credentials),
+  disconnectSocialProvider: (connectionId: string) => ipcRenderer.invoke('social-disconnect-provider', connectionId),
+  deleteSocialConnection: (connectionId: string) => ipcRenderer.invoke('social-delete-connection', connectionId),
+  syncSocialProvider: (connectionId: string) => ipcRenderer.invoke('social-sync-provider', connectionId),
+  getContactMappings: (contactId?: string) => ipcRenderer.invoke('social-get-contact-mappings', contactId),
+  deleteContactMapping: (id: string) => ipcRenderer.invoke('social-delete-contact-mapping', id),
+  telegramSendCode: (phone: string, apiId: number, apiHash: string) => ipcRenderer.invoke('social-telegram-send-code', phone, apiId, apiHash),
+  telegramVerifyCode: (phone: string, code: string, phoneCodeHash: string, apiId: number, apiHash: string) => ipcRenderer.invoke('social-telegram-verify-code', phone, code, phoneCodeHash, apiId, apiHash),
+  smsDetectDb: () => ipcRenderer.invoke('social-sms-detect-db'),
+  getSocialSyncStatus: (connectionId: string) => ipcRenderer.invoke('social-get-sync-status', connectionId),
+  twitterSyncContacts: () => ipcRenderer.invoke('social-twitter-sync-contacts'),
+
   // Bank Sync
   getBankConnections: () => ipcRenderer.invoke('get-bank-connections'),
   connectBank: (provider: 'simplefin' | 'teller', token: string) => ipcRenderer.invoke('connect-bank', provider, token),
