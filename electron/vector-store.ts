@@ -3,6 +3,8 @@ import path from 'path'
 import fs from 'fs'
 import { chunkAllFiles, Chunk } from './chunker'
 import { embedText, embedBatch, getEmbeddingStatus } from './embeddings'
+import { discoverSessions, parseSession, sessionFileHash } from './session-parser'
+import { buildBM25Index, saveBM25Index, loadBM25Index, searchBM25, deleteBM25Index } from './bm25-index'
 import * as lancedb from '@lancedb/lancedb'
 import {
   Schema, Field, Utf8, Float32, Int32, FixedSizeList,
@@ -31,6 +33,7 @@ let db: lancedb.Connection | null = null
 let table: lancedb.Table | null = null
 // File hashes kept in a small sidecar JSON for fast diff without querying LanceDB
 let fileHashes: Record<string, string> = {}
+let sessionHashes: Record<string, string> = {}
 
 function getDbPath(): string {
   return path.join(app.getPath('userData'), 'vector-db')
@@ -38,6 +41,10 @@ function getDbPath(): string {
 
 function getHashesPath(): string {
   return path.join(app.getPath('userData'), 'vector-db-hashes.json')
+}
+
+function getSessionHashesPath(): string {
+  return path.join(app.getPath('userData'), 'vector-db-session-hashes.json')
 }
 
 function getMemoryDir(): string {
@@ -61,6 +68,22 @@ function saveHashes() {
   }
 }
 
+function loadSessionHashes(): Record<string, string> {
+  try {
+    return JSON.parse(fs.readFileSync(getSessionHashesPath(), 'utf-8'))
+  } catch {
+    return {}
+  }
+}
+
+function saveSessionHashes() {
+  try {
+    fs.writeFileSync(getSessionHashesPath(), JSON.stringify(sessionHashes), 'utf-8')
+  } catch (err) {
+    console.error('Failed to save session hashes:', err)
+  }
+}
+
 // ── Public API (same signatures as before) ──────────────────────────
 
 export async function loadVectorIndex(): Promise<{ chunkCount: number } | null> {
@@ -71,8 +94,16 @@ export async function loadVectorIndex(): Promise<{ chunkCount: number } | null> 
     if (names.includes(TABLE_NAME)) {
       table = await db.openTable(TABLE_NAME)
       fileHashes = loadHashes()
+      sessionHashes = loadSessionHashes()
       const count = await table.countRows()
       console.log(`Vector index loaded: ${count} chunks (LanceDB) from ${Object.keys(fileHashes).length} files`)
+
+      // Load BM25 index from disk
+      const bm25Ok = loadBM25Index()
+      if (!bm25Ok) {
+        console.log('BM25 index not found on disk — will rebuild on next index rebuild')
+      }
+
       return { chunkCount: count }
     }
     // Table doesn't exist yet — will be created on rebuildIndex
@@ -98,11 +129,12 @@ export async function rebuildIndex(
     db = await lancedb.connect(dbPath)
   }
 
+  // ── Phase 1: Memory files (existing) ──────────────────────────────
   const memoryDir = getMemoryDir()
-  const { chunks: allChunks, fileHashes: currentHashes } = chunkAllFiles(memoryDir)
+  const { chunks: memoryChunks, fileHashes: currentHashes } = chunkAllFiles(memoryDir)
   const existingHashes = fileHashes
 
-  // Determine which files changed
+  // Determine which memory files changed
   const changedFiles = new Set<string>()
   const deletedFiles = new Set<string>()
 
@@ -114,21 +146,76 @@ export async function rebuildIndex(
   for (const file of Object.keys(existingHashes)) {
     if (!(file in currentHashes)) {
       deletedFiles.add(file)
-      changedFiles.add(file) // count deletions as changes for stats
+      changedFiles.add(file)
     }
   }
 
-  // If nothing changed and table exists, shortcut
-  if (changedFiles.size === 0 && table) {
+  // ── Phase 2: Session files ────────────────────────────────────────
+  const existingSessionHashes = sessionHashes
+  const currentSessionHashes: Record<string, string> = {}
+  const changedSessionFiles = new Set<string>()
+  const deletedSessionFiles = new Set<string>()
+  let sessionChunks: Chunk[] = []
+
+  try {
+    const sessions = discoverSessions()
+    onProgress?.({ phase: 'sessions-discover', current: 0, total: sessions.length })
+
+    // Compute hashes and detect changes
+    for (const meta of sessions) {
+      const key = `sessions/${meta.project}/${meta.sessionId}.jsonl`
+      const hash = sessionFileHash(meta)
+      currentSessionHashes[key] = hash
+      if (existingSessionHashes[key] !== hash) {
+        changedSessionFiles.add(key)
+      }
+    }
+
+    // Detect deleted sessions
+    for (const key of Object.keys(existingSessionHashes)) {
+      if (!(key in currentSessionHashes)) {
+        deletedSessionFiles.add(key)
+        changedSessionFiles.add(key)
+      }
+    }
+
+    // Parse only changed sessions
+    if (changedSessionFiles.size > 0) {
+      const changedMetas = sessions.filter(m =>
+        changedSessionFiles.has(`sessions/${m.project}/${m.sessionId}.jsonl`)
+      )
+      let parsed = 0
+      for (const meta of changedMetas) {
+        try {
+          const chunks = await parseSession(meta)
+          sessionChunks.push(...chunks)
+          parsed++
+          if (parsed % 50 === 0 || parsed === changedMetas.length) {
+            onProgress?.({ phase: 'sessions-parse', current: parsed, total: changedMetas.length })
+          }
+        } catch (err) {
+          // Session file may have been deleted between discover and parse
+          console.warn(`Failed to parse session ${meta.sessionId}:`, err)
+        }
+      }
+      console.log(`Parsed ${parsed} changed sessions → ${sessionChunks.length} chunks`)
+    }
+  } catch (err) {
+    console.warn('Session indexing failed (non-fatal):', err)
+  }
+
+  // ── Check if anything changed ─────────────────────────────────────
+  const memoryChanged = changedFiles.size > 0
+  const sessionsChanged = changedSessionFiles.size > 0
+
+  if (!memoryChanged && !sessionsChanged && table) {
     const total = await table.countRows()
     console.log(`Vector index up to date: ${total} chunks`)
     return { added: 0, removed: 0, total }
   }
 
-  // Files that need their rows removed (changed or deleted)
-  const filesToRemove = new Set([...changedFiles, ...deletedFiles])
-
-  // Delete stale rows for changed/deleted files
+  // ── Delete stale rows ─────────────────────────────────────────────
+  const filesToRemove = new Set([...changedFiles, ...deletedFiles, ...changedSessionFiles, ...deletedSessionFiles])
   let removedCount = 0
   if (table && filesToRemove.size > 0) {
     const quoted = [...filesToRemove].map(f => `'${escapeSql(f)}'`).join(', ')
@@ -137,36 +224,36 @@ export async function rebuildIndex(
     await table.delete(predicate)
   }
 
-  // Embed new/changed chunks (not deleted files)
-  const newChunks = allChunks.filter(c => changedFiles.has(c.sourceFile))
+  // ── Embed new/changed chunks ──────────────────────────────────────
+  const newMemoryChunks = memoryChunks.filter(c => changedFiles.has(c.sourceFile))
+  const allNewChunks = [...newMemoryChunks, ...sessionChunks]
   const rows: Record<string, unknown>[] = []
 
-  if (newChunks.length > 0) {
-    onProgress?.({ phase: 'embedding', current: 0, total: newChunks.length })
-    const texts = newChunks.map(c => c.text)
+  if (allNewChunks.length > 0) {
+    onProgress?.({ phase: 'embedding', current: 0, total: allNewChunks.length })
+    const texts = allNewChunks.map(c => c.text)
     const embeddings = await embedBatch(texts)
 
-    for (let i = 0; i < newChunks.length; i++) {
+    for (let i = 0; i < allNewChunks.length; i++) {
       const emb = embeddings[i]
       if (!emb) continue
       rows.push({
-        text: newChunks[i].text,
-        sourceFile: newChunks[i].sourceFile,
-        heading: newChunks[i].heading,
-        domain: newChunks[i].domain,
-        fileHash: newChunks[i].fileHash,
-        startLine: newChunks[i].startLine,
+        text: allNewChunks[i].text,
+        sourceFile: allNewChunks[i].sourceFile,
+        heading: allNewChunks[i].heading,
+        domain: allNewChunks[i].domain,
+        fileHash: allNewChunks[i].fileHash,
+        startLine: allNewChunks[i].startLine,
         vector: Array.from(emb),
       })
-      if ((i + 1) % 50 === 0 || i === newChunks.length - 1) {
-        onProgress?.({ phase: 'embedding', current: i + 1, total: newChunks.length })
+      if ((i + 1) % 50 === 0 || i === allNewChunks.length - 1) {
+        onProgress?.({ phase: 'embedding', current: i + 1, total: allNewChunks.length })
       }
     }
   }
 
   // Create table or add rows
   if (!table) {
-    // First build — create the table
     if (rows.length > 0) {
       table = await db.createTable(TABLE_NAME, rows, { schema: chunkSchema, mode: 'overwrite' })
     } else {
@@ -179,6 +266,38 @@ export async function rebuildIndex(
   // Persist file hashes
   fileHashes = currentHashes
   saveHashes()
+  sessionHashes = currentSessionHashes
+  saveSessionHashes()
+
+  // ── Rebuild BM25 index from all chunks ────────────────────────────
+  // BM25 is rebuilt from scratch (fast — pure in-memory) using all chunks
+  // We need all chunks including unchanged ones for the full-text index
+  const unchangedSessionKeys = Object.keys(currentSessionHashes).filter(k => !changedSessionFiles.has(k))
+  // For BM25 we combine memory chunks + session chunks (changed ones are already parsed above)
+  // For unchanged sessions, we'd need to re-parse them for BM25 — but since BM25 rebuild is
+  // only triggered when something changed, and we want a complete index, let's re-parse all sessions
+  // This is fast since it's just text extraction, no embeddings needed
+  try {
+    let allSessionChunks = sessionChunks // already have the changed ones
+    if (unchangedSessionKeys.length > 0) {
+      // Re-parse unchanged sessions for BM25 completeness
+      const sessions = discoverSessions()
+      const unchangedMetas = sessions.filter(m =>
+        !changedSessionFiles.has(`sessions/${m.project}/${m.sessionId}.jsonl`)
+      )
+      for (const meta of unchangedMetas) {
+        try {
+          const chunks = await parseSession(meta)
+          allSessionChunks.push(...chunks)
+        } catch {}
+      }
+    }
+    const allChunksForBM25 = [...memoryChunks, ...allSessionChunks]
+    buildBM25Index(allChunksForBM25)
+    saveBM25Index()
+  } catch (err) {
+    console.warn('BM25 index build failed (non-fatal):', err)
+  }
 
   const total = await table.countRows()
   const result = { added: rows.length, removed: removedCount, total }
@@ -203,7 +322,8 @@ export interface SearchOptions {
   domainFilter?: string
 }
 
-export async function search(query: string, options: SearchOptions = {}): Promise<SearchResult[]> {
+/** Vector-only search (LanceDB cosine similarity) */
+async function searchVector(query: string, options: SearchOptions = {}): Promise<SearchResult[]> {
   const { topK = 20, minScore = 0.2, domainFilter } = options
 
   if (!table) return []
@@ -241,6 +361,74 @@ export async function search(query: string, options: SearchOptions = {}): Promis
   return results.slice(0, topK)
 }
 
+/** Reciprocal Rank Fusion: merge vector + BM25 results */
+function reciprocalRankFusion(
+  vectorResults: SearchResult[],
+  bm25Results: SearchResult[],
+  topK: number,
+): SearchResult[] {
+  const RRF_K = 60
+  const scoreMap = new Map<string, { score: number; result: SearchResult }>()
+
+  // Score vector results by rank
+  for (let i = 0; i < vectorResults.length; i++) {
+    const key = `${vectorResults[i].sourceFile}:${vectorResults[i].startLine}`
+    const rrfScore = 1 / (RRF_K + i + 1)
+    const existing = scoreMap.get(key)
+    if (existing) {
+      existing.score += rrfScore
+    } else {
+      scoreMap.set(key, { score: rrfScore, result: vectorResults[i] })
+    }
+  }
+
+  // Score BM25 results by rank
+  for (let i = 0; i < bm25Results.length; i++) {
+    const key = `${bm25Results[i].sourceFile}:${bm25Results[i].startLine}`
+    const rrfScore = 1 / (RRF_K + i + 1)
+    const existing = scoreMap.get(key)
+    if (existing) {
+      existing.score += rrfScore
+    } else {
+      scoreMap.set(key, { score: rrfScore, result: bm25Results[i] })
+    }
+  }
+
+  // Sort by RRF score descending
+  const merged = Array.from(scoreMap.values())
+  merged.sort((a, b) => b.score - a.score)
+
+  // Normalize scores to [0, 1] with top result at 1.0
+  const maxScore = merged[0]?.score || 1
+  return merged.slice(0, topK).map(({ score, result }) => ({
+    ...result,
+    score: score / maxScore,
+  }))
+}
+
+/** Hybrid search: vector + BM25 merged via Reciprocal Rank Fusion */
+export async function search(query: string, options: SearchOptions = {}): Promise<SearchResult[]> {
+  const { topK = 20 } = options
+
+  // Run both searches in parallel
+  const [vectorResults, bm25Results] = await Promise.all([
+    searchVector(query, { ...options, topK: topK * 2 }),
+    Promise.resolve(searchBM25(query, { topK: topK * 2, domainFilter: options.domainFilter })),
+  ])
+
+  // If only one source has results, return that directly
+  if (vectorResults.length === 0 && bm25Results.length === 0) return []
+  if (bm25Results.length === 0) return vectorResults.slice(0, topK)
+  if (vectorResults.length === 0) {
+    // Normalize BM25 scores to [0,1]
+    const maxBm25 = bm25Results[0]?.score || 1
+    return bm25Results.slice(0, topK).map(r => ({ ...r, score: r.score / maxBm25 }))
+  }
+
+  // Merge via RRF
+  return reciprocalRankFusion(vectorResults, bm25Results, topK)
+}
+
 export async function multiSearch(queries: string[], options: SearchOptions = {}): Promise<SearchResult[]> {
   const { topK = 50, minScore = 0.25 } = options
   const allResults = new Map<string, SearchResult>()
@@ -267,7 +455,7 @@ export async function getIndexStats(): Promise<{ chunkCount: number; fileCount: 
   if (!table) return null
   try {
     const chunkCount = await table.countRows()
-    const fileCount = Object.keys(fileHashes).length
+    const fileCount = Object.keys(fileHashes).length + Object.keys(sessionHashes).length
     // Approximate size from the LanceDB directory
     let sizeBytes = 0
     const dbPath = getDbPath()
@@ -296,15 +484,24 @@ export async function deleteIndex(): Promise<void> {
     if (fs.existsSync(dbPath)) {
       fs.rmSync(dbPath, { recursive: true, force: true })
     }
-    // Remove hashes sidecar
+    // Remove hashes sidecars
     const hashPath = getHashesPath()
     if (fs.existsSync(hashPath)) {
       fs.unlinkSync(hashPath)
     }
+    const sessionHashPath = getSessionHashesPath()
+    if (fs.existsSync(sessionHashPath)) {
+      fs.unlinkSync(sessionHashPath)
+    }
   } catch {}
+
+  // Delete BM25 index
+  deleteBM25Index()
+
   db = null
   table = null
   fileHashes = {}
+  sessionHashes = {}
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────

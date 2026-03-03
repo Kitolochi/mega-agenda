@@ -167,13 +167,18 @@ export async function researchTopicSmart(
 // --- Topic Generation ---
 
 export async function generateTopics(
-  goal: RoadmapGoal
+  goal: RoadmapGoal,
+  direction?: string
 ): Promise<{ research_questions: string[]; guidance_needed: string[] }> {
+  const directionClause = direction
+    ? `\n\n## Specific Direction from User:\nFocus especially on: ${direction}\nStill cover other relevant areas, but prioritize topics related to this direction.`
+    : ''
+
   const prompt = `You are helping someone break down a life/project goal into specific research topics. Given the goal below, generate comprehensive research questions and guidance needs.
 
 ## Goal: ${goal.title}
 ${goal.description ? `Description: ${goal.description}` : ''}
-Category: ${goal.category}
+Category: ${goal.category}${directionClause}
 
 Generate two JSON arrays:
 1. "research_questions" - Factual questions to research (costs, timelines, comparisons, best practices, requirements, risks)
@@ -197,6 +202,65 @@ IMPORTANT: Respond with ONLY a JSON object, no other text:
     }
   } catch {
     throw new Error('Failed to parse AI-generated topics')
+  }
+}
+
+// --- Topic Categorization ---
+
+export async function categorizeTopics(
+  goal: RoadmapGoal
+): Promise<{ label: string; topics: { text: string; type: 'question' | 'guidance' }[] }[]> {
+  const allTopics = [
+    ...goal.research_questions.map(q => ({ text: q, type: 'question' as const })),
+    ...goal.guidance_needed.map(g => ({ text: g, type: 'guidance' as const })),
+  ]
+
+  if (allTopics.length === 0) return []
+  if (allTopics.length <= 3) return [{ label: 'General', topics: allTopics }]
+
+  const topicList = allTopics.map((t, i) => `${i}. [${t.type}] ${t.text}`).join('\n')
+
+  const prompt = `Group these research topics for the goal "${goal.title}" into logical thematic categories. Create 3-8 categories that make sense for this specific goal.
+
+Topics:
+${topicList}
+
+IMPORTANT: Respond with ONLY a JSON array, no other text:
+[{"label": "Category Name", "topicIndices": [0, 1, 5]}, ...]
+
+Every topic index must appear in exactly one group. Use short category labels (1-3 words). Order categories by importance.`
+
+  const response = await callLLM({ prompt, tier: 'fast', maxTokens: 2048 })
+
+  try {
+    const cleaned = extractJSON(response)
+    const jsonMatch = cleaned.match(/\[[\s\S]*\]/)
+    if (!jsonMatch) throw new Error('No JSON found')
+    const groups = JSON.parse(jsonMatch[0])
+
+    const assigned = new Set<number>()
+    const result: { label: string; topics: { text: string; type: 'question' | 'guidance' }[] }[] = []
+
+    for (const g of groups) {
+      const indices = (g.topicIndices || []).filter((i: number) => i >= 0 && i < allTopics.length && !assigned.has(i))
+      if (indices.length === 0) continue
+      indices.forEach((i: number) => assigned.add(i))
+      result.push({
+        label: String(g.label || 'Other'),
+        topics: indices.map((i: number) => allTopics[i]),
+      })
+    }
+
+    // Catch any unassigned topics
+    const unassigned = allTopics.filter((_, i) => !assigned.has(i))
+    if (unassigned.length > 0) {
+      result.push({ label: 'Other', topics: unassigned })
+    }
+
+    return result
+  } catch {
+    // Fallback: single group
+    return [{ label: 'All Topics', topics: allTopics }]
   }
 }
 

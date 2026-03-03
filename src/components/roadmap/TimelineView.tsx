@@ -9,23 +9,14 @@ interface TimelineViewProps {
 
 export default function TimelineView({ goals, onDrillToTopics }: TimelineViewProps) {
   const [researchingGoalId, setResearchingGoalId] = useState<string | null>(null)
-  const [findingTopicsId, setFindingTopicsId] = useState<string | null>(null)
   const [researchError, setResearchError] = useState<string | null>(null)
 
   if (goals.length === 0) return null
 
-  const handleFindTopics = async (e: React.MouseEvent, goal: RoadmapGoal) => {
+  const handleFindTopics = (e: React.MouseEvent, goal: RoadmapGoal) => {
     e.stopPropagation()
-    setFindingTopicsId(goal.id)
-    setResearchError(null)
-    try {
-      await window.electronAPI.generateTopics(goal.id)
-      onDrillToTopics(goal.id)
-    } catch (err: any) {
-      setResearchError(err.message || 'Failed to find topics')
-    } finally {
-      setFindingTopicsId(null)
-    }
+    // Navigate to goal detail view where user can use direction prompt
+    onDrillToTopics(goal.id)
   }
 
   const handleResearchAll = async (e: React.MouseEvent, goal: RoadmapGoal) => {
@@ -101,18 +92,10 @@ export default function TimelineView({ goals, onDrillToTopics }: TimelineViewPro
                 <div className="ml-auto flex items-center gap-1.5">
                   <div
                     onClick={(e) => handleFindTopics(e, g)}
-                    className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-medium transition-all cursor-pointer ${
-                      findingTopicsId === g.id
-                        ? 'bg-accent-blue/20 text-accent-blue/70'
-                        : 'bg-accent-blue/15 text-accent-blue hover:bg-accent-blue/25'
-                    }`}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-medium transition-all cursor-pointer bg-accent-blue/15 text-accent-blue hover:bg-accent-blue/25"
                   >
-                    {findingTopicsId === g.id ? (
-                      <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
-                    ) : (
-                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
-                    )}
-                    {findingTopicsId === g.id ? 'Finding...' : 'Find Topics'}
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
+                    Find Topics
                   </div>
                   {totalTopics > 0 && (
                     <div
