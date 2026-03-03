@@ -34,6 +34,7 @@ let table: lancedb.Table | null = null
 // File hashes kept in a small sidecar JSON for fast diff without querying LanceDB
 let fileHashes: Record<string, string> = {}
 let sessionHashes: Record<string, string> = {}
+let rebuildLock = false
 
 function getDbPath(): string {
   return path.join(app.getPath('userData'), 'vector-db')
@@ -116,6 +117,19 @@ export async function loadVectorIndex(): Promise<{ chunkCount: number } | null> 
 }
 
 export async function rebuildIndex(
+  onProgress?: (info: { phase: string; current: number; total: number }) => void,
+): Promise<{ added: number; removed: number; total: number }> {
+  if (rebuildLock) throw new Error('Index rebuild already in progress')
+  rebuildLock = true
+
+  try {
+    return await _rebuildIndexInner(onProgress)
+  } finally {
+    rebuildLock = false
+  }
+}
+
+async function _rebuildIndexInner(
   onProgress?: (info: { phase: string; current: number; total: number }) => void,
 ): Promise<{ added: number; removed: number; total: number }> {
   const status = getEmbeddingStatus()
@@ -413,7 +427,7 @@ export async function search(query: string, options: SearchOptions = {}): Promis
   // Run both searches in parallel
   const [vectorResults, bm25Results] = await Promise.all([
     searchVector(query, { ...options, topK: topK * 2 }),
-    Promise.resolve(searchBM25(query, { topK: topK * 2, domainFilter: options.domainFilter })),
+    searchBM25(query, { topK: topK * 2, domainFilter: options.domainFilter }),
   ])
 
   // If only one source has results, return that directly

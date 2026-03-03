@@ -73,6 +73,11 @@ export function loadBM25Index(): boolean {
     miniSearch = MiniSearch.loadJSON(json, {
       fields: ['text', 'heading'],
       storeFields: ['text', 'sourceFile', 'heading', 'domain', 'startLine'],
+      searchOptions: {
+        boost: { text: 2, heading: 1 },
+        fuzzy: 0.2,
+        prefix: true,
+      },
     })
     console.log(`BM25 index loaded from disk`)
     return true
@@ -88,7 +93,7 @@ export function searchBM25(
   query: string,
   options: { topK?: number; domainFilter?: string } = {}
 ): BM25Result[] {
-  if (!miniSearch) return []
+  if (!miniSearch || !query.trim()) return []
 
   const { topK = 20, domainFilter } = options
 
