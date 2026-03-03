@@ -1,0 +1,8 @@
+{"type":"progress","message":{"content":"Processing file 1 of 10..."}}
+{"type":"summary","content":"This is a session summary that should be skipped by the parser"}
+{"type":"system","message":{"content":"System initialization message that should be skipped by parser"}}
+{"type":"user","isMeta":true,"message":{"content":"This user message has isMeta flag and should be skipped by the parser"}}
+{"type":"file-history-snapshot","files":["src/app.ts","src/index.ts","package.json"]}
+{"type":"assistant","isMeta":true,"message":{"content":"This assistant message has isMeta flag and should be skipped"}}
+{"type":"user","message":{"content":"This is the only valid user message that should be parsed from this file with skip types present"}}
+{"type":"assistant","message":{"content":"And this is the only valid assistant response that should be parsed. It needs to be long enough to pass the sixty-four character minimum chunk size filter that the session parser applies to all output chunks."}}

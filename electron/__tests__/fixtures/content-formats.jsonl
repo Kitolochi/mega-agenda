@@ -1,0 +1,7 @@
+{"type":"user","message":{"content":"String content in the message.content field which is the most common format used in Claude Code sessions"}}
+{"type":"assistant","message":{"content":[{"type":"text","text":"Array block content in message.content field. This format is used when the response contains mixed content types like text and tool use blocks. Only text type blocks should be extracted by the parser."},{"type":"tool_use","name":"read_file","input":{"path":"test.ts"}}]}}
+{"type":"user","content":"Top-level string content without the message wrapper object. This is another valid format the parser handles for older session file formats."}
+{"type":"assistant","content":[{"type":"text","text":"Top-level array content without the message wrapper. Blocks are filtered to include only those with type text and a string text field present."},{"type":"image","url":"https://example.com/img.png"}]}
+{"type":"user","message":{}}
+{"type":"assistant","message":{"content":null}}
+{"type":"user","message":{"content":""}}

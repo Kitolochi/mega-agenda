@@ -1,0 +1,7 @@
+{"type":"user","message":{"content":"This is a valid message that should be parsed correctly by the session parser despite corrupt lines nearby"}}
+not valid json at all - this line should be skipped gracefully
+{"type":"assistant","message":{"content":"This is a valid assistant response that should also be parsed and included in the output chunks produced by the parser"}}
+{broken json missing the closing brace and this is garbage text
+{"type":"user","message":{"content":"Another valid user message after some corrupt lines in the JSONL session file for testing robustness"}}
+12345null
+{"type":"assistant","message":{"content":"Final valid response in the corrupt session file that has mixed valid and invalid JSON lines throughout the file"}}
