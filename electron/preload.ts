@@ -332,6 +332,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => { ipcRenderer.removeListener('memory-health-update', handler) }
   },
 
+  // Network CRM
+  getNetworkContacts: () => ipcRenderer.invoke('get-network-contacts'),
+  getNetworkContact: (id: string) => ipcRenderer.invoke('get-network-contact', id),
+  createNetworkContact: (data: any) => ipcRenderer.invoke('create-network-contact', data),
+  updateNetworkContact: (id: string, updates: any) => ipcRenderer.invoke('update-network-contact', id, updates),
+  deleteNetworkContact: (id: string) => ipcRenderer.invoke('delete-network-contact', id),
+  getContactInteractions: (contactId?: string) => ipcRenderer.invoke('get-contact-interactions', contactId),
+  createContactInteraction: (data: any) => ipcRenderer.invoke('create-contact-interaction', data),
+  deleteContactInteraction: (id: string) => ipcRenderer.invoke('delete-contact-interaction', id),
+  getPipelines: () => ipcRenderer.invoke('get-pipelines'),
+  createPipeline: (data: any) => ipcRenderer.invoke('create-pipeline', data),
+  updatePipeline: (id: string, updates: any) => ipcRenderer.invoke('update-pipeline', id, updates),
+  deletePipeline: (id: string) => ipcRenderer.invoke('delete-pipeline', id),
+  getPipelineCards: (pipelineId?: string) => ipcRenderer.invoke('get-pipeline-cards', pipelineId),
+  createPipelineCard: (data: any) => ipcRenderer.invoke('create-pipeline-card', data),
+  updatePipelineCard: (id: string, updates: any) => ipcRenderer.invoke('update-pipeline-card', id, updates),
+  movePipelineCard: (id: string, stage: string) => ipcRenderer.invoke('move-pipeline-card', id, stage),
+  deletePipelineCard: (id: string) => ipcRenderer.invoke('delete-pipeline-card', id),
+
   // Bank Sync
   getBankConnections: () => ipcRenderer.invoke('get-bank-connections'),
   connectBank: (provider: 'simplefin' | 'teller', token: string) => ipcRenderer.invoke('connect-bank', provider, token),

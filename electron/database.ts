@@ -296,6 +296,53 @@ export interface BankTransaction {
   importedAt: string
 }
 
+type InteractionType = 'call' | 'email' | 'meeting' | 'message' | 'note'
+
+interface NetworkContact {
+  id: string
+  name: string
+  company: string
+  role: string
+  email: string
+  phone: string
+  socialLinks: { twitter?: string; linkedin?: string; github?: string }
+  notes: string
+  tags: string[]
+  avatarColor: string
+  createdAt: string
+  updatedAt: string
+}
+
+interface ContactInteraction {
+  id: string
+  contactIds: string[]
+  type: InteractionType
+  subject: string
+  notes: string
+  date: string
+  createdAt: string
+}
+
+interface Pipeline {
+  id: string
+  name: string
+  stages: string[]
+  createdAt: string
+  updatedAt: string
+}
+
+interface PipelineCard {
+  id: string
+  contactId: string
+  pipelineId: string
+  stage: string
+  title: string
+  description: string
+  value: string
+  createdAt: string
+  updatedAt: string
+}
+
 interface Database {
   categories: Category[]
   tasks: Task[]
@@ -326,6 +373,10 @@ interface Database {
   bankConnections: BankConnection[]
   bankAccounts: BankAccount[]
   bankTransactions: BankTransaction[]
+  networkContacts: NetworkContact[]
+  contactInteractions: ContactInteraction[]
+  pipelines: Pipeline[]
+  pipelineCards: PipelineCard[]
 }
 
 let db: Database
@@ -663,6 +714,24 @@ export function initDatabase(): Database {
   // Initialize bankTransactions if missing
   if (!(db as any).bankTransactions) {
     db.bankTransactions = []
+    saveDatabase()
+  }
+
+  // Initialize network CRM collections if missing
+  if (!(db as any).networkContacts) {
+    db.networkContacts = []
+    saveDatabase()
+  }
+  if (!(db as any).contactInteractions) {
+    db.contactInteractions = []
+    saveDatabase()
+  }
+  if (!(db as any).pipelines) {
+    db.pipelines = []
+    saveDatabase()
+  }
+  if (!(db as any).pipelineCards) {
+    db.pipelineCards = []
     saveDatabase()
   }
 
@@ -1886,6 +1955,169 @@ export function getBankTransactions(accountId?: string, limit: number = 100): Ba
   let txs = db.bankTransactions || []
   if (accountId) txs = txs.filter(t => t.accountId === accountId)
   return txs.sort((a, b) => b.date.localeCompare(a.date)).slice(0, limit)
+}
+
+// ── Network CRM CRUD ──
+
+const AVATAR_COLORS = ['#a78bfa', '#60a5fa', '#34d399', '#fbbf24', '#f87171', '#c084fc', '#22d3ee', '#fb923c']
+
+function hashNameToColor(name: string): string {
+  let hash = 0
+  for (let i = 0; i < name.length; i++) {
+    hash = ((hash << 5) - hash) + name.charCodeAt(i)
+    hash |= 0
+  }
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]
+}
+
+export function getNetworkContacts(): NetworkContact[] {
+  return (db.networkContacts || []).sort((a, b) => a.name.localeCompare(b.name))
+}
+
+export function getNetworkContact(id: string): NetworkContact | null {
+  return db.networkContacts.find(c => c.id === id) || null
+}
+
+export function createNetworkContact(data: Omit<NetworkContact, 'id' | 'createdAt' | 'updatedAt'>): NetworkContact {
+  const contact: NetworkContact = {
+    ...data,
+    id: generateId(),
+    avatarColor: data.avatarColor || hashNameToColor(data.name),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  }
+  db.networkContacts.push(contact)
+  saveDatabase()
+  return contact
+}
+
+export function updateNetworkContact(id: string, updates: Partial<NetworkContact>): NetworkContact | null {
+  const contact = db.networkContacts.find(c => c.id === id)
+  if (!contact) return null
+  if (updates.name !== undefined) { contact.name = updates.name; contact.avatarColor = hashNameToColor(updates.name) }
+  if (updates.company !== undefined) contact.company = updates.company
+  if (updates.role !== undefined) contact.role = updates.role
+  if (updates.email !== undefined) contact.email = updates.email
+  if (updates.phone !== undefined) contact.phone = updates.phone
+  if (updates.socialLinks !== undefined) contact.socialLinks = updates.socialLinks
+  if (updates.notes !== undefined) contact.notes = updates.notes
+  if (updates.tags !== undefined) contact.tags = updates.tags
+  contact.updatedAt = new Date().toISOString()
+  saveDatabase()
+  return contact
+}
+
+export function deleteNetworkContact(id: string): void {
+  db.networkContacts = db.networkContacts.filter(c => c.id !== id)
+  // Cascade: remove interactions referencing this contact
+  db.contactInteractions = db.contactInteractions.filter(i => !i.contactIds.includes(id))
+  // Cascade: remove pipeline cards for this contact
+  db.pipelineCards = db.pipelineCards.filter(c => c.contactId !== id)
+  saveDatabase()
+}
+
+export function getContactInteractions(contactId?: string): ContactInteraction[] {
+  let interactions = db.contactInteractions || []
+  if (contactId) {
+    interactions = interactions.filter(i => i.contactIds.includes(contactId))
+  }
+  return interactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+}
+
+export function createContactInteraction(data: Omit<ContactInteraction, 'id' | 'createdAt'>): ContactInteraction {
+  const interaction: ContactInteraction = {
+    ...data,
+    id: generateId(),
+    createdAt: new Date().toISOString()
+  }
+  db.contactInteractions.push(interaction)
+  saveDatabase()
+  return interaction
+}
+
+export function deleteContactInteraction(id: string): void {
+  db.contactInteractions = db.contactInteractions.filter(i => i.id !== id)
+  saveDatabase()
+}
+
+export function getPipelines(): Pipeline[] {
+  return (db.pipelines || []).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+}
+
+export function createPipeline(data: Omit<Pipeline, 'id' | 'createdAt' | 'updatedAt'>): Pipeline {
+  const pipeline: Pipeline = {
+    ...data,
+    id: generateId(),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  }
+  db.pipelines.push(pipeline)
+  saveDatabase()
+  return pipeline
+}
+
+export function updatePipeline(id: string, updates: Partial<Pipeline>): Pipeline | null {
+  const pipeline = db.pipelines.find(p => p.id === id)
+  if (!pipeline) return null
+  if (updates.name !== undefined) pipeline.name = updates.name
+  if (updates.stages !== undefined) pipeline.stages = updates.stages
+  pipeline.updatedAt = new Date().toISOString()
+  saveDatabase()
+  return pipeline
+}
+
+export function deletePipeline(id: string): void {
+  db.pipelines = db.pipelines.filter(p => p.id !== id)
+  // Cascade: remove cards in this pipeline
+  db.pipelineCards = db.pipelineCards.filter(c => c.pipelineId !== id)
+  saveDatabase()
+}
+
+export function getPipelineCards(pipelineId?: string): PipelineCard[] {
+  let cards = db.pipelineCards || []
+  if (pipelineId) {
+    cards = cards.filter(c => c.pipelineId === pipelineId)
+  }
+  return cards.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+}
+
+export function createPipelineCard(data: Omit<PipelineCard, 'id' | 'createdAt' | 'updatedAt'>): PipelineCard {
+  const card: PipelineCard = {
+    ...data,
+    id: generateId(),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  }
+  db.pipelineCards.push(card)
+  saveDatabase()
+  return card
+}
+
+export function updatePipelineCard(id: string, updates: Partial<PipelineCard>): PipelineCard | null {
+  const card = db.pipelineCards.find(c => c.id === id)
+  if (!card) return null
+  if (updates.title !== undefined) card.title = updates.title
+  if (updates.description !== undefined) card.description = updates.description
+  if (updates.value !== undefined) card.value = updates.value
+  if (updates.stage !== undefined) card.stage = updates.stage
+  if (updates.contactId !== undefined) card.contactId = updates.contactId
+  card.updatedAt = new Date().toISOString()
+  saveDatabase()
+  return card
+}
+
+export function movePipelineCard(id: string, stage: string): PipelineCard | null {
+  const card = db.pipelineCards.find(c => c.id === id)
+  if (!card) return null
+  card.stage = stage
+  card.updatedAt = new Date().toISOString()
+  saveDatabase()
+  return card
+}
+
+export function deletePipelineCard(id: string): void {
+  db.pipelineCards = db.pipelineCards.filter(c => c.id !== id)
+  saveDatabase()
 }
 
 export function upsertBankTransaction(tx: BankTransaction): { inserted: boolean } {

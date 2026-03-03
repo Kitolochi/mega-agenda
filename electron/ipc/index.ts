@@ -9,6 +9,7 @@ import { registerMemoryHandlers } from './memory'
 import { registerSystemHandlers } from './system'
 import { registerKnowledgePackHandlers } from './knowledge-pack'
 import { registerBankSyncHandlers } from './bank-sync'
+import { registerNetworkHandlers } from './network'
 
 export function registerAllHandlers(mainWindow: BrowserWindow) {
   registerTaskHandlers(mainWindow)
@@ -21,4 +22,5 @@ export function registerAllHandlers(mainWindow: BrowserWindow) {
   registerSystemHandlers(mainWindow)
   registerKnowledgePackHandlers(mainWindow)
   registerBankSyncHandlers(mainWindow)
+  registerNetworkHandlers(mainWindow)
 }

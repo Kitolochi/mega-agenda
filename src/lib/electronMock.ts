@@ -300,6 +300,25 @@ export function installElectronMock() {
     extractMemoriesFromJournal: emptyArray as any,
     batchExtractMemories: emptyArray as any,
 
+    // Network CRM
+    getNetworkContacts: emptyArray as any,
+    getNetworkContact: async () => null,
+    createNetworkContact: async (data: any) => ({ ...data, id: Date.now().toString(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }),
+    updateNetworkContact: async () => null,
+    deleteNetworkContact: noop as any,
+    getContactInteractions: emptyArray as any,
+    createContactInteraction: async (data: any) => ({ ...data, id: Date.now().toString(), createdAt: new Date().toISOString() }),
+    deleteContactInteraction: noop as any,
+    getPipelines: emptyArray as any,
+    createPipeline: async (data: any) => ({ ...data, id: Date.now().toString(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }),
+    updatePipeline: async () => null,
+    deletePipeline: noop as any,
+    getPipelineCards: emptyArray as any,
+    createPipelineCard: async (data: any) => ({ ...data, id: Date.now().toString(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }),
+    updatePipelineCard: async () => null,
+    movePipelineCard: async () => null,
+    deletePipelineCard: noop as any,
+
     // Bank Sync
     getBankConnections: emptyArray as any,
     connectBank: async () => ({} as any),

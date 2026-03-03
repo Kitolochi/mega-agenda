@@ -506,6 +506,54 @@ export interface FolderCompressionResult {
   durationMs: number
 }
 
+// Network CRM Types
+export type InteractionType = 'call' | 'email' | 'meeting' | 'message' | 'note'
+
+export interface NetworkContact {
+  id: string
+  name: string
+  company: string
+  role: string
+  email: string
+  phone: string
+  socialLinks: { twitter?: string; linkedin?: string; github?: string }
+  notes: string
+  tags: string[]
+  avatarColor: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ContactInteraction {
+  id: string
+  contactIds: string[]
+  type: InteractionType
+  subject: string
+  notes: string
+  date: string
+  createdAt: string
+}
+
+export interface Pipeline {
+  id: string
+  name: string
+  stages: string[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface PipelineCard {
+  id: string
+  contactId: string
+  pipelineId: string
+  stage: string
+  title: string
+  description: string
+  value: string
+  createdAt: string
+  updatedAt: string
+}
+
 // Bank Sync Types
 export type BankProvider = 'simplefin' | 'teller'
 export type BankConnectionStatus = 'active' | 'error' | 'disconnected'
@@ -808,6 +856,25 @@ export interface ElectronAPI {
   extractMemoriesFromCli: (sessionId: string) => Promise<Memory[]>
   extractMemoriesFromJournal: (date: string) => Promise<Memory[]>
   batchExtractMemories: () => Promise<Memory[]>
+
+  // Network CRM
+  getNetworkContacts: () => Promise<NetworkContact[]>
+  getNetworkContact: (id: string) => Promise<NetworkContact | null>
+  createNetworkContact: (contact: Omit<NetworkContact, 'id' | 'createdAt' | 'updatedAt'>) => Promise<NetworkContact>
+  updateNetworkContact: (id: string, updates: Partial<NetworkContact>) => Promise<NetworkContact | null>
+  deleteNetworkContact: (id: string) => Promise<void>
+  getContactInteractions: (contactId?: string) => Promise<ContactInteraction[]>
+  createContactInteraction: (interaction: Omit<ContactInteraction, 'id' | 'createdAt'>) => Promise<ContactInteraction>
+  deleteContactInteraction: (id: string) => Promise<void>
+  getPipelines: () => Promise<Pipeline[]>
+  createPipeline: (pipeline: Omit<Pipeline, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Pipeline>
+  updatePipeline: (id: string, updates: Partial<Pipeline>) => Promise<Pipeline | null>
+  deletePipeline: (id: string) => Promise<void>
+  getPipelineCards: (pipelineId?: string) => Promise<PipelineCard[]>
+  createPipelineCard: (card: Omit<PipelineCard, 'id' | 'createdAt' | 'updatedAt'>) => Promise<PipelineCard>
+  updatePipelineCard: (id: string, updates: Partial<PipelineCard>) => Promise<PipelineCard | null>
+  movePipelineCard: (id: string, stage: string) => Promise<PipelineCard | null>
+  deletePipelineCard: (id: string) => Promise<void>
 
   // Bank Sync
   getBankConnections: () => Promise<BankConnection[]>
