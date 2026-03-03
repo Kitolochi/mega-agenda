@@ -408,7 +408,7 @@ export function registerSystemHandlers(mainWindow: BrowserWindow) {
   ipcMain.handle('execute-reorg-plan', async (_, plan: any) => {
     const result = await executeReorgPlan(plan)
     try {
-      deleteIndex()
+      await deleteIndex()
       const embStatus = getEmbeddingStatus()
       if (embStatus.ready) {
         await rebuildIndex()

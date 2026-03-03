@@ -219,7 +219,7 @@ app.whenReady().then(() => {
       // Load or build vector index once model is ready
       const embStatus = getEmbeddingStatus()
       if (embStatus.ready) {
-        const existing = loadVectorIndex()
+        await loadVectorIndex()
         // Always do an incremental refresh to pick up changes
         await rebuildIndex((info) => {
           mainWindow?.webContents.send('index-progress', info)
