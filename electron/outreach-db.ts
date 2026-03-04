@@ -132,6 +132,11 @@ export function initOutreachTables(): void {
       variables TEXT NOT NULL DEFAULT '[]',
       createdAt TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL DEFAULT ''
+    );
   `)
 }
 
@@ -414,6 +419,56 @@ export function seedDefaultTemplates(): void {
     }
   })
   seedAll()
+}
+
+// ── Settings (key-value store) ──
+
+export interface OutreachSettings {
+  google_places_api_key: string
+  apollo_api_key: string
+  default_lat: string
+  default_lng: string
+  default_radius: string
+  resume_link: string
+  onboarding_completed: string
+}
+
+const SETTINGS_DEFAULTS: OutreachSettings = {
+  google_places_api_key: '',
+  apollo_api_key: '',
+  default_lat: '35.2271',
+  default_lng: '-80.8431',
+  default_radius: '25000',
+  resume_link: '',
+  onboarding_completed: 'false',
+}
+
+export function getOutreachSetting(key: keyof OutreachSettings): string {
+  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: string } | undefined
+  return row?.value ?? SETTINGS_DEFAULTS[key] ?? ''
+}
+
+export function getAllOutreachSettings(): OutreachSettings {
+  const rows = db.prepare('SELECT key, value FROM settings').all() as { key: string; value: string }[]
+  const result = { ...SETTINGS_DEFAULTS }
+  for (const row of rows) {
+    if (row.key in result) {
+      (result as any)[row.key] = row.value
+    }
+  }
+  return result
+}
+
+export function setOutreachSetting(key: keyof OutreachSettings, value: string): void {
+  db.prepare(`
+    INSERT INTO settings (key, value) VALUES (@key, @value)
+    ON CONFLICT(key) DO UPDATE SET value = @value
+  `).run({ key, value })
+}
+
+export function getBusinessCount(): number {
+  const row = db.prepare('SELECT COUNT(*) as cnt FROM businesses').get() as { cnt: number }
+  return row.cnt
 }
 
 // ── Stats ──

@@ -416,6 +416,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getBankAccounts: () => ipcRenderer.invoke('get-bank-accounts'),
   getBankTransactions: (accountId?: string, limit?: number) => ipcRenderer.invoke('get-bank-transactions', accountId, limit),
 
+  // Outreach Settings
+  getOutreachSettings: () => ipcRenderer.invoke('get-outreach-settings'),
+  setOutreachSetting: (key: string, value: string) => ipcRenderer.invoke('set-outreach-setting', key, value),
+  validateApiKey: (keyType: 'google_places' | 'apollo', apiKey: string) => ipcRenderer.invoke('validate-api-key', keyType, apiKey),
+  runSeedDiscovery: () => ipcRenderer.invoke('run-seed-discovery'),
+  getOutreachBusinessCount: () => ipcRenderer.invoke('get-outreach-business-count'),
+  onSeedProgress: (callback: (data: { category: string; categoryIndex: number; totalCategories: number; imported: number; totalImported: number }) => void) => {
+    const handler = (_: any, data: any) => callback(data)
+    ipcRenderer.on('seed-progress', handler)
+    return () => { ipcRenderer.removeListener('seed-progress', handler) }
+  },
+
   // Outreach
   searchBusinesses: (query: string, location?: string) => ipcRenderer.invoke('search-businesses', query, location),
   scrapeBusinesses: (urls: string[]) => ipcRenderer.invoke('scrape-businesses', urls),

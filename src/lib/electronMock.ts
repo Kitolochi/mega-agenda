@@ -321,6 +321,14 @@ export function installElectronMock() {
     getBankAccounts: emptyArray as any,
     getBankTransactions: emptyArray as any,
 
+    // Outreach Settings
+    getOutreachSettings: async () => ({ google_places_api_key: '', apollo_api_key: '', default_lat: '35.2271', default_lng: '-80.8431', default_radius: '25000', resume_link: '', onboarding_completed: 'false' }),
+    setOutreachSetting: async () => ({ google_places_api_key: '', apollo_api_key: '', default_lat: '35.2271', default_lng: '-80.8431', default_radius: '25000', resume_link: '', onboarding_completed: 'false' }),
+    validateApiKey: async () => ({ valid: false, message: 'Mock mode' }),
+    runSeedDiscovery: async () => ({ totalImported: 0, categories: 0 }),
+    getOutreachBusinessCount: async () => 0,
+    onSeedProgress: noopUnsub as any,
+
     // Outreach
     searchBusinesses: emptyArray as any,
     scrapeBusinesses: emptyArray as any,

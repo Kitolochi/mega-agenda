@@ -1025,6 +1025,22 @@ export interface ElectronAPI {
   getBankAccounts: () => Promise<BankAccount[]>
   getBankTransactions: (accountId?: string, limit?: number) => Promise<BankTransaction[]>
 
+  // Outreach Settings
+  getOutreachSettings: () => Promise<{
+    google_places_api_key: string
+    apollo_api_key: string
+    default_lat: string
+    default_lng: string
+    default_radius: string
+    resume_link: string
+    onboarding_completed: string
+  }>
+  setOutreachSetting: (key: string, value: string) => Promise<any>
+  validateApiKey: (keyType: 'google_places' | 'apollo', apiKey: string) => Promise<{ valid: boolean; message: string }>
+  runSeedDiscovery: () => Promise<{ totalImported: number; categories: number }>
+  getOutreachBusinessCount: () => Promise<number>
+  onSeedProgress: (callback: (data: { category: string; categoryIndex: number; totalCategories: number; imported: number; totalImported: number }) => void) => () => void
+
   // Outreach
   searchBusinesses: (query: string, location?: string) => Promise<OutreachBusiness[]>
   scrapeBusinesses: (urls: string[]) => Promise<OutreachBusiness[]>
