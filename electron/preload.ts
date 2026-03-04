@@ -365,6 +365,48 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getSocialSyncStatus: (connectionId: string) => ipcRenderer.invoke('social-get-sync-status', connectionId),
   twitterSyncContacts: () => ipcRenderer.invoke('social-twitter-sync-contacts'),
 
+  // Content Writer
+  getContentDrafts: () => ipcRenderer.invoke('get-content-drafts'),
+  getContentDraft: (id: string) => ipcRenderer.invoke('get-content-draft', id),
+  createContentDraft: (topic?: string) => ipcRenderer.invoke('create-content-draft', topic),
+  updateContentDraft: (id: string, updates: any) => ipcRenderer.invoke('update-content-draft', id, updates),
+  deleteContentDraft: (id: string) => ipcRenderer.invoke('delete-content-draft', id),
+  contentResearch: (draftId: string, topic: string) => ipcRenderer.invoke('content-research', draftId, topic),
+  contentResearchAbort: () => ipcRenderer.invoke('content-research-abort'),
+  contentGenerate: (draftId: string, messages: { role: string; content: string }[], contentType: string) =>
+    ipcRenderer.invoke('content-generate', draftId, messages, contentType),
+  contentAbort: () => ipcRenderer.invoke('content-abort'),
+  onContentResearchChunk: (callback: (data: { draftId: string; text: string }) => void) => {
+    const handler = (_: any, data: { draftId: string; text: string }) => callback(data)
+    ipcRenderer.on('content-research-chunk', handler)
+    return () => { ipcRenderer.removeListener('content-research-chunk', handler) }
+  },
+  onContentResearchEnd: (callback: (data: { draftId: string }) => void) => {
+    const handler = (_: any, data: any) => callback(data)
+    ipcRenderer.on('content-research-end', handler)
+    return () => { ipcRenderer.removeListener('content-research-end', handler) }
+  },
+  onContentResearchError: (callback: (data: { draftId: string; error: string }) => void) => {
+    const handler = (_: any, data: any) => callback(data)
+    ipcRenderer.on('content-research-error', handler)
+    return () => { ipcRenderer.removeListener('content-research-error', handler) }
+  },
+  onContentStreamChunk: (callback: (data: { draftId: string; text: string }) => void) => {
+    const handler = (_: any, data: { draftId: string; text: string }) => callback(data)
+    ipcRenderer.on('content-stream-chunk', handler)
+    return () => { ipcRenderer.removeListener('content-stream-chunk', handler) }
+  },
+  onContentStreamEnd: (callback: (data: { draftId: string }) => void) => {
+    const handler = (_: any, data: any) => callback(data)
+    ipcRenderer.on('content-stream-end', handler)
+    return () => { ipcRenderer.removeListener('content-stream-end', handler) }
+  },
+  onContentStreamError: (callback: (data: { draftId: string; error: string }) => void) => {
+    const handler = (_: any, data: any) => callback(data)
+    ipcRenderer.on('content-stream-error', handler)
+    return () => { ipcRenderer.removeListener('content-stream-error', handler) }
+  },
+
   // Bank Sync
   getBankConnections: () => ipcRenderer.invoke('get-bank-connections'),
   connectBank: (provider: 'simplefin' | 'teller', token: string) => ipcRenderer.invoke('connect-bank', provider, token),

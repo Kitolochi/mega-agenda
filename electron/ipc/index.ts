@@ -11,6 +11,7 @@ import { registerKnowledgePackHandlers } from './knowledge-pack'
 import { registerBankSyncHandlers } from './bank-sync'
 import { registerNetworkHandlers } from './network'
 import { registerSocialHandlers } from './social'
+import { registerContentHandlers } from './content'
 
 export function registerAllHandlers(mainWindow: BrowserWindow) {
   registerTaskHandlers(mainWindow)
@@ -25,4 +26,5 @@ export function registerAllHandlers(mainWindow: BrowserWindow) {
   registerBankSyncHandlers(mainWindow)
   registerNetworkHandlers(mainWindow)
   registerSocialHandlers(mainWindow)
+  registerContentHandlers(mainWindow)
 }
