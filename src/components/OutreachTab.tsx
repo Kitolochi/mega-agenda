@@ -38,12 +38,22 @@ const SUB_TABS: { id: SubView; label: string }[] = [
   { id: 'pipeline', label: 'Pipeline' },
 ]
 
+interface AutoResearchProgress {
+  phase: string
+  status: string
+  message: string
+  [key: string]: any
+}
+
 export default function OutreachTab() {
   const { currentView, setView, fetchBusinesses, fetchPipelineStats, fetchTemplates } = useOutreachStore()
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showTips, setShowTips] = useState(false)
   const [checkingOnboarding, setCheckingOnboarding] = useState(true)
+  const [researching, setResearching] = useState(false)
+  const [researchProgress, setResearchProgress] = useState<AutoResearchProgress | null>(null)
+  const [researchResult, setResearchResult] = useState<{ discovered: number; enriched: number; contactsFound: number; socialLinksFound: number } | null>(null)
 
   const checkOnboarding = useCallback(async () => {
     try {
@@ -72,6 +82,28 @@ export default function OutreachTab() {
     setShowOnboarding(false)
     fetchBusinesses()
     fetchPipelineStats()
+  }, [fetchBusinesses, fetchPipelineStats])
+
+  // Auto-research progress listener
+  useEffect(() => {
+    const unsub = window.electronAPI.onAutoResearchProgress((data) => {
+      setResearchProgress(data)
+    })
+    return unsub
+  }, [])
+
+  const handleAutoResearch = useCallback(async () => {
+    setResearching(true)
+    setResearchProgress(null)
+    setResearchResult(null)
+    try {
+      const result = await window.electronAPI.runAutoResearch()
+      setResearchResult(result)
+      fetchBusinesses()
+      fetchPipelineStats()
+    } finally {
+      setResearching(false)
+    }
   }, [fetchBusinesses, fetchPipelineStats])
 
   if (checkingOnboarding) {
@@ -111,6 +143,29 @@ export default function OutreachTab() {
         </div>
         <div className="flex items-center gap-1.5">
           <button
+            onClick={handleAutoResearch}
+            disabled={researching}
+            title="Auto-Research: discover businesses, find contacts & social links"
+            className={cn(
+              'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all',
+              researching
+                ? 'bg-accent-emerald/10 text-accent-emerald/70 cursor-wait'
+                : 'bg-gradient-to-r from-accent-emerald/20 to-accent-blue/20 text-accent-emerald hover:from-accent-emerald/30 hover:to-accent-blue/30 border border-accent-emerald/20'
+            )}
+          >
+            {researching ? (
+              <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+            ) : (
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.631 8.41m5.96 5.96a14.926 14.926 0 01-5.841 2.58m-.119-8.54a6 6 0 00-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 00-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 01-2.448-2.448 14.9 14.9 0 01.06-.312m-2.24 2.39a4.493 4.493 0 00-1.757 4.306 4.493 4.493 0 004.306-1.758M16.5 9a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" />
+              </svg>
+            )}
+            {researching ? 'Researching...' : 'Auto-Research'}
+          </button>
+          <button
             onClick={() => setShowTips(true)}
             title="Outreach Tips"
             className="p-1.5 rounded-lg hover:bg-surface-2 text-muted hover:text-white/70 transition-all"
@@ -149,6 +204,77 @@ export default function OutreachTab() {
           </button>
         ))}
       </div>
+
+      {/* Auto-Research progress */}
+      {(researching || researchResult) && (
+        <div className="mb-4 p-3 rounded-xl bg-surface-1/50 border border-white/[0.06]">
+          {researching && researchProgress && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <svg className="w-4 h-4 animate-spin text-accent-emerald" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  <span className="text-xs text-white/70">{researchProgress.message}</span>
+                </div>
+                <span className={cn(
+                  'text-[9px] px-1.5 py-0.5 rounded font-medium',
+                  researchProgress.phase === 'discover' ? 'bg-accent-blue/20 text-accent-blue' : 'bg-accent-purple/20 text-accent-purple'
+                )}>
+                  {researchProgress.phase === 'discover' ? 'Discovering' : 'Enriching'}
+                </span>
+              </div>
+              {researchProgress.totalCategories && (
+                <div className="h-1.5 bg-surface-3 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-accent-emerald rounded-full transition-all duration-500"
+                    style={{ width: `${researchProgress.phase === 'discover'
+                      ? (researchProgress.categoryIndex / researchProgress.totalCategories) * 50
+                      : 50 + (researchProgress.current / researchProgress.total) * 50
+                    }%` }}
+                  />
+                </div>
+              )}
+              {researchProgress.total && (
+                <div className="h-1.5 bg-surface-3 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-accent-emerald rounded-full transition-all duration-500"
+                    style={{ width: `${(researchProgress.current / researchProgress.total) * 100}%` }}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+          {researching && !researchProgress && (
+            <div className="flex items-center gap-2">
+              <svg className="w-4 h-4 animate-spin text-accent-emerald" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              <span className="text-xs text-white/70">Starting auto-research...</span>
+            </div>
+          )}
+          {!researching && researchResult && (
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <svg className="w-4 h-4 text-accent-emerald" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span className="text-xs text-white/70">
+                  {researchResult.discovered} businesses found, {researchResult.enriched} enriched, {researchResult.contactsFound} contacts, {researchResult.socialLinksFound} social links
+                </span>
+              </div>
+              <button
+                onClick={() => setResearchResult(null)}
+                className="text-[10px] text-muted hover:text-white/70 transition-all"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Active sub-view */}
       <div className="flex-1 overflow-auto">
