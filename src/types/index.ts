@@ -623,6 +623,67 @@ export interface BankTransaction {
   importedAt: string
 }
 
+// Outreach Types
+export type OutreachBusinessStatus = 'New' | 'Contacted' | 'Responded' | 'Not Interested' | 'Meeting Scheduled'
+export type OutreachChannel = 'email' | 'linkedin' | 'instagram' | 'facebook' | 'twitter' | 'website'
+
+export interface OutreachBusiness {
+  id: string
+  name: string
+  address: string
+  phone: string
+  website: string
+  category: string
+  source: string
+  lat: number | null
+  lng: number | null
+  rating: number | null
+  reviewCount: number | null
+  socialLinks: Record<string, string>
+  status: OutreachBusinessStatus
+  notes: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface OutreachContact {
+  id: string
+  businessId: string
+  name: string
+  title: string
+  email: string
+  linkedinUrl: string
+  source: string
+  createdAt: string
+}
+
+export interface OutreachMessage {
+  id: string
+  businessId: string
+  contactId: string | null
+  channel: OutreachChannel
+  messageText: string
+  status: string
+  sentAt: string | null
+  respondedAt: string | null
+  createdAt: string
+}
+
+export interface OutreachTemplate {
+  id: string
+  name: string
+  channel: OutreachChannel
+  subject: string
+  body: string
+  variables: string[]
+  createdAt: string
+}
+
+export interface OutreachPipelineStats {
+  status: OutreachBusinessStatus
+  count: number
+}
+
 // Content Writer Types
 export type ContentType = 'tweet' | 'thread' | 'blog_post' | 'article' | 'discord_post' | 'newsletter'
 

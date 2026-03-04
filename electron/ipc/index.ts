@@ -12,6 +12,7 @@ import { registerBankSyncHandlers } from './bank-sync'
 import { registerNetworkHandlers } from './network'
 import { registerSocialHandlers } from './social'
 import { registerContentHandlers } from './content'
+import { registerOutreachHandlers } from './outreach'
 
 export function registerAllHandlers(mainWindow: BrowserWindow) {
   registerTaskHandlers(mainWindow)
@@ -27,4 +28,5 @@ export function registerAllHandlers(mainWindow: BrowserWindow) {
   registerNetworkHandlers(mainWindow)
   registerSocialHandlers(mainWindow)
   registerContentHandlers(mainWindow)
+  registerOutreachHandlers(mainWindow)
 }
