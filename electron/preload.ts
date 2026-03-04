@@ -433,8 +433,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   createTemplate: (data: any) => ipcRenderer.invoke('create-template', data),
   updateTemplate: (id: string, updates: any) => ipcRenderer.invoke('update-template', id, updates),
   deleteTemplate: (id: string) => ipcRenderer.invoke('delete-template', id),
-  generateMessage: (templateId: string, variables: Record<string, string>) => ipcRenderer.invoke('generate-message', templateId, variables),
+  generateMessage: (templateId: string, businessId: string, options?: any) => ipcRenderer.invoke('generate-message', templateId, businessId, options),
+  generateBatchMessages: (businessIds: string[], templateId: string, options?: any) => ipcRenderer.invoke('generate-batch-messages', businessIds, templateId, options),
   getOutreachPipelineStats: () => ipcRenderer.invoke('get-pipeline-stats'),
+  onBatchMessageProgress: (callback: (data: { current: number; total: number; businessName: string }) => void) => {
+    const handler = (_: any, data: any) => callback(data)
+    ipcRenderer.on('batch-message-progress', handler)
+    return () => { ipcRenderer.removeListener('batch-message-progress', handler) }
+  },
 
   // Clipboard
   readClipboard: () => ipcRenderer.sendSync('read-clipboard'),

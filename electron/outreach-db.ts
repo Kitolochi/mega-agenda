@@ -2,6 +2,7 @@ import path from 'path'
 import crypto from 'crypto'
 import { app } from 'electron'
 import Database from 'better-sqlite3'
+import { DEFAULT_TEMPLATES } from './outreach-templates'
 
 // ── Types ──
 
@@ -393,37 +394,6 @@ export function seedDefaultTemplates(): void {
   const count = db.prepare('SELECT COUNT(*) as cnt FROM templates').get() as { cnt: number }
   if (count.cnt > 0) return
 
-  const defaults: Array<{ name: string; channel: OutreachChannel; subject: string; body: string; variables: string[] }> = [
-    {
-      name: 'Cold Email Introduction',
-      channel: 'email',
-      subject: 'Partnership Opportunity with {{businessName}}',
-      body: 'Hi {{contactName}},\n\nI came across {{businessName}} and was impressed by {{personalNote}}.\n\nI would love to explore how we could work together.\n\nBest regards',
-      variables: ['businessName', 'contactName', 'personalNote'],
-    },
-    {
-      name: 'LinkedIn Connection Request',
-      channel: 'linkedin',
-      subject: '',
-      body: 'Hi {{contactName}}, I noticed we share an interest in {{industry}}. I would love to connect and explore potential synergies between our work.',
-      variables: ['contactName', 'industry'],
-    },
-    {
-      name: 'Follow-up Email',
-      channel: 'email',
-      subject: 'Following up — {{businessName}}',
-      body: 'Hi {{contactName}},\n\nI wanted to follow up on my previous message about {{topic}}.\n\nWould you have 15 minutes this week for a quick call?\n\nBest regards',
-      variables: ['contactName', 'businessName', 'topic'],
-    },
-    {
-      name: 'Instagram DM',
-      channel: 'instagram',
-      subject: '',
-      body: 'Hey {{contactName}}! Love what you are doing at {{businessName}}. Would love to chat about a potential collaboration. Are you open to connecting?',
-      variables: ['contactName', 'businessName'],
-    },
-  ]
-
   const insert = db.prepare(`
     INSERT INTO templates (id, name, channel, subject, body, variables, createdAt)
     VALUES (@id, @name, @channel, @subject, @body, @variables, @createdAt)
@@ -431,7 +401,7 @@ export function seedDefaultTemplates(): void {
 
   const ts = now()
   const seedAll = db.transaction(() => {
-    for (const t of defaults) {
+    for (const t of DEFAULT_TEMPLATES) {
       insert.run({
         id: crypto.randomUUID(),
         name: t.name,
