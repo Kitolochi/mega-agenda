@@ -320,5 +320,22 @@ export function installElectronMock() {
     syncAllBankConnections: noop as any,
     getBankAccounts: emptyArray as any,
     getBankTransactions: emptyArray as any,
+
+    // Content Writer
+    getContentDrafts: emptyArray as any,
+    getContentDraft: async () => null,
+    createContentDraft: async () => ({ id: 'mock', contentType: 'tweet', topic: '', research: '', outline: '', content: '', messages: [], status: 'researching', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }),
+    updateContentDraft: async () => null,
+    deleteContentDraft: noop as any,
+    contentResearch: noop as any,
+    contentResearchAbort: noop as any,
+    contentGenerate: noop as any,
+    contentAbort: noop as any,
+    onContentResearchChunk: noopUnsub as any,
+    onContentResearchEnd: noopUnsub as any,
+    onContentResearchError: noopUnsub as any,
+    onContentStreamChunk: noopUnsub as any,
+    onContentStreamEnd: noopUnsub as any,
+    onContentStreamError: noopUnsub as any,
   } as any
 }
