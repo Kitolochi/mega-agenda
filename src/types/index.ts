@@ -1041,6 +1041,10 @@ export interface ElectronAPI {
   getOutreachBusinessCount: () => Promise<number>
   onSeedProgress: (callback: (data: { category: string; categoryIndex: number; totalCategories: number; imported: number; totalImported: number }) => void) => () => void
 
+  // Auto-Research
+  runAutoResearch: () => Promise<{ discovered: number; enriched: number; contactsFound: number; socialLinksFound: number; error?: string }>
+  onAutoResearchProgress: (callback: (data: { phase: string; status: string; message: string; [key: string]: any }) => void) => () => void
+
   // Outreach
   searchBusinesses: (query: string, location?: string) => Promise<OutreachBusiness[]>
   scrapeBusinesses: (urls: string[]) => Promise<OutreachBusiness[]>

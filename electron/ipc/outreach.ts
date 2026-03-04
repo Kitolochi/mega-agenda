@@ -23,6 +23,7 @@ import {
 import type { OutreachSettings } from '../outreach-db'
 import { generatePersonalizedMessage, generateBatchMessages } from '../outreach-messages'
 import { seedCharlotteBusinesses } from '../outreach-seed'
+import { enrichBusinesses } from '../outreach-enrichment'
 
 function httpsGetStatus(url: string): Promise<{ ok: boolean; status: number; body: string }> {
   return new Promise((resolve) => {
@@ -104,6 +105,85 @@ export function registerOutreachHandlers(mainWindow: BrowserWindow) {
       }
     })
     return result
+  })
+
+  // ── Auto-Research (full pipeline: discover + enrich) ──
+  ipcMain.handle('run-auto-research', async () => {
+    const send = (data: any) => {
+      if (!mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('auto-research-progress', data)
+      }
+    }
+
+    // Phase 1: Discover businesses
+    send({ phase: 'discover', status: 'starting', message: 'Starting business discovery...' })
+    let discovered = 0
+    try {
+      const seedResult = await seedCharlotteBusinesses((progress) => {
+        send({
+          phase: 'discover',
+          status: 'running',
+          message: `Searching: ${progress.category}`,
+          category: progress.category,
+          categoryIndex: progress.categoryIndex,
+          totalCategories: progress.totalCategories,
+          imported: progress.totalImported,
+        })
+      })
+      discovered = seedResult.totalImported
+      send({ phase: 'discover', status: 'done', message: `Found ${discovered} businesses`, imported: discovered })
+    } catch (err: any) {
+      send({ phase: 'discover', status: 'error', message: err.message || 'Discovery failed' })
+      return { discovered: 0, enriched: 0, contactsFound: 0, socialLinksFound: 0, error: err.message }
+    }
+
+    // Phase 2: Enrich all "New" businesses
+    const newBusinesses = getBusinesses({ status: 'New' })
+    if (newBusinesses.length === 0) {
+      send({ phase: 'enrich', status: 'done', message: 'No new businesses to enrich' })
+      return { discovered, enriched: 0, contactsFound: 0, socialLinksFound: 0 }
+    }
+
+    send({ phase: 'enrich', status: 'starting', message: `Enriching ${newBusinesses.length} businesses...` })
+    const apolloKey = getOutreachSetting('apollo_api_key')
+
+    try {
+      const enrichResult = await enrichBusinesses(
+        newBusinesses.map(b => b.id),
+        {
+          socialLinks: true,
+          contacts: !!apolloKey,
+          apolloApiKey: apolloKey || undefined,
+          delayBetweenBusinesses: 1500,
+          delayBetweenRequests: 800,
+        },
+        (progress) => {
+          send({
+            phase: 'enrich',
+            status: 'running',
+            message: `Enriching: ${progress.businessName} (${progress.phase})`,
+            current: progress.current,
+            total: progress.total,
+            businessName: progress.businessName,
+            enrichPhase: progress.phase,
+          })
+        },
+      )
+      send({
+        phase: 'enrich',
+        status: 'done',
+        message: `Enriched ${enrichResult.enriched} businesses`,
+      })
+      return {
+        discovered,
+        enriched: enrichResult.enriched,
+        contactsFound: enrichResult.contactsFound,
+        socialLinksFound: enrichResult.socialLinksFound,
+      }
+    } catch (err: any) {
+      send({ phase: 'enrich', status: 'error', message: err.message || 'Enrichment failed' })
+      return { discovered, enriched: 0, contactsFound: 0, socialLinksFound: 0, error: err.message }
+    }
   })
 
   // Search & Scrape (placeholders)

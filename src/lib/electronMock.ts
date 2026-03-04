@@ -329,6 +329,10 @@ export function installElectronMock() {
     getOutreachBusinessCount: async () => 0,
     onSeedProgress: noopUnsub as any,
 
+    // Auto-Research
+    runAutoResearch: async () => ({ discovered: 0, enriched: 0, contactsFound: 0, socialLinksFound: 0 }),
+    onAutoResearchProgress: noopUnsub as any,
+
     // Outreach
     searchBusinesses: emptyArray as any,
     scrapeBusinesses: emptyArray as any,

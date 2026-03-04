@@ -428,6 +428,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => { ipcRenderer.removeListener('seed-progress', handler) }
   },
 
+  // Auto-Research
+  runAutoResearch: () => ipcRenderer.invoke('run-auto-research'),
+  onAutoResearchProgress: (callback: (data: any) => void) => {
+    const handler = (_: any, data: any) => callback(data)
+    ipcRenderer.on('auto-research-progress', handler)
+    return () => { ipcRenderer.removeListener('auto-research-progress', handler) }
+  },
+
   // Outreach
   searchBusinesses: (query: string, location?: string) => ipcRenderer.invoke('search-businesses', query, location),
   scrapeBusinesses: (urls: string[]) => ipcRenderer.invoke('scrape-businesses', urls),
