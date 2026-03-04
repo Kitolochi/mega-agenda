@@ -7,3 +7,8 @@ release/
 .DS_Store
 Thumbs.db
 nul
+
+# Python sidecar
+python/.venv/
+python/__pycache__/
+*.pyc
