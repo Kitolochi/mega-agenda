@@ -623,6 +623,29 @@ export interface BankTransaction {
   importedAt: string
 }
 
+// Content Writer Types
+export type ContentType = 'tweet' | 'thread' | 'blog_post' | 'article' | 'discord_post' | 'newsletter'
+
+export interface ContentMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  timestamp: string
+}
+
+export interface ContentDraft {
+  id: string
+  contentType: ContentType
+  topic: string
+  research: string
+  outline: string
+  content: string
+  messages: ContentMessage[]
+  status: 'researching' | 'outlined' | 'drafting' | 'refining' | 'ready'
+  createdAt: string
+  updatedAt: string
+}
+
 export interface ElectronAPI {
   // Task operations
   getCategories: () => Promise<Category[]>
@@ -914,6 +937,23 @@ export interface ElectronAPI {
   smsDetectDb: () => Promise<{ found: boolean; path: string | null }>
   getSocialSyncStatus: (connectionId: string) => Promise<{ status: SocialConnectionStatus; lastSyncAt: string | null }>
   twitterSyncContacts: () => Promise<{ newContacts: number; newInteractions: number }>
+
+  // Content Writer
+  getContentDrafts: () => Promise<ContentDraft[]>
+  getContentDraft: (id: string) => Promise<ContentDraft | null>
+  createContentDraft: (topic?: string) => Promise<ContentDraft>
+  updateContentDraft: (id: string, updates: Partial<ContentDraft>) => Promise<ContentDraft | null>
+  deleteContentDraft: (id: string) => Promise<void>
+  contentResearch: (draftId: string, topic: string) => Promise<void>
+  contentResearchAbort: () => Promise<void>
+  contentGenerate: (draftId: string, messages: { role: string; content: string }[], contentType: ContentType) => Promise<void>
+  contentAbort: () => Promise<void>
+  onContentResearchChunk: (callback: (data: { draftId: string; text: string }) => void) => () => void
+  onContentResearchEnd: (callback: (data: { draftId: string }) => void) => () => void
+  onContentResearchError: (callback: (data: { draftId: string; error: string }) => void) => () => void
+  onContentStreamChunk: (callback: (data: { draftId: string; text: string }) => void) => () => void
+  onContentStreamEnd: (callback: (data: { draftId: string }) => void) => () => void
+  onContentStreamError: (callback: (data: { draftId: string; error: string }) => void) => () => void
 
   // Bank Sync
   getBankConnections: () => Promise<BankConnection[]>

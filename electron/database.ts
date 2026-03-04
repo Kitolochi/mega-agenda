@@ -367,6 +367,26 @@ interface PipelineCard {
   updatedAt: string
 }
 
+interface ContentMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  timestamp: string
+}
+
+interface ContentDraft {
+  id: string
+  contentType: 'tweet' | 'thread' | 'blog_post' | 'article' | 'discord_post' | 'newsletter'
+  topic: string
+  research: string
+  outline: string
+  content: string
+  messages: ContentMessage[]
+  status: 'researching' | 'outlined' | 'drafting' | 'refining' | 'ready'
+  createdAt: string
+  updatedAt: string
+}
+
 interface Database {
   categories: Category[]
   tasks: Task[]
@@ -403,6 +423,7 @@ interface Database {
   pipelineCards: PipelineCard[]
   socialConnections: SocialConnection[]
   contactMappings: ContactMapping[]
+  contentDrafts: ContentDraft[]
 }
 
 let db: Database
@@ -770,6 +791,12 @@ export function initDatabase(): Database {
   // Initialize contactMappings if missing
   if (!(db as any).contactMappings) {
     db.contactMappings = []
+    saveDatabase()
+  }
+
+  // Initialize contentDrafts if missing
+  if (!(db as any).contentDrafts) {
+    db.contentDrafts = []
     saveDatabase()
   }
 
@@ -2223,6 +2250,55 @@ export function createContactMapping(data: Omit<ContactMapping, 'id' | 'createdA
 
 export function deleteContactMapping(id: string): void {
   db.contactMappings = db.contactMappings.filter(m => m.id !== id)
+  saveDatabase()
+}
+
+// ── Content Drafts CRUD ──
+
+export function getContentDrafts(): ContentDraft[] {
+  return (db.contentDrafts || [])
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+}
+
+export function getContentDraft(id: string): ContentDraft | null {
+  return db.contentDrafts.find(d => d.id === id) || null
+}
+
+export function createContentDraft(topic?: string): ContentDraft {
+  const draft: ContentDraft = {
+    id: generateId(),
+    contentType: 'tweet',
+    topic: topic || '',
+    research: '',
+    outline: '',
+    content: '',
+    messages: [],
+    status: 'researching',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  }
+  db.contentDrafts.push(draft)
+  saveDatabase()
+  return draft
+}
+
+export function updateContentDraft(id: string, updates: Partial<ContentDraft>): ContentDraft | null {
+  const draft = db.contentDrafts.find(d => d.id === id)
+  if (!draft) return null
+  if (updates.contentType !== undefined) draft.contentType = updates.contentType
+  if (updates.topic !== undefined) draft.topic = updates.topic
+  if (updates.research !== undefined) draft.research = updates.research
+  if (updates.outline !== undefined) draft.outline = updates.outline
+  if (updates.content !== undefined) draft.content = updates.content
+  if (updates.messages !== undefined) draft.messages = updates.messages
+  if (updates.status !== undefined) draft.status = updates.status
+  draft.updatedAt = new Date().toISOString()
+  saveDatabase()
+  return draft
+}
+
+export function deleteContentDraft(id: string): void {
+  db.contentDrafts = db.contentDrafts.filter(d => d.id !== id)
   saveDatabase()
 }
 
