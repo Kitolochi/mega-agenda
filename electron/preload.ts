@@ -415,7 +415,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   syncAllBankConnections: () => ipcRenderer.invoke('sync-all-bank-connections'),
   getBankAccounts: () => ipcRenderer.invoke('get-bank-accounts'),
   getBankTransactions: (accountId?: string, limit?: number) => ipcRenderer.invoke('get-bank-transactions', accountId, limit),
-n  // Outreach
+
+  // Outreach
   searchBusinesses: (query: string, location?: string) => ipcRenderer.invoke('search-businesses', query, location),
   scrapeBusinesses: (urls: string[]) => ipcRenderer.invoke('scrape-businesses', urls),
   getBusinesses: (filters?: any) => ipcRenderer.invoke('get-businesses', filters),
