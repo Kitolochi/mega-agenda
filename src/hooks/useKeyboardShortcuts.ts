@@ -8,6 +8,7 @@ const TAB_SHORTCUTS: Record<string, Tab> = {
   t: 'tasks',
   l: 'list',
   j: 'notes',
+  b: 'accounts',
   f: 'feed',
   m: 'social',
   h: 'chat',
