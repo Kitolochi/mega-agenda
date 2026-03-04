@@ -15,7 +15,39 @@ try {
 }
 
 const CONTENT_TYPE_INSTRUCTIONS: Record<string, string> = {
-  tweet: 'Write a single tweet (max 280 characters). Punchy, no hashtags, 1-2 emojis max. Use the brand emoji 🌱 when appropriate.',
+  tweet: `Write 5 tweet variations (max 280 chars each). Each MUST use a different rhetorical device:
+
+RHETORICAL TOOLKIT — pick one per variation:
+- Antithesis: juxtapose two opposites ("X does Y. We do Z.")
+- Tricolon: three-part rhythm ("Borrow. Build. Get repaid.")
+- Question-as-hook: provocative question that reframes ("What if your loan paid YOU?")
+- Anaphora: repeated opening ("Every loan charges interest. Every loan demands repayment. Every loan... until now.")
+- Epistrophe: repeated ending for emphasis
+- Setup→Twist: conventional wisdom flipped ("Banks profit from your debt. We profit from repaying it.")
+- One-liner: single powerful sentence, period ("Loans that repay themselves. That's it. That's the tweet.")
+- Analogy: unexpected comparison from outside crypto
+- Wordplay: pun on brand terms (Super-, seed, etc.)
+- Future-as-present: state the vision as fact ("Your loan is repaying itself right now.")
+
+CONSTRAINTS:
+- 280 characters MAX per variation. Count carefully.
+- No hashtags. Zero.
+- 0-2 emojis max. 🌱 when on-brand.
+- Every word must earn its place.
+- Lead with the most surprising/contrarian angle.
+- End with tension, curiosity, or a mic-drop.
+
+OUTPUT FORMAT:
+---
+**1. [Device Name]**
+[tweet text]
+[X/280 chars]
+
+**2. [Device Name]**
+...
+---
+
+Generate 5 variations, each a genuinely different angle on the topic.`,
   thread: 'Write a Twitter/X thread of 3-8 tweets. Each tweet max 280 chars. Start with a strong hook. End with a CTA. Use "1/" numbering. Cliffhangers between posts.',
   blog_post: 'Write a blog post (800-1500 words). Use markdown formatting. Structure: hook → problem → mechanism → vision → CTA. Use short-long sentence rhythm.',
   article: 'Write a long-form article (1500-3000 words). Deep technical content with accessible entry points. Use headers, subheaders. Progressive disclosure of complexity.',

@@ -128,7 +128,7 @@ export const useContentStore = create<ContentState>((set, get) => ({
   },
 
   handleQuickAction: async (action: string) => {
-    const actionPrompts: Record<string, string> = {
+    const genericPrompts: Record<string, string> = {
       shorter: 'Make this significantly shorter and more concise while keeping the key message.',
       punchier: 'Make this punchier and more impactful. Stronger opening, tighter language.',
       hook: 'Rewrite with a much stronger hook/opening that grabs attention immediately.',
@@ -136,7 +136,16 @@ export const useContentStore = create<ContentState>((set, get) => ({
       simpler: 'Simplify this for a broader audience. Less jargon, more accessible language.',
       contrarian: 'Rewrite with a more contrarian angle. Challenge conventional wisdom.',
     }
-    const prompt = actionPrompts[action]
+    const tweetPrompts: Record<string, string> = {
+      provocative: 'Rewrite to be more provocative and challenge conventional thinking. Make people stop scrolling.',
+      flip: 'Flip the framing completely — approach from the opposite angle or an unexpected perspective.',
+      emotional: 'Shift from logical/rational to emotional register. Appeal to freedom, sovereignty, fairness.',
+      wordplay: 'Rewrite using clever wordplay, puns on brand terms (Super-, seed, Superseed), or linguistic tricks.',
+      mic_drop: 'Rewrite as a single devastating one-liner. Maximum impact, minimum words.',
+      shorter: 'Make this significantly shorter and more concise while keeping the key message.',
+    }
+    const prompts = get().contentType === 'tweet' ? tweetPrompts : genericPrompts
+    const prompt = prompts[action]
     if (prompt) await get().handleRefine(prompt)
   },
 

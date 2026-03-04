@@ -23,6 +23,90 @@ const QUICK_ACTIONS = [
   { id: 'contrarian', label: 'Contrarian' },
 ]
 
+const TWEET_QUICK_ACTIONS = [
+  { id: 'provocative', label: 'Provocative' },
+  { id: 'flip', label: 'Flip It' },
+  { id: 'emotional', label: 'Emotional' },
+  { id: 'wordplay', label: 'Wordplay' },
+  { id: 'mic_drop', label: 'Mic Drop' },
+  { id: 'shorter', label: 'Shorter' },
+]
+
+function parseTweetBlocks(text: string) {
+  const blocks = text.split(/(?=\*\*\d+\.\s)/).filter(b => b.trim())
+  return blocks.map((block) => {
+    const lines = block.trim().split('\n').filter(l => l.trim())
+    // First line is the **N. Device Name** header
+    const headerMatch = lines[0]?.match(/^\*\*\d+\.\s*(.+?)\*\*$/)
+    const device = headerMatch ? headerMatch[1].trim() : ''
+    // Tweet text: skip header, skip char count line, skip ---
+    const tweetLines = lines.filter(
+      l => !l.match(/^\*\*\d+\./) && !l.match(/^\d+\/280/) && !l.match(/^---/)
+    )
+    const tweetText = tweetLines.join('\n').trim()
+    return { device, tweetText }
+  })
+}
+
+function TweetCards({ text }: { text: string }) {
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null)
+  const blocks = parseTweetBlocks(text)
+
+  const copyOne = (tweetText: string, idx: number) => {
+    window.electronAPI.writeClipboard(tweetText)
+    setCopiedIdx(idx)
+    setTimeout(() => setCopiedIdx(null), 2000)
+  }
+
+  if (blocks.length <= 1) {
+    // Single tweet or unstructured — render as-is with char count
+    const plain = text.replace(/\*\*.*?\*\*/g, '').replace(/---/g, '').trim()
+    const len = plain.length
+    return (
+      <div>
+        <div
+          className="text-[12px] text-white/85 leading-relaxed content-markdown"
+          dangerouslySetInnerHTML={{ __html: renderMarkdown(text) }}
+        />
+        <div className={`text-[10px] mt-2 ${len > 280 ? 'text-accent-red' : 'text-white/30'}`}>
+          {len}/280 chars
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      {blocks.map((block, i) => {
+        const len = block.tweetText.length
+        return (
+          <div key={i} className="bg-surface-2 border border-white/[0.06] rounded-lg p-3 space-y-2">
+            {block.device && (
+              <div className="text-[10px] font-medium text-accent-blue/70 uppercase tracking-wider">
+                {block.device}
+              </div>
+            )}
+            <div className="text-[12px] text-white/85 leading-relaxed whitespace-pre-wrap">
+              {block.tweetText}
+            </div>
+            <div className="flex items-center justify-between">
+              <span className={`text-[10px] ${len > 280 ? 'text-accent-red' : 'text-white/30'}`}>
+                {len}/280 chars{len > 280 && ' ⚠'}
+              </span>
+              <button
+                onClick={() => copyOne(block.tweetText, i)}
+                className="text-[10px] text-white/30 hover:text-white/60 transition-colors"
+              >
+                {copiedIdx === i ? 'Copied!' : 'Copy'}
+              </button>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function ContentTab() {
   const {
     drafts, activeDraftId, contentType, topic, researchText, streamText,
@@ -197,10 +281,14 @@ export default function ContentTab() {
               </div>
             )}
             {streamText ? (
-              <div
-                className="text-[12px] text-white/85 leading-relaxed content-markdown"
-                dangerouslySetInnerHTML={{ __html: renderMarkdown(streamText) }}
-              />
+              contentType === 'tweet' && !streaming ? (
+                <TweetCards text={streamText} />
+              ) : (
+                <div
+                  className="text-[12px] text-white/85 leading-relaxed content-markdown"
+                  dangerouslySetInnerHTML={{ __html: renderMarkdown(streamText) }}
+                />
+              )
             ) : !streaming ? (
               <div className="flex items-center justify-center h-32 text-[11px] text-white/20">
                 {researchText ? 'Pick a format and generate a draft' : 'Research a topic first'}
@@ -222,7 +310,7 @@ export default function ContentTab() {
                 <>
                   <div className="text-[10px] font-medium text-white/40 uppercase tracking-wider">Quick Actions</div>
                   <div className="flex flex-wrap gap-1.5">
-                    {QUICK_ACTIONS.map(a => (
+                    {(contentType === 'tweet' ? TWEET_QUICK_ACTIONS : QUICK_ACTIONS).map(a => (
                       <button
                         key={a.id}
                         onClick={() => handleQuickAction(a.id)}
