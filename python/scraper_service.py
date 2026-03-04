@@ -12,7 +12,7 @@ import sys
 import re
 import traceback
 
-from scrapling import Fetcher, StealthFetcher
+from scrapling import Fetcher, StealthyFetcher
 
 
 VERSION = "1.0"
@@ -29,12 +29,12 @@ def health_check() -> dict:
 
 
 def scrape_yelp(category: str, location: str = "Charlotte NC", limit: int = 20) -> dict:
-    """Scrape Yelp search results using StealthFetcher (bot detection)."""
+    """Scrape Yelp search results using StealthyFetcher (bot detection)."""
     query = category.replace(" ", "+")
     loc = location.replace(" ", "+")
     url = f"https://www.yelp.com/search?find_desc={query}&find_loc={loc}"
 
-    fetcher = StealthFetcher()
+    fetcher = StealthyFetcher()
     page = fetcher.fetch(url)
 
     businesses = []
@@ -149,11 +149,11 @@ def scrape_social_links(url: str) -> dict:
 
 
 def scrape_google_search(query: str) -> dict:
-    """Scrape Google search results using StealthFetcher."""
+    """Scrape Google search results using StealthyFetcher."""
     encoded = query.replace(" ", "+")
     url = f"https://www.google.com/search?q={encoded}"
 
-    fetcher = StealthFetcher()
+    fetcher = StealthyFetcher()
     page = fetcher.fetch(url)
 
     results = []
