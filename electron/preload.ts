@@ -416,6 +416,32 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getBankAccounts: () => ipcRenderer.invoke('get-bank-accounts'),
   getBankTransactions: (accountId?: string, limit?: number) => ipcRenderer.invoke('get-bank-transactions', accountId, limit),
 
+  // Outreach
+  searchBusinesses: (query: string, location?: string) => ipcRenderer.invoke('search-businesses', query, location),
+  scrapeBusinesses: (urls: string[]) => ipcRenderer.invoke('scrape-businesses', urls),
+  getBusinesses: (filters?: any) => ipcRenderer.invoke('get-businesses', filters),
+  getBusiness: (id: string) => ipcRenderer.invoke('get-business', id),
+  importBusinesses: (businesses: any[]) => ipcRenderer.invoke('import-businesses', businesses),
+  updateBusiness: (id: string, updates: any) => ipcRenderer.invoke('update-business', id, updates),
+  deleteBusiness: (id: string) => ipcRenderer.invoke('delete-business', id),
+  enrichBusiness: (id: string) => ipcRenderer.invoke('enrich-business', id),
+  getBusinessContacts: (businessId: string) => ipcRenderer.invoke('get-business-contacts', businessId),
+  createContact: (data: any) => ipcRenderer.invoke('create-contact', data),
+  getOutreachHistory: (businessId: string) => ipcRenderer.invoke('get-outreach-history', businessId),
+  createOutreach: (data: any) => ipcRenderer.invoke('create-outreach', data),
+  getTemplates: () => ipcRenderer.invoke('get-templates'),
+  createTemplate: (data: any) => ipcRenderer.invoke('create-template', data),
+  updateTemplate: (id: string, updates: any) => ipcRenderer.invoke('update-template', id, updates),
+  deleteTemplate: (id: string) => ipcRenderer.invoke('delete-template', id),
+  generateMessage: (templateId: string, businessId: string, options?: any) => ipcRenderer.invoke('generate-message', templateId, businessId, options),
+  generateBatchMessages: (businessIds: string[], templateId: string, options?: any) => ipcRenderer.invoke('generate-batch-messages', businessIds, templateId, options),
+  getOutreachPipelineStats: () => ipcRenderer.invoke('get-pipeline-stats'),
+  onBatchMessageProgress: (callback: (data: { current: number; total: number; businessName: string }) => void) => {
+    const handler = (_: any, data: any) => callback(data)
+    ipcRenderer.on('batch-message-progress', handler)
+    return () => { ipcRenderer.removeListener('batch-message-progress', handler) }
+  },
+
   // Clipboard
   readClipboard: () => ipcRenderer.sendSync('read-clipboard'),
   writeClipboard: (text: string) => ipcRenderer.send('write-clipboard', text),

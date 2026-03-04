@@ -321,6 +321,26 @@ export function installElectronMock() {
     getBankAccounts: emptyArray as any,
     getBankTransactions: emptyArray as any,
 
+    // Outreach
+    searchBusinesses: emptyArray as any,
+    scrapeBusinesses: emptyArray as any,
+    getBusinesses: emptyArray as any,
+    getBusiness: async () => null,
+    importBusinesses: emptyArray as any,
+    updateBusiness: async () => null,
+    deleteBusiness: noop as any,
+    enrichBusiness: async () => null,
+    getBusinessContacts: emptyArray as any,
+    createContact: async (data: any) => ({ ...data, id: Date.now().toString(), createdAt: new Date().toISOString() }),
+    getOutreachHistory: emptyArray as any,
+    createOutreach: async (data: any) => ({ ...data, id: Date.now().toString(), createdAt: new Date().toISOString() }),
+    getTemplates: emptyArray as any,
+    createTemplate: async (data: any) => ({ ...data, id: Date.now().toString(), createdAt: new Date().toISOString() }),
+    updateTemplate: async () => null,
+    deleteTemplate: noop as any,
+    generateMessage: async () => '',
+    getOutreachPipelineStats: emptyArray as any,
+
     // Content Writer
     getContentDrafts: emptyArray as any,
     getContentDraft: async () => null,
