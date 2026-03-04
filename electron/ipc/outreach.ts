@@ -15,8 +15,9 @@ import {
   deleteTemplate,
   getPipelineStats,
 } from '../outreach-db'
+import { generatePersonalizedMessage, generateBatchMessages } from '../outreach-messages'
 
-export function registerOutreachHandlers(_mainWindow: BrowserWindow) {
+export function registerOutreachHandlers(mainWindow: BrowserWindow) {
   // Search & Scrape (placeholders)
   ipcMain.handle('search-businesses', async (_e, _query: string, _location?: string) => [])
   ipcMain.handle('scrape-businesses', async (_e, _urls: string[]) => [])
@@ -47,8 +48,36 @@ export function registerOutreachHandlers(_mainWindow: BrowserWindow) {
   ipcMain.handle('update-template', (_, id: string, updates: any) => updateTemplate(id, updates))
   ipcMain.handle('delete-template', (_, id: string) => deleteTemplate(id))
 
-  // AI message generation (placeholder)
-  ipcMain.handle('generate-message', async (_e, _templateId: string, _variables: Record<string, string>) => '')
+  // AI message generation
+  ipcMain.handle('generate-message', async (_, templateId: string, businessId: string, options: any) => {
+    const business = getBusiness(businessId)
+    if (!business) throw new Error(`Business not found: ${businessId}`)
+
+    const contacts = getBusinessContacts(businessId)
+    const contact = contacts.length > 0 ? contacts[0] : undefined
+
+    return generatePersonalizedMessage(templateId, business, contact, {
+      serviceOffering: options?.serviceOffering || '',
+      resumeLink: options?.resumeLink || '',
+    })
+  })
+
+  // Batch message generation
+  ipcMain.handle('generate-batch-messages', async (_, businessIds: string[], templateId: string, options: any) => {
+    return generateBatchMessages(
+      businessIds,
+      templateId,
+      {
+        serviceOffering: options?.serviceOffering || '',
+        resumeLink: options?.resumeLink || '',
+      },
+      (progress) => {
+        if (!mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('batch-message-progress', progress)
+        }
+      },
+    )
+  })
 
   // Pipeline stats
   ipcMain.handle('get-pipeline-stats', () => getPipelineStats())
