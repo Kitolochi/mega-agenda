@@ -320,7 +320,8 @@ export function installElectronMock() {
     syncAllBankConnections: noop as any,
     getBankAccounts: emptyArray as any,
     getBankTransactions: emptyArray as any,
-n    // Outreach
+
+    // Outreach
     searchBusinesses: emptyArray as any,
     scrapeBusinesses: emptyArray as any,
     getBusinesses: emptyArray as any,
