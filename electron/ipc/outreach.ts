@@ -19,6 +19,8 @@ import {
   getOutreachSetting,
   setOutreachSetting,
   getBusinessCount,
+  initOutreachTables,
+  seedDefaultTemplates,
 } from '../outreach-db'
 import type { OutreachSettings } from '../outreach-db'
 import { generatePersonalizedMessage, generateBatchMessages } from '../outreach-messages'
@@ -42,6 +44,9 @@ function httpsGetStatus(url: string): Promise<{ ok: boolean; status: number; bod
 }
 
 export function registerOutreachHandlers(mainWindow: BrowserWindow) {
+  initOutreachTables()
+  seedDefaultTemplates()
+
   // ── Settings ──
   ipcMain.handle('get-outreach-settings', () => getAllOutreachSettings())
 
