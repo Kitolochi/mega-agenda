@@ -39,12 +39,15 @@ function parseTweetBlocks(text: string) {
     // First line is the **N. Device Name** header
     const headerMatch = lines[0]?.match(/^\*\*\d+\.\s*(.+?)\*\*$/)
     const device = headerMatch ? headerMatch[1].trim() : ''
-    // Tweet text: skip header, skip char count line, skip ---
+    // Strategy line: italic line with engagement tag (starts with _ or contains · X/280)
+    const strategyLine = lines.find(l => l.match(/^_.*\d+\/280.*_$/) || l.match(/^_.*·.*_$/))
+    const strategy = strategyLine ? strategyLine.replace(/^_|_$/g, '').trim() : ''
+    // Tweet text: skip header, skip strategy line, skip char count line, skip ---
     const tweetLines = lines.filter(
-      l => !l.match(/^\*\*\d+\./) && !l.match(/^\d+\/280/) && !l.match(/^---/)
+      l => !l.match(/^\*\*\d+\./) && !l.match(/^\d+\/280/) && !l.match(/^---/) && l !== strategyLine
     )
     const tweetText = tweetLines.join('\n').trim()
-    return { device, tweetText }
+    return { device, tweetText, strategy }
   })
 }
 
@@ -89,6 +92,11 @@ function TweetCards({ text }: { text: string }) {
             <div className="text-[12px] text-white/85 leading-relaxed whitespace-pre-wrap">
               {block.tweetText}
             </div>
+            {block.strategy && (
+              <div className="text-[10px] text-white/40 italic border-t border-white/[0.04] pt-1.5">
+                {block.strategy}
+              </div>
+            )}
             <div className="flex items-center justify-between">
               <span className={`text-[10px] ${len > 280 ? 'text-accent-red' : 'text-white/30'}`}>
                 {len}/280 chars{len > 280 && ' ⚠'}

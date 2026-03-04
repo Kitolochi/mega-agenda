@@ -29,6 +29,13 @@ RHETORICAL TOOLKIT — pick one per variation:
 - Wordplay: pun on brand terms (Super-, seed, etc.)
 - Future-as-present: state the vision as fact ("Your loan is repaying itself right now.")
 
+ENGAGEMENT STRATEGY — tag each variation:
+- 💬 Reply-bait: provokes opinions, hot takes, "agree or disagree?" energy
+- 🔁 RT-magnet: quotable, makes the sharer look smart for amplifying
+- 💾 Save-worthy: insight or framework people bookmark for later
+- 👀 Scroll-stopper: visually/rhythmically arresting, pattern-interrupts the feed
+- 🧵 Thread-starter: leaves enough unsaid that replies beg for a thread
+
 CONSTRAINTS:
 - 280 characters MAX per variation. Count carefully.
 - No hashtags. Zero.
@@ -37,17 +44,17 @@ CONSTRAINTS:
 - Lead with the most surprising/contrarian angle.
 - End with tension, curiosity, or a mic-drop.
 
-OUTPUT FORMAT:
+OUTPUT FORMAT (follow exactly):
 ---
 **1. [Device Name]**
 [tweet text]
-[X/280 chars]
+_[engagement tag] · [X/280 chars] · Best when: [one-line posting context]_
 
 **2. [Device Name]**
 ...
 ---
 
-Generate 5 variations, each a genuinely different angle on the topic.`,
+Generate 5 variations, each a genuinely different angle AND engagement strategy on the topic.`,
   thread: 'Write a Twitter/X thread of 3-8 tweets. Each tweet max 280 chars. Start with a strong hook. End with a CTA. Use "1/" numbering. Cliffhangers between posts.',
   blog_post: 'Write a blog post (800-1500 words). Use markdown formatting. Structure: hook → problem → mechanism → vision → CTA. Use short-long sentence rhythm.',
   article: 'Write a long-form article (1500-3000 words). Deep technical content with accessible entry points. Use headers, subheaders. Progressive disclosure of complexity.',
