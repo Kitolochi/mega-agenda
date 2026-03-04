@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { cn } from '../utils/cn'
 
 // ============================================================
@@ -574,17 +574,14 @@ export function OutreachSettingsPanel({ onClose }: OutreachSettingsPanelProps) {
   const [googleKeyStatus, setGoogleKeyStatus] = useState<{ valid: boolean; message: string } | null>(null)
   const [apolloKeyStatus, setApolloKeyStatus] = useState<{ valid: boolean; message: string } | null>(null)
   const [validating, setValidating] = useState<'google' | 'apollo' | null>(null)
-  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     window.electronAPI.getOutreachSettings().then(setSettings)
   }, [])
 
   const handleSave = async (key: keyof OutreachSettingsData, value: string) => {
-    setSaving(true)
     setSettings(prev => ({ ...prev, [key]: value }))
     await window.electronAPI.setOutreachSetting(key, value)
-    setSaving(false)
   }
 
   const validateGoogleKey = async () => {
