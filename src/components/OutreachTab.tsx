@@ -53,7 +53,7 @@ export default function OutreachTab() {
   const [checkingOnboarding, setCheckingOnboarding] = useState(true)
   const [researching, setResearching] = useState(false)
   const [researchProgress, setResearchProgress] = useState<AutoResearchProgress | null>(null)
-  const [researchResult, setResearchResult] = useState<{ discovered: number; enriched: number; contactsFound: number; socialLinksFound: number } | null>(null)
+  const [researchResult, setResearchResult] = useState<{ discovered: number; enriched: number; contactsFound: number; socialLinksFound: number; error?: string } | null>(null)
 
   const checkOnboarding = useCallback(async () => {
     try {
@@ -93,6 +93,15 @@ export default function OutreachTab() {
   }, [])
 
   const handleAutoResearch = useCallback(async () => {
+    // Check for API key first
+    try {
+      const settings = await window.electronAPI.getOutreachSettings()
+      if (!settings.google_places_api_key) {
+        setResearchResult({ discovered: 0, enriched: 0, contactsFound: 0, socialLinksFound: 0, error: 'Google Places API key required. Click the gear icon to configure.' })
+        return
+      }
+    } catch { /* continue anyway */ }
+
     setResearching(true)
     setResearchProgress(null)
     setResearchResult(null)
@@ -101,6 +110,8 @@ export default function OutreachTab() {
       setResearchResult(result)
       fetchBusinesses()
       fetchPipelineStats()
+    } catch (err: any) {
+      setResearchResult({ discovered: 0, enriched: 0, contactsFound: 0, socialLinksFound: 0, error: err.message || 'Auto-research failed' })
     } finally {
       setResearching(false)
     }
@@ -258,19 +269,40 @@ export default function OutreachTab() {
           {!researching && researchResult && (
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <svg className="w-4 h-4 text-accent-emerald" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <span className="text-xs text-white/70">
-                  {researchResult.discovered} businesses found, {researchResult.enriched} enriched, {researchResult.contactsFound} contacts, {researchResult.socialLinksFound} social links
-                </span>
+                {researchResult.error ? (
+                  <>
+                    <svg className="w-4 h-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                    </svg>
+                    <span className="text-xs text-red-400">{researchResult.error}</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4 text-accent-emerald" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span className="text-xs text-white/70">
+                      {researchResult.discovered} businesses found, {researchResult.enriched} enriched, {researchResult.contactsFound} contacts, {researchResult.socialLinksFound} social links
+                    </span>
+                  </>
+                )}
               </div>
-              <button
-                onClick={() => setResearchResult(null)}
-                className="text-[10px] text-muted hover:text-white/70 transition-all"
-              >
-                Dismiss
-              </button>
+              <div className="flex items-center gap-2">
+                {researchResult.error && (
+                  <button
+                    onClick={() => { setResearchResult(null); setShowSettings(true) }}
+                    className="text-[10px] text-accent-blue hover:text-accent-blue/80 transition-all"
+                  >
+                    Open Settings
+                  </button>
+                )}
+                <button
+                  onClick={() => setResearchResult(null)}
+                  className="text-[10px] text-muted hover:text-white/70 transition-all"
+                >
+                  Dismiss
+                </button>
+              </div>
             </div>
           )}
         </div>
