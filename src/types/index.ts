@@ -1024,6 +1024,26 @@ export interface ElectronAPI {
   syncAllBankConnections: () => Promise<void>
   getBankAccounts: () => Promise<BankAccount[]>
   getBankTransactions: (accountId?: string, limit?: number) => Promise<BankTransaction[]>
+
+  // Outreach
+  searchBusinesses: (query: string, location?: string) => Promise<OutreachBusiness[]>
+  scrapeBusinesses: (urls: string[]) => Promise<OutreachBusiness[]>
+  getBusinesses: (filters?: any) => Promise<OutreachBusiness[]>
+  getBusiness: (id: string) => Promise<OutreachBusiness | null>
+  importBusinesses: (businesses: any[]) => Promise<OutreachBusiness[]>
+  updateBusiness: (id: string, updates: Partial<OutreachBusiness>) => Promise<OutreachBusiness | null>
+  deleteBusiness: (id: string) => Promise<void>
+  enrichBusiness: (id: string) => Promise<OutreachBusiness | null>
+  getBusinessContacts: (businessId: string) => Promise<OutreachContact[]>
+  createContact: (data: Omit<OutreachContact, 'id' | 'createdAt'>) => Promise<OutreachContact>
+  getOutreachHistory: (businessId: string) => Promise<OutreachMessage[]>
+  createOutreach: (data: Omit<OutreachMessage, 'id' | 'createdAt'>) => Promise<OutreachMessage>
+  getTemplates: () => Promise<OutreachTemplate[]>
+  createTemplate: (data: Omit<OutreachTemplate, 'id' | 'createdAt'>) => Promise<OutreachTemplate>
+  updateTemplate: (id: string, updates: Partial<OutreachTemplate>) => Promise<OutreachTemplate | null>
+  deleteTemplate: (id: string) => Promise<void>
+  generateMessage: (templateId: string, businessId: string, options?: any) => Promise<string>
+  getOutreachPipelineStats: () => Promise<OutreachPipelineStats[]>
 }
 
 declare global {
