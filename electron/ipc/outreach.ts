@@ -25,7 +25,6 @@ import {
 import type { OutreachSettings } from '../outreach-db'
 import { generatePersonalizedMessage, generateBatchMessages } from '../outreach-messages'
 import { seedCharlotteBusinesses } from '../outreach-seed'
-import { enrichBusinesses } from '../outreach-enrichment'
 
 function httpsGetStatus(url: string): Promise<{ ok: boolean; status: number; body: string }> {
   return new Promise((resolve) => {
@@ -44,8 +43,12 @@ function httpsGetStatus(url: string): Promise<{ ok: boolean; status: number; bod
 }
 
 export function registerOutreachHandlers(mainWindow: BrowserWindow) {
-  initOutreachTables()
-  seedDefaultTemplates()
+  try {
+    initOutreachTables()
+    seedDefaultTemplates()
+  } catch (err) {
+    console.error('[outreach] Failed to initialize database:', err)
+  }
 
   // ── Settings ──
   ipcMain.handle('get-outreach-settings', () => getAllOutreachSettings())
@@ -153,6 +156,7 @@ export function registerOutreachHandlers(mainWindow: BrowserWindow) {
     const apolloKey = getOutreachSetting('apollo_api_key')
 
     try {
+      const { enrichBusinesses } = await import('../outreach-enrichment')
       const enrichResult = await enrichBusinesses(
         newBusinesses.map(b => b.id),
         {
