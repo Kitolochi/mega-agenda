@@ -148,10 +148,29 @@ export function streamContentDraft(
 
   const typeInstruction = CONTENT_TYPE_INSTRUCTIONS[contentType] || CONTENT_TYPE_INSTRUCTIONS.tweet
 
+  const tweetOverride = contentType === 'tweet' ? `
+
+CRITICAL OVERRIDE FOR TWEETS:
+The voice research above describes Superseed's general brand voice. For tweets, IGNORE the language style and vocabulary from the voice research. Use it ONLY for factual context (what products exist, what they do, roadmap facts).
+
+DO NOT use these words/phrases in tweets: "financial primitive", "protocol revenue", "flywheel", "TVL", "composable", "ecosystem", "infrastructure", "onchain individual", "governance", "OP Stack", "Superchain", "collateralization", "liquidity", "yield optimization", "DeFi", "stablecoin-focused money market", "revenue-generating", "tokenomics".
+
+INSTEAD translate everything into plain English:
+- "protocol revenue" → "the money the app makes"
+- "self-repaying loans" → "loans that pay themselves off" (this one is already simple enough)
+- "TVL" → "money people have deposited"
+- "yield" → "earnings" or "returns"
+- "collateral" → "what you put up"
+- "DeFi" → just describe what it does, don't label the category
+- "stablecoin" → "digital dollar" or just "dollar"
+
+Write like you're texting a smart friend who knows nothing about crypto. Every tweet should be instantly understandable by someone who has never heard of blockchain.` : ''
+
   const system = `${BASE_SYSTEM_PROMPT}
 
 FORMAT INSTRUCTIONS:
 ${typeInstruction}
+${tweetOverride}
 
 Write the content directly. Do not include meta-commentary like "Here's a tweet:" — just output the content itself.`
 
