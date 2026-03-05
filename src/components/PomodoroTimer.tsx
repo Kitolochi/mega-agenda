@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { PomodoroState, Task } from '../types'
+import { PomodoroState, PomodoroStats, Task } from '../types'
 
 interface PomodoroTimerProps {
   tasks: Task[]
@@ -10,6 +10,8 @@ export default function PomodoroTimer({ tasks }: PomodoroTimerProps) {
   const [timeLeft, setTimeLeft] = useState<string>('')
   const [showPicker, setShowPicker] = useState(false)
   const [search, setSearch] = useState('')
+  const [stats, setStats] = useState<PomodoroStats | null>(null)
+  const [showStats, setShowStats] = useState(false)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const pickerRef = useRef<HTMLDivElement>(null)
 
@@ -18,7 +20,17 @@ export default function PomodoroTimer({ tasks }: PomodoroTimerProps) {
     setState(s)
   }, [])
 
+  const loadStats = useCallback(async () => {
+    const s = await window.electronAPI.getPomodoroStats()
+    setStats(s)
+  }, [])
+
   useEffect(() => { loadState() }, [loadState])
+
+  // Load stats when picker opens
+  useEffect(() => {
+    if (showPicker) loadStats()
+  }, [showPicker, loadStats])
 
   // Timer countdown using absolute timestamps
   useEffect(() => {
@@ -49,8 +61,19 @@ export default function PomodoroTimer({ tasks }: PomodoroTimerProps) {
   const handleSessionEnd = async () => {
     if (!state?.currentSession) return
     const wasWork = state.currentSession.type === 'work'
+    const session = state.currentSession
     const newState = await window.electronAPI.completePomodoro()
     setState(newState)
+
+    // Save session to history
+    await window.electronAPI.savePomodoroSession({
+      taskId: session.taskId,
+      taskTitle: session.taskTitle,
+      startedAt: session.startedAt,
+      completedAt: new Date().toISOString(),
+      durationMinutes: session.durationMinutes,
+      type: wasWork ? 'work' : 'break'
+    })
 
     if (wasWork) {
       await window.electronAPI.showNotification(
@@ -67,6 +90,9 @@ export default function PomodoroTimer({ tasks }: PomodoroTimerProps) {
         'Ready for another focus session?'
       )
     }
+
+    // Refresh stats after session completes
+    loadStats()
   }
 
   const handleStartPomodoro = async (task: Task | null) => {
@@ -116,6 +142,8 @@ export default function PomodoroTimer({ tasks }: PomodoroTimerProps) {
 
   const isRunning = state?.isRunning && state?.currentSession
   const isBreak = state?.currentSession?.type === 'short_break' || state?.currentSession?.type === 'long_break'
+
+  const hasStats = stats && (stats.todaySessions > 0 || stats.weekSessions > 0 || stats.streak > 0)
 
   return (
     <div className="relative" ref={pickerRef}>
@@ -188,7 +216,78 @@ export default function PomodoroTimer({ tasks }: PomodoroTimerProps) {
               <div className="px-3 py-3 text-xs text-muted text-center">No matching tasks</div>
             )}
           </div>
-          {state && state.totalSessionsToday > 0 && (
+
+          {/* Stats Toggle */}
+          {hasStats && (
+            <div className="border-t border-white/[0.04]">
+              <button
+                onClick={() => setShowStats(!showStats)}
+                className="w-full px-3 py-1.5 flex items-center justify-between text-[9px] text-muted hover:text-white/50 transition-colors"
+              >
+                <span>{stats.todaySessions} session{stats.todaySessions !== 1 ? 's' : ''} today</span>
+                <svg
+                  className={`w-2.5 h-2.5 transition-transform ${showStats ? 'rotate-180' : ''}`}
+                  fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              {/* Collapsible Stats Panel */}
+              {showStats && (
+                <div className="px-3 pb-2.5 space-y-2">
+                  {/* Today */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-[9px] text-white/40 uppercase tracking-wider">Today</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-accent-emerald font-medium">
+                        {stats.todaySessions} session{stats.todaySessions !== 1 ? 's' : ''}
+                      </span>
+                      <span className="text-[9px] text-white/30">
+                        {stats.todayMinutes} min
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* This Week */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-[9px] text-white/40 uppercase tracking-wider">This week</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-accent-blue font-medium">
+                        {stats.weekSessions} session{stats.weekSessions !== 1 ? 's' : ''}
+                      </span>
+                      <span className="text-[9px] text-white/30">
+                        {stats.weekMinutes} min
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Streak */}
+                  {stats.streak > 0 && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-[9px] text-white/40 uppercase tracking-wider">Streak</span>
+                      <span className="text-[10px] text-accent-amber font-medium">
+                        {stats.streak} day{stats.streak !== 1 ? 's' : ''}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Most Focused Task */}
+                  {stats.mostFocusedTask && (
+                    <div className="pt-1 border-t border-white/[0.04]">
+                      <span className="text-[9px] text-white/40 uppercase tracking-wider">Most focused</span>
+                      <div className="text-[10px] text-white/60 truncate mt-0.5">
+                        {stats.mostFocusedTask}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Fallback: show session count if no history stats yet */}
+          {!hasStats && state && state.totalSessionsToday > 0 && (
             <div className="px-3 py-1.5 border-t border-white/[0.04] text-[9px] text-muted text-center">
               {state.totalSessionsToday} session{state.totalSessionsToday !== 1 ? 's' : ''} today
             </div>

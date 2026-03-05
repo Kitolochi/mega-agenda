@@ -83,6 +83,16 @@ interface PomodoroState {
   todayDate: string
 }
 
+interface PomodoroHistoryRecord {
+  id: string
+  taskId: number | null
+  taskTitle: string
+  startedAt: string
+  completedAt: string
+  durationMinutes: number
+  type: 'work' | 'break'
+}
+
 interface MorningBriefing {
   date: string
   content: string
@@ -399,6 +409,7 @@ interface Database {
   tavilyApiKey: string
   activityLog: ActivityEntry[]
   pomodoroState: PomodoroState
+  pomodoroHistory: PomodoroHistoryRecord[]
   morningBriefings: MorningBriefing[]
   weeklyReviews: WeeklyReview[]
   chatConversations: ChatConversation[]
@@ -597,6 +608,12 @@ export function initDatabase(): Database {
       totalSessionsToday: 0,
       todayDate: new Date().toISOString().split('T')[0]
     }
+    saveDatabase()
+  }
+
+  // Initialize pomodoroHistory if missing
+  if (!db.pomodoroHistory) {
+    db.pomodoroHistory = []
     saveDatabase()
   }
 
@@ -1231,6 +1248,89 @@ export function stopPomodoro(): PomodoroState {
   db.pomodoroState.currentSession = null
   saveDatabase()
   return db.pomodoroState
+}
+
+// Pomodoro History functions
+export function savePomodoroSession(record: Omit<PomodoroHistoryRecord, 'id'>): PomodoroHistoryRecord {
+  const entry: PomodoroHistoryRecord = {
+    ...record,
+    id: generateId()
+  }
+  db.pomodoroHistory.push(entry)
+  saveDatabase()
+  return entry
+}
+
+export function getPomodoroStats(): {
+  todaySessions: number
+  todayMinutes: number
+  weekSessions: number
+  weekMinutes: number
+  streak: number
+  mostFocusedTask: string | null
+} {
+  const now = new Date()
+  const today = now.toISOString().split('T')[0]
+
+  // Week start (Monday)
+  const dayOfWeek = now.getDay()
+  const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
+  const monday = new Date(now)
+  monday.setDate(now.getDate() + mondayOffset)
+  const weekStart = monday.toISOString().split('T')[0]
+
+  const workSessions = (db.pomodoroHistory || []).filter(s => s.type === 'work')
+
+  // Today
+  const todaySessions = workSessions.filter(s => s.completedAt.startsWith(today))
+  const todayMinutes = todaySessions.reduce((sum, s) => sum + s.durationMinutes, 0)
+
+  // This week
+  const weekSessions = workSessions.filter(s => s.completedAt >= weekStart + 'T00:00:00')
+  const weekMinutes = weekSessions.reduce((sum, s) => sum + s.durationMinutes, 0)
+
+  // Streak: consecutive days with at least 1 work session
+  const sessionDates = new Set(workSessions.map(s => s.completedAt.split('T')[0]))
+  let streak = 0
+  const checkDate = new Date(now)
+  // Start from today and go backwards
+  while (true) {
+    const dateStr = checkDate.toISOString().split('T')[0]
+    if (sessionDates.has(dateStr)) {
+      streak++
+      checkDate.setDate(checkDate.getDate() - 1)
+    } else if (streak === 0 && dateStr === today) {
+      // Today has no sessions yet, check yesterday
+      checkDate.setDate(checkDate.getDate() - 1)
+    } else {
+      break
+    }
+  }
+
+  // Most focused task this week (by session count)
+  const taskCounts = new Map<string, number>()
+  weekSessions.forEach(s => {
+    if (s.taskTitle && s.taskTitle !== 'Free Focus') {
+      taskCounts.set(s.taskTitle, (taskCounts.get(s.taskTitle) || 0) + 1)
+    }
+  })
+  let mostFocusedTask: string | null = null
+  let maxCount = 0
+  taskCounts.forEach((count, title) => {
+    if (count > maxCount) {
+      maxCount = count
+      mostFocusedTask = title
+    }
+  })
+
+  return {
+    todaySessions: todaySessions.length,
+    todayMinutes,
+    weekSessions: weekSessions.length,
+    weekMinutes,
+    streak,
+    mostFocusedTask
+  }
 }
 
 // Morning Briefing functions

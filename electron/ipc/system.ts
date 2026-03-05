@@ -2,7 +2,7 @@ import { ipcMain, BrowserWindow, Notification, clipboard, shell, dialog, app } f
 import path from 'path'
 import fs from 'fs'
 import { spawn } from 'child_process'
-import { getPomodoroState, startPomodoro, completePomodoro, startBreak, stopPomodoro, getMorningBriefing, saveMorningBriefing, dismissMorningBriefing, getBriefingData, getWeeklyReview, saveWeeklyReview, getAllWeeklyReviews, getWeeklyReviewData, checkWeeklyReviewNeeded, getCategories, getAITasks, createAITask, updateAITask, deleteAITask, moveAITask, getRoadmapGoals, createRoadmapGoal, updateRoadmapGoal, deleteRoadmapGoal, isWelcomeDismissed, dismissWelcome } from '../database'
+import { getPomodoroState, startPomodoro, completePomodoro, startBreak, stopPomodoro, savePomodoroSession, getPomodoroStats, getMorningBriefing, saveMorningBriefing, dismissMorningBriefing, getBriefingData, getWeeklyReview, saveWeeklyReview, getAllWeeklyReviews, getWeeklyReviewData, checkWeeklyReviewNeeded, getCategories, getAITasks, createAITask, updateAITask, deleteAITask, moveAITask, getRoadmapGoals, createRoadmapGoal, updateRoadmapGoal, deleteRoadmapGoal, isWelcomeDismissed, dismissWelcome } from '../database'
 import { generateMorningBriefing, generateWeeklyReview } from '../summarize'
 import { createTerminal, writeTerminal, resizeTerminal, killTerminal } from '../terminal'
 import { getCliSessions, getCliSessionMessages, searchCliSessions } from '../cli-logs'
@@ -481,6 +481,14 @@ export function registerSystemHandlers(mainWindow: BrowserWindow) {
 
   ipcMain.handle('stop-pomodoro', () => {
     return stopPomodoro()
+  })
+
+  ipcMain.handle('save-pomodoro-session', (_, record: any) => {
+    return savePomodoroSession(record)
+  })
+
+  ipcMain.handle('get-pomodoro-stats', () => {
+    return getPomodoroStats()
   })
 
   // Morning Briefing
