@@ -9,29 +9,21 @@ interface LatLng {
 }
 
 interface PlaceResult {
-  name: string
-  formatted_address: string
-  geometry: { location: LatLng }
+  displayName?: { text: string }
+  formattedAddress?: string
+  location?: { latitude: number; longitude: number }
   rating?: number
-  user_ratings_total?: number
+  userRatingCount?: number
   types?: string[]
-  place_id: string
+  id?: string
+  websiteUri?: string
+  nationalPhoneNumber?: string
 }
 
 interface TextSearchResponse {
-  results: PlaceResult[]
-  next_page_token?: string
-  status: string
-  error_message?: string
-}
-
-interface PlaceDetailsResponse {
-  result: {
-    formatted_phone_number?: string
-    international_phone_number?: string
-    website?: string
-  }
-  status: string
+  places?: PlaceResult[]
+  nextPageToken?: string
+  error?: { message: string; status: string }
 }
 
 export interface DiscoveryResult {
@@ -43,21 +35,34 @@ export interface DiscoveryResult {
 
 // ── HTTP helper ──
 
-function httpsGet(url: string): Promise<string> {
+function httpsPost(url: string, body: string, headers: Record<string, string>): Promise<string> {
   return new Promise((resolve, reject) => {
-    const req = https.get(url, (res) => {
+    const parsed = new URL(url)
+    const req = https.request({
+      hostname: parsed.hostname,
+      path: parsed.pathname + parsed.search,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body),
+        ...headers,
+      },
+      timeout: 30000,
+    }, (res) => {
       let data = ''
       res.on('data', (chunk: string) => { data += chunk })
       res.on('end', () => {
         if (res.statusCode && res.statusCode >= 400) {
-          reject(new Error(`HTTP ${res.statusCode}: ${data.slice(0, 200)}`))
+          reject(new Error(`HTTP ${res.statusCode}: ${data.slice(0, 500)}`))
         } else {
           resolve(data)
         }
       })
     })
     req.on('error', reject)
-    req.setTimeout(30000, () => { req.destroy(); reject(new Error('Request timeout')) })
+    req.on('timeout', () => { req.destroy(); reject(new Error('Request timeout')) })
+    req.write(body)
+    req.end()
   })
 }
 
@@ -65,7 +70,19 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-// ── Text Search (paginated) ──
+// ── Text Search (New API) ──
+
+const FIELD_MASK = [
+  'places.id',
+  'places.displayName',
+  'places.formattedAddress',
+  'places.location',
+  'places.rating',
+  'places.userRatingCount',
+  'places.types',
+  'places.websiteUri',
+  'places.nationalPhoneNumber',
+].join(',')
 
 async function textSearch(
   query: string,
@@ -76,61 +93,44 @@ async function textSearch(
   const allResults: PlaceResult[] = []
   let pageToken: string | undefined
 
-  // Google allows up to 3 pages (60 results)
+  // Up to 3 pages (60 results)
   for (let page = 0; page < 3; page++) {
-    const params = new URLSearchParams({
-      query,
-      location: `${location.lat},${location.lng}`,
-      radius: String(radiusMeters),
-      key: apiKey,
-    })
-    if (pageToken) params.set('pagetoken', pageToken)
+    const requestBody: any = {
+      textQuery: query,
+      locationBias: {
+        circle: {
+          center: { latitude: location.lat, longitude: location.lng },
+          radius: radiusMeters,
+        },
+      },
+      pageSize: 20,
+    }
+    if (pageToken) requestBody.pageToken = pageToken
 
-    const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?${params}`
-    const raw = await httpsGet(url)
+    const url = 'https://places.googleapis.com/v1/places:searchText'
+    const raw = await httpsPost(url, JSON.stringify(requestBody), {
+      'X-Goog-Api-Key': apiKey,
+      'X-Goog-FieldMask': FIELD_MASK,
+    })
+
     const parsed: TextSearchResponse = JSON.parse(raw)
 
-    if (parsed.status === 'ZERO_RESULTS') break
-    if (parsed.status !== 'OK' && parsed.status !== 'ZERO_RESULTS') {
-      throw new Error(`Places API error: ${parsed.status} — ${parsed.error_message || ''}`)
+    if (parsed.error) {
+      throw new Error(`Places API error: ${parsed.error.status} — ${parsed.error.message}`)
     }
 
-    allResults.push(...parsed.results)
+    if (!parsed.places || parsed.places.length === 0) break
 
-    if (!parsed.next_page_token) break
-    pageToken = parsed.next_page_token
+    allResults.push(...parsed.places)
 
-    // Google requires ~2s before the next page token becomes valid
-    await delay(2000)
+    if (!parsed.nextPageToken) break
+    pageToken = parsed.nextPageToken
+
+    // Brief delay between pages
+    await delay(1000)
   }
 
   return allResults
-}
-
-// ── Place Details (phone + website) ──
-
-async function fetchPlaceDetails(
-  placeId: string,
-  apiKey: string
-): Promise<{ phone: string; website: string }> {
-  const params = new URLSearchParams({
-    place_id: placeId,
-    fields: 'formatted_phone_number,international_phone_number,website',
-    key: apiKey,
-  })
-
-  const url = `https://maps.googleapis.com/maps/api/place/details/json?${params}`
-  const raw = await httpsGet(url)
-  const parsed: PlaceDetailsResponse = JSON.parse(raw)
-
-  if (parsed.status !== 'OK') {
-    return { phone: '', website: '' }
-  }
-
-  return {
-    phone: parsed.result.formatted_phone_number || parsed.result.international_phone_number || '',
-    website: parsed.result.website || '',
-  }
 }
 
 // ── Deduplication ──
@@ -163,30 +163,30 @@ export async function searchBusinesses(
   let duplicatesSkipped = 0
 
   for (const place of places) {
-    const key = buildDedupeKey(place.name, place.formatted_address)
+    const name = place.displayName?.text || ''
+    const address = place.formattedAddress || ''
+    if (!name) continue
+
+    const key = buildDedupeKey(name, address)
     if (existingKeys.has(key)) {
       duplicatesSkipped++
       continue
     }
 
-    // Fetch phone + website from Place Details
-    const details = await fetchPlaceDetails(place.place_id, apiKey)
-
     const business = createBusiness({
-      name: place.name,
-      address: place.formatted_address,
-      phone: details.phone,
-      website: details.website,
+      name,
+      address,
+      phone: place.nationalPhoneNumber || '',
+      website: place.websiteUri || '',
       category: place.types?.[0] || '',
       source: 'google_places',
-      lat: place.geometry.location.lat,
-      lng: place.geometry.location.lng,
+      lat: place.location?.latitude ?? null,
+      lng: place.location?.longitude ?? null,
       rating: place.rating ?? null,
-      reviewCount: place.user_ratings_total ?? null,
+      reviewCount: place.userRatingCount ?? null,
     })
 
     imported.push(business)
-    // Mark as seen so subsequent results in same batch don't duplicate
     existingKeys.add(key)
   }
 
