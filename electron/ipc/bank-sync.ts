@@ -6,6 +6,9 @@ import {
   getBankAccounts,
   getBankTransactions,
   getBankConnection,
+  getCategoryOverrides,
+  setCategoryOverride,
+  removeCategoryOverride,
 } from '../database'
 import { exchangeSetupToken } from '../bank-sync/simplefin'
 import { syncConnection } from '../bank-sync/sync'
@@ -69,5 +72,18 @@ export function registerBankSyncHandlers(_mainWindow: BrowserWindow) {
   // Get bank transactions
   ipcMain.handle('get-bank-transactions', (_, accountId?: string, limit?: number) => {
     return getBankTransactions(accountId, limit)
+  })
+
+  // Category overrides
+  ipcMain.handle('get-category-overrides', () => {
+    return getCategoryOverrides()
+  })
+
+  ipcMain.handle('set-category-override', (_, transactionId: string, categoryKey: string) => {
+    return setCategoryOverride(transactionId, categoryKey)
+  })
+
+  ipcMain.handle('remove-category-override', (_, transactionId: string) => {
+    return removeCategoryOverride(transactionId)
   })
 }

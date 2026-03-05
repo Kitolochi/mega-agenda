@@ -415,6 +415,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   syncAllBankConnections: () => ipcRenderer.invoke('sync-all-bank-connections'),
   getBankAccounts: () => ipcRenderer.invoke('get-bank-accounts'),
   getBankTransactions: (accountId?: string, limit?: number) => ipcRenderer.invoke('get-bank-transactions', accountId, limit),
+  getCategoryOverrides: () => ipcRenderer.invoke('get-category-overrides'),
+  setCategoryOverride: (transactionId: string, categoryKey: string) => ipcRenderer.invoke('set-category-override', transactionId, categoryKey),
+  removeCategoryOverride: (transactionId: string) => ipcRenderer.invoke('remove-category-override', transactionId),
 
   // Outreach Settings
   getOutreachSettings: () => ipcRenderer.invoke('get-outreach-settings'),
