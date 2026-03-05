@@ -15,34 +15,46 @@ try {
 }
 
 const CONTENT_TYPE_INSTRUCTIONS: Record<string, string> = {
-  tweet: `Write 5 tweet variations (max 280 chars each). Each MUST use a different rhetorical device:
+  tweet: `Write 5 tweet variations (max 280 chars each). Each MUST use a different rhetorical device.
+
+VOICE — Alex Hormozi meets crypto:
+- Write at a 5th-grade reading level. If a 12-year-old can't understand it, rewrite it.
+- Zero jargon. No "DeFi primitives", "yield optimization", "collateralization ratios", "protocol mechanics", "liquidity provision". Say what things DO in plain English.
+- Short sentences. Punchy. Like this.
+- Speak to the pain or desire directly: debt stress, wanting passive income, feeling ripped off by banks.
+- Use concrete numbers and specifics over vague claims. "$10,000 loan" beats "your loan". "3 months" beats "over time".
+- Contrarian but logical — challenge what everyone assumes, then show why the alternative is obvious.
+- Pattern interrupt the feed. First 5 words decide if they read the rest.
+- No buzzwords, no "revolutionary", no "innovative", no "paradigm shift", no "ecosystem".
+- Talk like a smart friend explaining something at a bar, not a whitepaper.
 
 RHETORICAL TOOLKIT — pick one per variation:
-- Antithesis: juxtapose two opposites ("X does Y. We do Z.")
-- Tricolon: three-part rhythm ("Borrow. Build. Get repaid.")
-- Question-as-hook: provocative question that reframes ("What if your loan paid YOU?")
-- Anaphora: repeated opening ("Every loan charges interest. Every loan demands repayment. Every loan... until now.")
-- Epistrophe: repeated ending for emphasis
-- Setup→Twist: conventional wisdom flipped ("Banks profit from your debt. We profit from repaying it.")
-- One-liner: single powerful sentence, period ("Loans that repay themselves. That's it. That's the tweet.")
-- Analogy: unexpected comparison from outside crypto
-- Wordplay: pun on brand terms (Super-, seed, etc.)
+- Antithesis: juxtapose two opposites ("Banks charge you interest. We pay it for you.")
+- Tricolon: three-part rhythm ("Borrow. Wait. Get repaid.")
+- Question-as-hook: provocative question ("What if your loan just... paid itself off?")
+- Setup→Twist: flip conventional wisdom ("Everyone says debt is bad. What if your debt made you money?")
+- One-liner: single devastating sentence ("Your loan is paying itself off while you sleep.")
+- Analogy: unexpected everyday comparison ("It's like a gym membership that works out FOR you.")
 - Future-as-present: state the vision as fact ("Your loan is repaying itself right now.")
+- Contrast: before/after, old way/new way ("Old way: pay interest. New way: earn it.")
+- Direct address: talk straight to one person ("You're paying your bank's electric bill. Stop.")
+- Story-in-a-sentence: micro-narrative ("Took out a loan. Didn't pay it back. It paid itself. True story.")
 
 ENGAGEMENT STRATEGY — tag each variation:
 - 💬 Reply-bait: provokes opinions, hot takes, "agree or disagree?" energy
 - 🔁 RT-magnet: quotable, makes the sharer look smart for amplifying
-- 💾 Save-worthy: insight or framework people bookmark for later
-- 👀 Scroll-stopper: visually/rhythmically arresting, pattern-interrupts the feed
-- 🧵 Thread-starter: leaves enough unsaid that replies beg for a thread
+- 💾 Save-worthy: insight people bookmark for later
+- 👀 Scroll-stopper: pattern-interrupts the feed, makes you stop and re-read
+- 🧵 Thread-starter: leaves enough unsaid that replies beg for more
 
 CONSTRAINTS:
 - 280 characters MAX per variation. Count carefully.
 - No hashtags. Zero.
 - 0-2 emojis max. 🌱 when on-brand.
-- Every word must earn its place.
-- Lead with the most surprising/contrarian angle.
+- Every word must earn its place. Cut ruthlessly.
+- Lead with the most surprising or contrarian angle.
 - End with tension, curiosity, or a mic-drop.
+- If you catch yourself writing a word a normal person wouldn't say out loud, delete it.
 
 OUTPUT FORMAT (follow exactly):
 ---

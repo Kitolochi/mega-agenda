@@ -137,12 +137,12 @@ export const useContentStore = create<ContentState>((set, get) => ({
       contrarian: 'Rewrite with a more contrarian angle. Challenge conventional wisdom.',
     }
     const tweetPrompts: Record<string, string> = {
-      provocative: 'Rewrite to be more provocative and challenge conventional thinking. Make people stop scrolling.',
-      flip: 'Flip the framing completely — approach from the opposite angle or an unexpected perspective.',
-      emotional: 'Shift from logical/rational to emotional register. Appeal to freedom, sovereignty, fairness.',
-      wordplay: 'Rewrite using clever wordplay, puns on brand terms (Super-, seed, Superseed), or linguistic tricks.',
-      mic_drop: 'Rewrite as a single devastating one-liner. Maximum impact, minimum words.',
-      shorter: 'Make this significantly shorter and more concise while keeping the key message.',
+      provocative: 'Rewrite to be more provocative and challenge what everyone assumes. Make people stop scrolling. Plain language, no jargon.',
+      flip: 'Flip the framing completely — approach from the opposite angle. Old way vs new way. Keep it dead simple.',
+      simpler: 'Too complex. Rewrite so a 12-year-old would understand. Cut every word that a normal person wouldn\'t say out loud. Use concrete numbers instead of vague claims.',
+      pain_point: 'Rewrite to speak directly to a pain point — debt stress, feeling ripped off by banks, wanting passive income. Make it personal, not abstract.',
+      mic_drop: 'Rewrite as a single devastating one-liner. Maximum impact, minimum words. Mic-drop energy.',
+      story: 'Rewrite as a micro-story or before/after. "I did X. Then Y happened." Make it feel real, not like marketing.',
     }
     const prompts = get().contentType === 'tweet' ? tweetPrompts : genericPrompts
     const prompt = prompts[action]

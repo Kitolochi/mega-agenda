@@ -26,10 +26,10 @@ const QUICK_ACTIONS = [
 const TWEET_QUICK_ACTIONS = [
   { id: 'provocative', label: 'Provocative' },
   { id: 'flip', label: 'Flip It' },
-  { id: 'emotional', label: 'Emotional' },
-  { id: 'wordplay', label: 'Wordplay' },
+  { id: 'simpler', label: 'Simpler' },
+  { id: 'pain_point', label: 'Pain Point' },
   { id: 'mic_drop', label: 'Mic Drop' },
-  { id: 'shorter', label: 'Shorter' },
+  { id: 'story', label: 'Story' },
 ]
 
 function parseTweetBlocks(text: string) {
