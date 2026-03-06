@@ -95,6 +95,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   completePomodoro: () => ipcRenderer.invoke('complete-pomodoro'),
   startBreak: (type: 'short_break' | 'long_break') => ipcRenderer.invoke('start-break', type),
   stopPomodoro: () => ipcRenderer.invoke('stop-pomodoro'),
+  savePomodoroSession: (record: any) => ipcRenderer.invoke('save-pomodoro-session', record),
+  getPomodoroStats: () => ipcRenderer.invoke('get-pomodoro-stats'),
 
   // Morning Briefing
   getMorningBriefing: (date: string) => ipcRenderer.invoke('get-morning-briefing', date),

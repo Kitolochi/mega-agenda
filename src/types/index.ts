@@ -99,6 +99,25 @@ export interface PomodoroState {
   todayDate: string
 }
 
+export interface PomodoroHistoryRecord {
+  id: string
+  taskId: number | null
+  taskTitle: string
+  startedAt: string
+  completedAt: string
+  durationMinutes: number
+  type: 'work' | 'break'
+}
+
+export interface PomodoroStats {
+  todaySessions: number
+  todayMinutes: number
+  weekSessions: number
+  weekMinutes: number
+  streak: number
+  mostFocusedTask: string | null
+}
+
 export interface MorningBriefing {
   date: string
   content: string
@@ -771,6 +790,8 @@ export interface ElectronAPI {
   completePomodoro: () => Promise<PomodoroState>
   startBreak: (type: 'short_break' | 'long_break') => Promise<PomodoroState>
   stopPomodoro: () => Promise<PomodoroState>
+  savePomodoroSession: (record: Omit<PomodoroHistoryRecord, 'id'>) => Promise<PomodoroHistoryRecord>
+  getPomodoroStats: () => Promise<PomodoroStats>
 
   // Morning Briefing
   getMorningBriefing: (date: string) => Promise<MorningBriefing | null>
