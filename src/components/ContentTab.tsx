@@ -26,7 +26,7 @@ const QUICK_ACTIONS = [
 const TWEET_QUICK_ACTIONS = [
   { id: 'provocative', label: 'Provocative' },
   { id: 'flip', label: 'Flip It' },
-  { id: 'simpler', label: 'Simpler' },
+  { id: 'eli5', label: 'ELI5' },
   { id: 'pain_point', label: 'Pain Point' },
   { id: 'mic_drop', label: 'Mic Drop' },
   { id: 'story', label: 'Story' },

@@ -139,7 +139,7 @@ export const useContentStore = create<ContentState>((set, get) => ({
     const tweetPrompts: Record<string, string> = {
       provocative: 'Rewrite to be more provocative and challenge what everyone assumes. Make people stop scrolling. Plain language, no jargon.',
       flip: 'Flip the framing completely — approach from the opposite angle. Old way vs new way. Keep it dead simple.',
-      simpler: 'Too complex. Rewrite so a 12-year-old would understand. Cut every word that a normal person wouldn\'t say out loud. Use concrete numbers instead of vague claims.',
+      eli5: 'Way too complicated. Rewrite like you\'re explaining to a 10-year-old. Use only words a kid would know. No crypto terms AT ALL — no yield, no protocol, no collateral, no DeFi, no stablecoin. Just say what it does in the simplest possible way. Example level: "You borrow money. The app pays it back for you. You keep the money."',
       pain_point: 'Rewrite to speak directly to a pain point — debt stress, feeling ripped off by banks, wanting passive income. Make it personal, not abstract.',
       mic_drop: 'Rewrite as a single devastating one-liner. Maximum impact, minimum words. Mic-drop energy.',
       story: 'Rewrite as a micro-story or before/after. "I did X. Then Y happened." Make it feel real, not like marketing.',
