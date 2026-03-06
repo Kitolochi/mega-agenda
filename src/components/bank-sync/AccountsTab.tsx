@@ -13,6 +13,7 @@ export default function AccountsTab() {
   const [connections, setConnections] = useState<BankConnection[]>([])
   const [accounts, setAccounts] = useState<BankAccount[]>([])
   const [transactions, setTransactions] = useState<BankTransaction[]>([])
+  const [categoryOverrides, setCategoryOverrides] = useState<Record<string, string>>({})
   const [showConnect, setShowConnect] = useState(false)
   const [activeSection, setActiveSection] = useState<ViewSection>('overview')
   const [selectedAccountId, setSelectedAccountId] = useState<string | undefined>()
@@ -20,14 +21,30 @@ export default function AccountsTab() {
 
   const loadData = useCallback(async () => {
     try {
-      const [conns, accts, txs] = await Promise.all([
+      const [conns, accts, txs, overrides] = await Promise.all([
         window.electronAPI.getBankConnections(),
         window.electronAPI.getBankAccounts(),
         window.electronAPI.getBankTransactions(undefined, 10000),
+        window.electronAPI.getCategoryOverrides(),
       ])
       setConnections(conns)
       setAccounts(accts)
       setTransactions(txs)
+      setCategoryOverrides(overrides)
+    } catch {
+      // Silently fail
+    }
+  }, [])
+
+  const handleCategoryOverride = useCallback(async (transactionId: string, categoryKey: string | null) => {
+    try {
+      let updated: Record<string, string>
+      if (categoryKey === null) {
+        updated = await window.electronAPI.removeCategoryOverride(transactionId)
+      } else {
+        updated = await window.electronAPI.setCategoryOverride(transactionId, categoryKey)
+      }
+      setCategoryOverrides(updated)
     } catch {
       // Silently fail
     }
@@ -185,6 +202,8 @@ export default function AccountsTab() {
           accounts={accounts}
           selectedAccountId={selectedAccountId}
           onSelectAccount={setSelectedAccountId}
+          categoryOverrides={categoryOverrides}
+          onCategoryOverride={handleCategoryOverride}
         />
       )}
 
@@ -194,6 +213,7 @@ export default function AccountsTab() {
           accounts={accounts}
           selectedAccountId={selectedAccountId}
           onSelectAccount={setSelectedAccountId}
+          categoryOverrides={categoryOverrides}
         />
       )}
 

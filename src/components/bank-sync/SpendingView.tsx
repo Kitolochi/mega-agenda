@@ -9,13 +9,14 @@ interface SpendingViewProps {
   accounts: BankAccount[]
   selectedAccountId: string | undefined
   onSelectAccount: (id: string | undefined) => void
+  categoryOverrides: Record<string, string>
 }
 
 function formatCents(cents: number): string {
   return (cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-export default function SpendingView({ transactions, accounts, selectedAccountId, onSelectAccount }: SpendingViewProps) {
+export default function SpendingView({ transactions, accounts, selectedAccountId, onSelectAccount, categoryOverrides }: SpendingViewProps) {
   const [preset, setPreset] = useState<DatePreset>('3m')
   const [range, setRange] = useState<DateRange>(getDefaultRange('3m'))
   const [hoveredCategory, setHoveredCategory] = useState<string | null>(null)
@@ -118,7 +119,7 @@ export default function SpendingView({ transactions, accounts, selectedAccountId
       if (norm >= 0) continue // Only spending (normalized debits)
 
       const absAmount = Math.abs(norm)
-      const catKey = categorizeTransaction(tx.description, tx.merchant, norm, tx.category)
+      const catKey = categoryOverrides[tx.id] || categorizeTransaction(tx.description, tx.merchant, norm, tx.category)
 
       // Skip income and transfers from analysis
       if (catKey === 'income' || catKey === 'transfer') continue
@@ -148,7 +149,7 @@ export default function SpendingView({ transactions, accounts, selectedAccountId
       .slice(0, 10)
 
     return { categoryData, topMerchants, totalSpending }
-  }, [transactions, range, selectedAccountId, transferIds])
+  }, [transactions, range, selectedAccountId, transferIds, categoryOverrides])
 
   const donutSegments: DonutSegment[] = categoryData.map(c => ({
     key: c.key,

@@ -435,6 +435,7 @@ interface Database {
   socialConnections: SocialConnection[]
   contactMappings: ContactMapping[]
   contentDrafts: ContentDraft[]
+  categoryOverrides: Record<string, string>  // transactionId -> categoryKey
 }
 
 let db: Database
@@ -814,6 +815,12 @@ export function initDatabase(): Database {
   // Initialize contentDrafts if missing
   if (!(db as any).contentDrafts) {
     db.contentDrafts = []
+    saveDatabase()
+  }
+
+  // Initialize categoryOverrides if missing
+  if (!(db as any).categoryOverrides) {
+    db.categoryOverrides = {}
     saveDatabase()
   }
 
@@ -2400,6 +2407,26 @@ export function updateContentDraft(id: string, updates: Partial<ContentDraft>): 
 export function deleteContentDraft(id: string): void {
   db.contentDrafts = db.contentDrafts.filter(d => d.id !== id)
   saveDatabase()
+}
+
+// Category Overrides
+export function getCategoryOverrides(): Record<string, string> {
+  return db.categoryOverrides || {}
+}
+
+export function setCategoryOverride(transactionId: string, categoryKey: string): Record<string, string> {
+  if (!db.categoryOverrides) db.categoryOverrides = {}
+  db.categoryOverrides[transactionId] = categoryKey
+  saveDatabase()
+  return db.categoryOverrides
+}
+
+export function removeCategoryOverride(transactionId: string): Record<string, string> {
+  if (db.categoryOverrides) {
+    delete db.categoryOverrides[transactionId]
+    saveDatabase()
+  }
+  return db.categoryOverrides || {}
 }
 
 export function upsertBankTransaction(tx: BankTransaction): { inserted: boolean } {

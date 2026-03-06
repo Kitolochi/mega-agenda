@@ -1045,6 +1045,9 @@ export interface ElectronAPI {
   syncAllBankConnections: () => Promise<void>
   getBankAccounts: () => Promise<BankAccount[]>
   getBankTransactions: (accountId?: string, limit?: number) => Promise<BankTransaction[]>
+  getCategoryOverrides: () => Promise<Record<string, string>>
+  setCategoryOverride: (transactionId: string, categoryKey: string) => Promise<Record<string, string>>
+  removeCategoryOverride: (transactionId: string) => Promise<Record<string, string>>
 
   // Outreach Settings
   getOutreachSettings: () => Promise<{
