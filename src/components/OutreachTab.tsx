@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { useOutreachStore } from '../store/outreachStore'
 import { cn } from '../utils/cn'
 import { OnboardingWizard, TipsOverlay, OutreachSettingsPanel } from './OutreachOnboarding'
@@ -130,14 +131,14 @@ export default function OutreachTab() {
 
   return (
     <div className="h-full flex flex-col p-4">
-      {/* Onboarding wizard overlay */}
-      {showOnboarding && <OnboardingWizard onComplete={handleOnboardingComplete} />}
+      {/* Onboarding wizard overlay (portal to escape backdrop-blur containment) */}
+      {showOnboarding && createPortal(<OnboardingWizard onComplete={handleOnboardingComplete} />, document.body)}
 
       {/* Settings panel overlay */}
-      {showSettings && <OutreachSettingsPanel onClose={() => setShowSettings(false)} />}
+      {showSettings && createPortal(<OutreachSettingsPanel onClose={() => setShowSettings(false)} />, document.body)}
 
       {/* Tips overlay */}
-      {showTips && <TipsOverlay onClose={() => setShowTips(false)} />}
+      {showTips && createPortal(<TipsOverlay onClose={() => setShowTips(false)} />, document.body)}
 
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
