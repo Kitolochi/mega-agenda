@@ -71,6 +71,8 @@ export default function CalendarTab() {
   const [formEndTime, setFormEndTime] = useState('')
   const [formColor, setFormColor] = useState('emerald')
   const [formDescription, setFormDescription] = useState('')
+  const [formAllDay, setFormAllDay] = useState(false)
+  const [formRecurring, setFormRecurring] = useState(false)
 
   // Check gws auth on mount
   useEffect(() => {
@@ -158,12 +160,15 @@ export default function CalendarTab() {
       endTime: formEndTime,
       color: formColor,
       source: 'manual',
+      ...(formRecurring ? { recurrence: 'weekly' as const } : {}),
     })
     setFormTitle('')
     setFormStartTime('')
     setFormEndTime('')
     setFormColor('emerald')
     setFormDescription('')
+    setFormAllDay(false)
+    setFormRecurring(false)
     setShowAddForm(false)
     await loadEvents()
     await loadDayAgenda()
@@ -340,6 +345,9 @@ export default function CalendarTab() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5">
                         <span className="text-xs text-white/90 truncate">{event.title}</span>
+                        {event.recurrence === 'weekly' && (
+                          <span className="text-[8px] px-1 py-0.5 rounded bg-accent-blue/20 text-accent-blue font-medium flex-shrink-0">Weekly</span>
+                        )}
                         {event.source === 'gcal' && (
                           <span className="text-[8px] px-1 py-0.5 rounded bg-accent-purple/20 text-accent-purple font-medium flex-shrink-0">GCal</span>
                         )}
@@ -384,20 +392,54 @@ export default function CalendarTab() {
               autoFocus
               className="w-full bg-surface-0/50 border border-white/[0.06] rounded-lg px-3 py-1.5 text-xs text-white placeholder-muted/50 focus:outline-none focus:ring-1 focus:ring-accent-emerald/50"
             />
-            <div className="flex gap-2">
-              <input
-                type="time"
-                value={formStartTime}
-                onChange={e => setFormStartTime(e.target.value)}
-                className="flex-1 bg-surface-0/50 border border-white/[0.06] rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-accent-emerald/50"
-              />
-              <input
-                type="time"
-                value={formEndTime}
-                onChange={e => setFormEndTime(e.target.value)}
-                className="flex-1 bg-surface-0/50 border border-white/[0.06] rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-accent-emerald/50"
-              />
-            </div>
+            {/* Full day toggle */}
+            <label className="flex items-center gap-2 cursor-pointer">
+              <button
+                type="button"
+                onClick={() => {
+                  setFormAllDay(!formAllDay)
+                  if (!formAllDay) { setFormStartTime(''); setFormEndTime('') }
+                }}
+                className={`relative w-8 h-4 rounded-full transition-colors ${formAllDay ? 'bg-accent-emerald/60' : 'bg-white/[0.1]'}`}
+              >
+                <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${formAllDay ? 'translate-x-4' : 'translate-x-0.5'}`} />
+              </button>
+              <span className="text-[11px] text-muted">Full day</span>
+            </label>
+            {/* Repeat weekly toggle */}
+            <label className="flex items-center gap-2 cursor-pointer">
+              <button
+                type="button"
+                onClick={() => setFormRecurring(!formRecurring)}
+                className={`relative w-8 h-4 rounded-full transition-colors ${formRecurring ? 'bg-accent-blue/60' : 'bg-white/[0.1]'}`}
+              >
+                <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${formRecurring ? 'translate-x-4' : 'translate-x-0.5'}`} />
+              </button>
+              <span className="text-[11px] text-muted">Repeat weekly</span>
+            </label>
+            {/* Time pickers (hidden when full day) */}
+            {!formAllDay && (
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="text-[10px] text-muted mb-0.5 block">Start</label>
+                  <input
+                    type="time"
+                    value={formStartTime}
+                    onChange={e => setFormStartTime(e.target.value)}
+                    className="w-full bg-surface-0/50 border border-white/[0.06] rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-accent-emerald/50"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="text-[10px] text-muted mb-0.5 block">End</label>
+                  <input
+                    type="time"
+                    value={formEndTime}
+                    onChange={e => setFormEndTime(e.target.value)}
+                    className="w-full bg-surface-0/50 border border-white/[0.06] rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-accent-emerald/50"
+                  />
+                </div>
+              </div>
+            )}
             <div className="flex gap-1.5">
               {ACCENT_COLORS.map(c => (
                 <button

@@ -743,6 +743,7 @@ export interface CalendarEvent {
   color: string
   source: 'manual' | 'gcal'
   gcalEventId?: string
+  recurrence?: 'weekly'
   createdAt: string
 }
 

@@ -401,12 +401,13 @@ export interface CalendarEvent {
   id: string
   title: string
   description: string
-  date: string          // YYYY-MM-DD
+  date: string          // YYYY-MM-DD (start date for recurring)
   startTime: string     // HH:mm (empty = all-day)
   endTime: string       // HH:mm
   color: string         // accent color key (emerald, blue, amber, purple)
   source: 'manual' | 'gcal'
   gcalEventId?: string
+  recurrence?: 'weekly'  // repeats every week from date onward
   createdAt: string
 }
 
@@ -2471,16 +2472,36 @@ export function upsertBankTransaction(tx: BankTransaction): { inserted: boolean 
 
 // Calendar Event CRUD
 
+function expandRecurringEvents(startDate: string, endDate: string): CalendarEvent[] {
+  const results: CalendarEvent[] = []
+  const start = new Date(startDate + 'T00:00:00')
+  const end = new Date(endDate + 'T00:00:00')
+
+  for (const event of db.calendarEvents) {
+    if (event.recurrence === 'weekly') {
+      // Generate occurrences from event.date through endDate
+      const eventStart = new Date(event.date + 'T00:00:00')
+      const cursor = new Date(eventStart)
+      // Advance cursor to first occurrence >= startDate
+      while (cursor < start) cursor.setDate(cursor.getDate() + 7)
+      while (cursor <= end) {
+        const occDate = cursor.toISOString().split('T')[0]
+        results.push({ ...event, date: occDate })
+        cursor.setDate(cursor.getDate() + 7)
+      }
+    } else if (event.date >= startDate && event.date <= endDate) {
+      results.push(event)
+    }
+  }
+  return results.sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime))
+}
+
 export function getCalendarEvents(startDate: string, endDate: string): CalendarEvent[] {
-  return db.calendarEvents
-    .filter(e => e.date >= startDate && e.date <= endDate)
-    .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime))
+  return expandRecurringEvents(startDate, endDate)
 }
 
 export function getCalendarEventsForDate(date: string): CalendarEvent[] {
-  return db.calendarEvents
-    .filter(e => e.date === date)
-    .sort((a, b) => a.startTime.localeCompare(b.startTime))
+  return expandRecurringEvents(date, date)
 }
 
 export function createCalendarEvent(data: Omit<CalendarEvent, 'id' | 'createdAt'>): CalendarEvent {
@@ -2512,7 +2533,7 @@ export function deleteCalendarEvent(id: string): void {
 export function getDailyAgenda(date: string): { tasks: Task[]; events: CalendarEvent[] } {
   const tasks = db.tasks.filter(t => !t.completed && t.due_date === date)
     .sort((a, b) => a.priority - b.priority)
-  const events = getCalendarEventsForDate(date)
+  const events = expandRecurringEvents(date, date)
   return { tasks, events }
 }
 
