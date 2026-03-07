@@ -2556,6 +2556,34 @@ export function upsertGcalEvent(gcalEventId: string, data: Omit<CalendarEvent, '
   return event
 }
 
+export function getCalendarHistory(query?: string, limit: number = 50): { tasks: Task[]; events: CalendarEvent[] } {
+  const q = (query || '').toLowerCase().trim()
+
+  // Completed tasks, most recent first
+  let tasks = db.tasks
+    .filter(t => t.completed)
+    .sort((a, b) => (b.updated_at || b.created_at).localeCompare(a.updated_at || a.created_at))
+
+  // Past non-recurring events (date < today)
+  const today = new Date().toISOString().split('T')[0]
+  let events = db.calendarEvents
+    .filter(e => !e.recurrence && e.date < today)
+    .sort((a, b) => b.date.localeCompare(a.date))
+
+  if (q) {
+    tasks = tasks.filter(t =>
+      t.title.toLowerCase().includes(q) ||
+      (t.description || '').toLowerCase().includes(q)
+    )
+    events = events.filter(e =>
+      e.title.toLowerCase().includes(q) ||
+      e.description.toLowerCase().includes(q)
+    )
+  }
+
+  return { tasks: tasks.slice(0, limit), events: events.slice(0, limit) }
+}
+
 export function getLastDailyNotifDate(): string {
   return db.lastDailyNotifDate || ''
 }

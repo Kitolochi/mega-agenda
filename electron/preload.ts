@@ -494,6 +494,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   createCalendarEvent: (data: any) => ipcRenderer.invoke('create-calendar-event', data),
   updateCalendarEvent: (id: string, updates: any) => ipcRenderer.invoke('update-calendar-event', id, updates),
   deleteCalendarEvent: (id: string) => ipcRenderer.invoke('delete-calendar-event', id),
+  getCalendarHistory: (query?: string, limit?: number) => ipcRenderer.invoke('get-calendar-history', query, limit),
   syncGcalEvents: () => ipcRenderer.invoke('sync-gcal-events'),
   fireDailyNotification: () => ipcRenderer.invoke('fire-daily-notification'),
 

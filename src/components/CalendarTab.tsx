@@ -74,6 +74,13 @@ export default function CalendarTab() {
   const [formAllDay, setFormAllDay] = useState(false)
   const [formRecurring, setFormRecurring] = useState(false)
 
+  // History state
+  const [rightPanel, setRightPanel] = useState<'day' | 'history'>('day')
+  const [historyQuery, setHistoryQuery] = useState('')
+  const [historyTasks, setHistoryTasks] = useState<Task[]>([])
+  const [historyEvents, setHistoryEvents] = useState<CalendarEvent[]>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
+
   // Check gws auth on mount
   useEffect(() => {
     window.electronAPI.gwsCheckAuth().then(status => {
@@ -103,6 +110,21 @@ export default function CalendarTab() {
   }, [selectedDate])
 
   useEffect(() => { loadDayAgenda() }, [loadDayAgenda])
+
+  // Load history
+  const loadHistory = useCallback(async () => {
+    setHistoryLoading(true)
+    try {
+      const data = await window.electronAPI.getCalendarHistory(historyQuery, 50)
+      setHistoryTasks(data.tasks)
+      setHistoryEvents(data.events)
+    } catch { /* ignore */ }
+    setHistoryLoading(false)
+  }, [historyQuery])
+
+  useEffect(() => {
+    if (rightPanel === 'history') loadHistory()
+  }, [rightPanel, loadHistory])
 
   // Build a lookup: date string -> { tasks: boolean, events: boolean, gcal: boolean }
   const dateMarkers = useMemo(() => {
@@ -294,197 +316,309 @@ export default function CalendarTab() {
         </div>
       </div>
 
-      {/* Right: Day Detail Panel */}
-      <div className="w-80 border-l border-white/[0.06] bg-surface-1/30 p-5 overflow-auto flex flex-col">
-        <h2 className="text-sm font-semibold text-white mb-1">{selectedLabel}</h2>
-        {selectedDate === today && (
-          <span className="text-[10px] font-medium text-accent-emerald mb-3 inline-block">Today</span>
-        )}
-        {selectedDate !== today && <div className="mb-3" />}
+      {/* Right: Detail Panel */}
+      <div className="w-80 border-l border-white/[0.06] bg-surface-1/30 flex flex-col overflow-hidden">
+        {/* Panel tabs */}
+        <div className="flex border-b border-white/[0.06] px-3 pt-3 pb-0 gap-1">
+          {(['day', 'history'] as const).map(panel => (
+            <button
+              key={panel}
+              onClick={() => setRightPanel(panel)}
+              className={`px-3 py-1.5 text-[11px] font-medium rounded-t-lg transition-all ${
+                rightPanel === panel
+                  ? 'bg-surface-2/50 text-white border border-white/[0.06] border-b-transparent -mb-px'
+                  : 'text-muted hover:text-white/70'
+              }`}
+            >
+              {panel === 'day' ? 'Day' : 'History'}
+            </button>
+          ))}
+        </div>
 
-        {/* Tasks Due */}
-        {dayTasks.length > 0 && (
-          <div className="mb-4">
-            <h3 className="text-[10px] font-semibold text-muted uppercase tracking-wider mb-2">Tasks Due</h3>
-            <div className="space-y-1.5">
-              {dayTasks.map(task => (
-                <div key={task.id} className="flex items-center gap-2 p-2 rounded-lg bg-surface-2/40 border border-white/[0.04] group">
-                  <button
-                    onClick={() => handleToggleTask(task.id)}
-                    className="w-4 h-4 rounded border border-accent-blue/50 flex items-center justify-center hover:bg-accent-blue/20 transition-colors flex-shrink-0"
-                  >
-                    {task.completed ? (
-                      <svg className="w-3 h-3 text-accent-blue" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                      </svg>
-                    ) : null}
-                  </button>
-                  <span className="text-xs text-white/90 flex-1 truncate">{task.title}</span>
-                  {task.priority === 1 && (
-                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 font-medium">High</span>
-                  )}
-                  {task.priority === 2 && (
-                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 font-medium">Med</span>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        {rightPanel === 'day' ? (
+          /* Day detail panel */
+          <div className="flex-1 overflow-auto p-5 flex flex-col">
+            <h2 className="text-sm font-semibold text-white mb-1">{selectedLabel}</h2>
+            {selectedDate === today && (
+              <span className="text-[10px] font-medium text-accent-emerald mb-3 inline-block">Today</span>
+            )}
+            {selectedDate !== today && <div className="mb-3" />}
 
-        {/* Events */}
-        {dayEvents.length > 0 && (
-          <div className="mb-4">
-            <h3 className="text-[10px] font-semibold text-muted uppercase tracking-wider mb-2">Events</h3>
-            <div className="space-y-1.5">
-              {dayEvents.map(event => {
-                const colorDef = ACCENT_COLORS.find(c => c.key === event.color) || ACCENT_COLORS[0]
-                return (
-                  <div key={event.id} className="flex items-start gap-2 p-2 rounded-lg bg-surface-2/40 border border-white/[0.04] group">
-                    <span className={`w-2 h-2 rounded-full mt-1 flex-shrink-0 ${colorDef.dot}`} />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs text-white/90 truncate">{event.title}</span>
-                        {event.recurrence === 'weekly' && (
-                          <span className="text-[8px] px-1 py-0.5 rounded bg-accent-blue/20 text-accent-blue font-medium flex-shrink-0">Weekly</span>
-                        )}
-                        {event.source === 'gcal' && (
-                          <span className="text-[8px] px-1 py-0.5 rounded bg-accent-purple/20 text-accent-purple font-medium flex-shrink-0">GCal</span>
-                        )}
-                      </div>
-                      {event.startTime && (
-                        <span className="text-[10px] text-muted">
-                          {event.startTime}{event.endTime ? ` - ${event.endTime}` : ''}
-                        </span>
+            {/* Tasks Due */}
+            {dayTasks.length > 0 && (
+              <div className="mb-4">
+                <h3 className="text-[10px] font-semibold text-muted uppercase tracking-wider mb-2">Tasks Due</h3>
+                <div className="space-y-1.5">
+                  {dayTasks.map(task => (
+                    <div key={task.id} className="flex items-center gap-2 p-2 rounded-lg bg-surface-2/40 border border-white/[0.04] group">
+                      <button
+                        onClick={() => handleToggleTask(task.id)}
+                        className="w-4 h-4 rounded border border-accent-blue/50 flex items-center justify-center hover:bg-accent-blue/20 transition-colors flex-shrink-0"
+                      >
+                        {task.completed ? (
+                          <svg className="w-3 h-3 text-accent-blue" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
+                        ) : null}
+                      </button>
+                      <span className="text-xs text-white/90 flex-1 truncate">{task.title}</span>
+                      {task.priority === 1 && (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 font-medium">High</span>
                       )}
-                      {!event.startTime && (
-                        <span className="text-[10px] text-muted">All day</span>
+                      {task.priority === 2 && (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 font-medium">Med</span>
                       )}
                     </div>
-                    {event.source === 'manual' && (
-                      <button
-                        onClick={() => handleDeleteEvent(event.id)}
-                        className="opacity-0 group-hover:opacity-100 text-muted hover:text-red-400 transition-all p-0.5"
-                      >
-                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        )}
-
-        {dayTasks.length === 0 && dayEvents.length === 0 && !showAddForm && (
-          <p className="text-xs text-muted/60 italic mb-4">No tasks or events</p>
-        )}
-
-        {/* Add Event Form */}
-        {showAddForm ? (
-          <div className="mt-auto bg-surface-2/50 rounded-xl border border-white/[0.06] p-3 space-y-2.5">
-            <input
-              value={formTitle}
-              onChange={e => setFormTitle(e.target.value)}
-              placeholder="Event title"
-              autoFocus
-              className="w-full bg-surface-0/50 border border-white/[0.06] rounded-lg px-3 py-1.5 text-xs text-white placeholder-muted/50 focus:outline-none focus:ring-1 focus:ring-accent-emerald/50"
-            />
-            {/* Full day toggle */}
-            <label className="flex items-center gap-2 cursor-pointer">
-              <button
-                type="button"
-                onClick={() => {
-                  setFormAllDay(!formAllDay)
-                  if (!formAllDay) { setFormStartTime(''); setFormEndTime('') }
-                }}
-                className={`relative w-8 h-4 rounded-full transition-colors ${formAllDay ? 'bg-accent-emerald/60' : 'bg-white/[0.1]'}`}
-              >
-                <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${formAllDay ? 'translate-x-4' : 'translate-x-0.5'}`} />
-              </button>
-              <span className="text-[11px] text-muted">Full day</span>
-            </label>
-            {/* Repeat weekly toggle */}
-            <label className="flex items-center gap-2 cursor-pointer">
-              <button
-                type="button"
-                onClick={() => setFormRecurring(!formRecurring)}
-                className={`relative w-8 h-4 rounded-full transition-colors ${formRecurring ? 'bg-accent-blue/60' : 'bg-white/[0.1]'}`}
-              >
-                <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${formRecurring ? 'translate-x-4' : 'translate-x-0.5'}`} />
-              </button>
-              <span className="text-[11px] text-muted">Repeat weekly</span>
-            </label>
-            {/* Time pickers (hidden when full day) */}
-            {!formAllDay && (
-              <div className="flex gap-2">
-                <div className="flex-1">
-                  <label className="text-[10px] text-muted mb-0.5 block">Start</label>
-                  <input
-                    type="time"
-                    value={formStartTime}
-                    onChange={e => setFormStartTime(e.target.value)}
-                    className="w-full bg-surface-0/50 border border-white/[0.06] rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-accent-emerald/50"
-                  />
-                </div>
-                <div className="flex-1">
-                  <label className="text-[10px] text-muted mb-0.5 block">End</label>
-                  <input
-                    type="time"
-                    value={formEndTime}
-                    onChange={e => setFormEndTime(e.target.value)}
-                    className="w-full bg-surface-0/50 border border-white/[0.06] rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-accent-emerald/50"
-                  />
+                  ))}
                 </div>
               </div>
             )}
-            <div className="flex gap-1.5">
-              {ACCENT_COLORS.map(c => (
-                <button
-                  key={c.key}
-                  onClick={() => setFormColor(c.key)}
-                  className={`w-5 h-5 rounded-full ${c.dot} transition-all ${
-                    formColor === c.key ? 'ring-2 ring-white/50 scale-110' : 'opacity-50 hover:opacity-80'
-                  }`}
-                  title={c.label}
+
+            {/* Events */}
+            {dayEvents.length > 0 && (
+              <div className="mb-4">
+                <h3 className="text-[10px] font-semibold text-muted uppercase tracking-wider mb-2">Events</h3>
+                <div className="space-y-1.5">
+                  {dayEvents.map(event => {
+                    const colorDef = ACCENT_COLORS.find(c => c.key === event.color) || ACCENT_COLORS[0]
+                    return (
+                      <div key={event.id} className="flex items-start gap-2 p-2 rounded-lg bg-surface-2/40 border border-white/[0.04] group">
+                        <span className={`w-2 h-2 rounded-full mt-1 flex-shrink-0 ${colorDef.dot}`} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs text-white/90 truncate">{event.title}</span>
+                            {event.recurrence === 'weekly' && (
+                              <span className="text-[8px] px-1 py-0.5 rounded bg-accent-blue/20 text-accent-blue font-medium flex-shrink-0">Weekly</span>
+                            )}
+                            {event.source === 'gcal' && (
+                              <span className="text-[8px] px-1 py-0.5 rounded bg-accent-purple/20 text-accent-purple font-medium flex-shrink-0">GCal</span>
+                            )}
+                          </div>
+                          {event.startTime && (
+                            <span className="text-[10px] text-muted">
+                              {event.startTime}{event.endTime ? ` - ${event.endTime}` : ''}
+                            </span>
+                          )}
+                          {!event.startTime && (
+                            <span className="text-[10px] text-muted">All day</span>
+                          )}
+                        </div>
+                        {event.source === 'manual' && (
+                          <button
+                            onClick={() => handleDeleteEvent(event.id)}
+                            className="opacity-0 group-hover:opacity-100 text-muted hover:text-red-400 transition-all p-0.5"
+                          >
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {dayTasks.length === 0 && dayEvents.length === 0 && !showAddForm && (
+              <p className="text-xs text-muted/60 italic mb-4">No tasks or events</p>
+            )}
+
+            {/* Add Event Form */}
+            {showAddForm ? (
+              <div className="mt-auto bg-surface-2/50 rounded-xl border border-white/[0.06] p-3 space-y-2.5">
+                <input
+                  value={formTitle}
+                  onChange={e => setFormTitle(e.target.value)}
+                  placeholder="Event title"
+                  autoFocus
+                  className="w-full bg-surface-0/50 border border-white/[0.06] rounded-lg px-3 py-1.5 text-xs text-white placeholder-muted/50 focus:outline-none focus:ring-1 focus:ring-accent-emerald/50"
                 />
-              ))}
-            </div>
-            <textarea
-              value={formDescription}
-              onChange={e => setFormDescription(e.target.value)}
-              placeholder="Description (optional)"
-              rows={2}
-              className="w-full bg-surface-0/50 border border-white/[0.06] rounded-lg px-3 py-1.5 text-xs text-white placeholder-muted/50 resize-none focus:outline-none focus:ring-1 focus:ring-accent-emerald/50"
-            />
-            <div className="flex gap-2">
+                {/* Full day toggle */}
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormAllDay(!formAllDay)
+                      if (!formAllDay) { setFormStartTime(''); setFormEndTime('') }
+                    }}
+                    className={`relative w-8 h-4 rounded-full transition-colors ${formAllDay ? 'bg-accent-emerald/60' : 'bg-white/[0.1]'}`}
+                  >
+                    <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${formAllDay ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                  </button>
+                  <span className="text-[11px] text-muted">Full day</span>
+                </label>
+                {/* Repeat weekly toggle */}
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <button
+                    type="button"
+                    onClick={() => setFormRecurring(!formRecurring)}
+                    className={`relative w-8 h-4 rounded-full transition-colors ${formRecurring ? 'bg-accent-blue/60' : 'bg-white/[0.1]'}`}
+                  >
+                    <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${formRecurring ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                  </button>
+                  <span className="text-[11px] text-muted">Repeat weekly</span>
+                </label>
+                {/* Time pickers (hidden when full day) */}
+                {!formAllDay && (
+                  <div className="flex gap-2">
+                    <div className="flex-1">
+                      <label className="text-[10px] text-muted mb-0.5 block">Start</label>
+                      <input
+                        type="time"
+                        value={formStartTime}
+                        onChange={e => setFormStartTime(e.target.value)}
+                        className="w-full bg-surface-0/50 border border-white/[0.06] rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-accent-emerald/50"
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <label className="text-[10px] text-muted mb-0.5 block">End</label>
+                      <input
+                        type="time"
+                        value={formEndTime}
+                        onChange={e => setFormEndTime(e.target.value)}
+                        className="w-full bg-surface-0/50 border border-white/[0.06] rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-accent-emerald/50"
+                      />
+                    </div>
+                  </div>
+                )}
+                <div className="flex gap-1.5">
+                  {ACCENT_COLORS.map(c => (
+                    <button
+                      key={c.key}
+                      onClick={() => setFormColor(c.key)}
+                      className={`w-5 h-5 rounded-full ${c.dot} transition-all ${
+                        formColor === c.key ? 'ring-2 ring-white/50 scale-110' : 'opacity-50 hover:opacity-80'
+                      }`}
+                      title={c.label}
+                    />
+                  ))}
+                </div>
+                <textarea
+                  value={formDescription}
+                  onChange={e => setFormDescription(e.target.value)}
+                  placeholder="Description (optional)"
+                  rows={2}
+                  className="w-full bg-surface-0/50 border border-white/[0.06] rounded-lg px-3 py-1.5 text-xs text-white placeholder-muted/50 resize-none focus:outline-none focus:ring-1 focus:ring-accent-emerald/50"
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleAddEvent}
+                    disabled={!formTitle.trim()}
+                    className="flex-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-accent-emerald/20 text-accent-emerald border border-accent-emerald/20 hover:bg-accent-emerald/30 transition-colors disabled:opacity-40"
+                  >
+                    Add Event
+                  </button>
+                  <button
+                    onClick={() => setShowAddForm(false)}
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg text-muted hover:text-white border border-white/[0.06] hover:bg-white/[0.06] transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
               <button
-                onClick={handleAddEvent}
-                disabled={!formTitle.trim()}
-                className="flex-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-accent-emerald/20 text-accent-emerald border border-accent-emerald/20 hover:bg-accent-emerald/30 transition-colors disabled:opacity-40"
+                onClick={() => setShowAddForm(true)}
+                className="mt-auto flex items-center justify-center gap-1.5 w-full py-2 text-xs font-medium text-muted hover:text-accent-emerald border border-dashed border-white/[0.08] hover:border-accent-emerald/30 rounded-lg transition-colors"
               >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                </svg>
                 Add Event
               </button>
-              <button
-                onClick={() => setShowAddForm(false)}
-                className="px-3 py-1.5 text-xs font-medium rounded-lg text-muted hover:text-white border border-white/[0.06] hover:bg-white/[0.06] transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
+            )}
           </div>
         ) : (
-          <button
-            onClick={() => setShowAddForm(true)}
-            className="mt-auto flex items-center justify-center gap-1.5 w-full py-2 text-xs font-medium text-muted hover:text-accent-emerald border border-dashed border-white/[0.08] hover:border-accent-emerald/30 rounded-lg transition-colors"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-            </svg>
-            Add Event
-          </button>
+          /* History panel */
+          <div className="flex-1 overflow-auto p-5 flex flex-col">
+            {/* Search */}
+            <div className="relative mb-4">
+              <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+              </svg>
+              <input
+                value={historyQuery}
+                onChange={e => setHistoryQuery(e.target.value)}
+                placeholder="Search completed tasks & past events..."
+                className="w-full bg-surface-0/50 border border-white/[0.06] rounded-lg pl-8 pr-3 py-1.5 text-xs text-white placeholder-muted/50 focus:outline-none focus:ring-1 focus:ring-accent-blue/50"
+              />
+              {historyQuery && (
+                <button
+                  onClick={() => setHistoryQuery('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-white"
+                >
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+
+            {historyLoading ? (
+              <p className="text-xs text-muted/60 italic">Loading...</p>
+            ) : (
+              <>
+                {/* Completed tasks */}
+                {historyTasks.length > 0 && (
+                  <div className="mb-4">
+                    <h3 className="text-[10px] font-semibold text-muted uppercase tracking-wider mb-2">
+                      Completed Tasks ({historyTasks.length})
+                    </h3>
+                    <div className="space-y-1">
+                      {historyTasks.map(task => (
+                        <div key={task.id} className="flex items-center gap-2 p-2 rounded-lg bg-surface-2/30 border border-white/[0.03]">
+                          <svg className="w-3.5 h-3.5 text-accent-emerald flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
+                          <div className="flex-1 min-w-0">
+                            <span className="text-xs text-white/70 truncate block">{task.title}</span>
+                            {task.updated_at && (
+                              <span className="text-[10px] text-muted/50">
+                                {new Date(task.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Past events */}
+                {historyEvents.length > 0 && (
+                  <div className="mb-4">
+                    <h3 className="text-[10px] font-semibold text-muted uppercase tracking-wider mb-2">
+                      Past Events ({historyEvents.length})
+                    </h3>
+                    <div className="space-y-1">
+                      {historyEvents.map(event => {
+                        const colorDef = ACCENT_COLORS.find(c => c.key === event.color) || ACCENT_COLORS[0]
+                        return (
+                          <div key={event.id} className="flex items-center gap-2 p-2 rounded-lg bg-surface-2/30 border border-white/[0.03]">
+                            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${colorDef.dot}`} />
+                            <div className="flex-1 min-w-0">
+                              <span className="text-xs text-white/70 truncate block">{event.title}</span>
+                              <span className="text-[10px] text-muted/50">
+                                {new Date(event.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                {event.startTime ? ` at ${event.startTime}` : ''}
+                              </span>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {historyTasks.length === 0 && historyEvents.length === 0 && (
+                  <p className="text-xs text-muted/60 italic">
+                    {historyQuery ? 'No matches found' : 'No completed tasks or past events yet'}
+                  </p>
+                )}
+              </>
+            )}
+          </div>
         )}
       </div>
     </div>

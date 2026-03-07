@@ -1122,6 +1122,7 @@ export interface ElectronAPI {
   createCalendarEvent: (data: Omit<CalendarEvent, 'id' | 'createdAt'>) => Promise<CalendarEvent>
   updateCalendarEvent: (id: string, updates: Partial<CalendarEvent>) => Promise<CalendarEvent | null>
   deleteCalendarEvent: (id: string) => Promise<void>
+  getCalendarHistory: (query?: string, limit?: number) => Promise<{ tasks: Task[]; events: CalendarEvent[] }>
   syncGcalEvents: () => Promise<{ success: boolean; synced?: number; error?: string }>
   fireDailyNotification: () => Promise<string | null>
 

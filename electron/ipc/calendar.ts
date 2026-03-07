@@ -6,6 +6,7 @@ import {
   updateCalendarEvent,
   deleteCalendarEvent,
   upsertGcalEvent,
+  getCalendarHistory,
   getLastDailyNotifDate,
   setLastDailyNotifDate,
 } from '../database'
@@ -30,6 +31,10 @@ export function registerCalendarHandlers(_mainWindow: BrowserWindow) {
 
   ipcMain.handle('delete-calendar-event', (_, id: string) => {
     return deleteCalendarEvent(id)
+  })
+
+  ipcMain.handle('get-calendar-history', (_, query?: string, limit?: number) => {
+    return getCalendarHistory(query, limit)
   })
 
   ipcMain.handle('sync-gcal-events', async () => {
