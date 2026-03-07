@@ -13,6 +13,7 @@ import { registerNetworkHandlers } from './network'
 import { registerSocialHandlers } from './social'
 import { registerContentHandlers } from './content'
 import { registerOutreachHandlers } from './outreach'
+import { registerCalendarHandlers } from './calendar'
 
 export function registerAllHandlers(mainWindow: BrowserWindow) {
   registerTaskHandlers(mainWindow)
@@ -29,4 +30,5 @@ export function registerAllHandlers(mainWindow: BrowserWindow) {
   registerSocialHandlers(mainWindow)
   registerContentHandlers(mainWindow)
   registerOutreachHandlers(mainWindow)
+  registerCalendarHandlers(mainWindow)
 }

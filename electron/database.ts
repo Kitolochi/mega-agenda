@@ -397,6 +397,19 @@ interface ContentDraft {
   updatedAt: string
 }
 
+export interface CalendarEvent {
+  id: string
+  title: string
+  description: string
+  date: string          // YYYY-MM-DD
+  startTime: string     // HH:mm (empty = all-day)
+  endTime: string       // HH:mm
+  color: string         // accent color key (emerald, blue, amber, purple)
+  source: 'manual' | 'gcal'
+  gcalEventId?: string
+  createdAt: string
+}
+
 interface Database {
   categories: Category[]
   tasks: Task[]
@@ -436,6 +449,8 @@ interface Database {
   contactMappings: ContactMapping[]
   contentDrafts: ContentDraft[]
   categoryOverrides: Record<string, string>  // transactionId -> categoryKey
+  calendarEvents: CalendarEvent[]
+  lastDailyNotifDate: string
 }
 
 let db: Database
@@ -821,6 +836,18 @@ export function initDatabase(): Database {
   // Initialize categoryOverrides if missing
   if (!(db as any).categoryOverrides) {
     db.categoryOverrides = {}
+    saveDatabase()
+  }
+
+  // Initialize calendarEvents if missing
+  if (!(db as any).calendarEvents) {
+    db.calendarEvents = []
+    saveDatabase()
+  }
+
+  // Initialize lastDailyNotifDate if missing
+  if (!(db as any).lastDailyNotifDate) {
+    db.lastDailyNotifDate = ''
     saveDatabase()
   }
 
@@ -2440,4 +2467,79 @@ export function upsertBankTransaction(tx: BankTransaction): { inserted: boolean 
   db.bankTransactions.push(tx)
   saveDatabase()
   return { inserted: true }
+}
+
+// Calendar Event CRUD
+
+export function getCalendarEvents(startDate: string, endDate: string): CalendarEvent[] {
+  return db.calendarEvents
+    .filter(e => e.date >= startDate && e.date <= endDate)
+    .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime))
+}
+
+export function getCalendarEventsForDate(date: string): CalendarEvent[] {
+  return db.calendarEvents
+    .filter(e => e.date === date)
+    .sort((a, b) => a.startTime.localeCompare(b.startTime))
+}
+
+export function createCalendarEvent(data: Omit<CalendarEvent, 'id' | 'createdAt'>): CalendarEvent {
+  const event: CalendarEvent = {
+    ...data,
+    id: crypto.randomUUID(),
+    createdAt: new Date().toISOString(),
+  }
+  db.calendarEvents.push(event)
+  saveDatabase()
+  return event
+}
+
+export function updateCalendarEvent(id: string, updates: Partial<CalendarEvent>): CalendarEvent | null {
+  const event = db.calendarEvents.find(e => e.id === id)
+  if (!event || event.source === 'gcal') return null
+  Object.assign(event, updates, { id: event.id, createdAt: event.createdAt })
+  saveDatabase()
+  return event
+}
+
+export function deleteCalendarEvent(id: string): void {
+  const event = db.calendarEvents.find(e => e.id === id)
+  if (!event || event.source === 'gcal') return
+  db.calendarEvents = db.calendarEvents.filter(e => e.id !== id)
+  saveDatabase()
+}
+
+export function getDailyAgenda(date: string): { tasks: Task[]; events: CalendarEvent[] } {
+  const tasks = db.tasks.filter(t => !t.completed && t.due_date === date)
+    .sort((a, b) => a.priority - b.priority)
+  const events = getCalendarEventsForDate(date)
+  return { tasks, events }
+}
+
+export function upsertGcalEvent(gcalEventId: string, data: Omit<CalendarEvent, 'id' | 'createdAt' | 'source' | 'gcalEventId'>): CalendarEvent {
+  const existing = db.calendarEvents.find(e => e.gcalEventId === gcalEventId)
+  if (existing) {
+    Object.assign(existing, data)
+    saveDatabase()
+    return existing
+  }
+  const event: CalendarEvent = {
+    ...data,
+    id: crypto.randomUUID(),
+    source: 'gcal',
+    gcalEventId,
+    createdAt: new Date().toISOString(),
+  }
+  db.calendarEvents.push(event)
+  saveDatabase()
+  return event
+}
+
+export function getLastDailyNotifDate(): string {
+  return db.lastDailyNotifDate || ''
+}
+
+export function setLastDailyNotifDate(date: string): void {
+  db.lastDailyNotifDate = date
+  saveDatabase()
 }

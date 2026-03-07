@@ -733,6 +733,19 @@ export interface ContentDraft {
   updatedAt: string
 }
 
+export interface CalendarEvent {
+  id: string
+  title: string
+  description: string
+  date: string
+  startTime: string
+  endTime: string
+  color: string
+  source: 'manual' | 'gcal'
+  gcalEventId?: string
+  createdAt: string
+}
+
 export interface ElectronAPI {
   // Task operations
   getCategories: () => Promise<Category[]>
@@ -1101,6 +1114,15 @@ export interface ElectronAPI {
   generateMessage: (templateId: string, businessId: string, options?: any) => Promise<string>
   getOutreachPipelineStats: () => Promise<OutreachPipelineStats[]>
   updateOutreach: (id: string, updates: Partial<OutreachMessage>) => Promise<OutreachMessage | null>
+
+  // Calendar
+  getCalendarEvents: (startDate: string, endDate: string) => Promise<CalendarEvent[]>
+  getDailyAgenda: (date: string) => Promise<{ tasks: Task[]; events: CalendarEvent[] }>
+  createCalendarEvent: (data: Omit<CalendarEvent, 'id' | 'createdAt'>) => Promise<CalendarEvent>
+  updateCalendarEvent: (id: string, updates: Partial<CalendarEvent>) => Promise<CalendarEvent | null>
+  deleteCalendarEvent: (id: string) => Promise<void>
+  syncGcalEvents: () => Promise<{ success: boolean; synced?: number; error?: string }>
+  fireDailyNotification: () => Promise<string | null>
 
   // Google Workspace CLI
   gwsCheckAuth: () => Promise<{ installed: boolean; authenticated: boolean; error?: string }>

@@ -6,6 +6,7 @@ import { startHealthMonitor } from './memory-health'
 import { initWhisperModel } from './whisper'
 import { loadVectorIndex, rebuildIndex } from './vector-store'
 import { registerAllHandlers } from './ipc'
+import { fireDailyNotification } from './ipc/calendar'
 import { syncAllGoalContextFiles } from './ipc/ai'
 import { scaffoldDomainFolders } from './ipc/system'
 
@@ -87,6 +88,8 @@ function createWindow() {
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show()
     mainWindow?.focus()
+    // Fire daily agenda notification once per day on launch
+    try { fireDailyNotification() } catch (e) { console.error('Daily notification error:', e) }
   })
 
   if (VITE_DEV_SERVER_URL) {

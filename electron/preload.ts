@@ -488,6 +488,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => { ipcRenderer.removeListener('batch-message-progress', handler) }
   },
 
+  // Calendar
+  getCalendarEvents: (startDate: string, endDate: string) => ipcRenderer.invoke('get-calendar-events', startDate, endDate),
+  getDailyAgenda: (date: string) => ipcRenderer.invoke('get-daily-agenda', date),
+  createCalendarEvent: (data: any) => ipcRenderer.invoke('create-calendar-event', data),
+  updateCalendarEvent: (id: string, updates: any) => ipcRenderer.invoke('update-calendar-event', id, updates),
+  deleteCalendarEvent: (id: string) => ipcRenderer.invoke('delete-calendar-event', id),
+  syncGcalEvents: () => ipcRenderer.invoke('sync-gcal-events'),
+  fireDailyNotification: () => ipcRenderer.invoke('fire-daily-notification'),
+
   // Clipboard
   readClipboard: () => ipcRenderer.sendSync('read-clipboard'),
   writeClipboard: (text: string) => ipcRenderer.send('write-clipboard', text),
