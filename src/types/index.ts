@@ -1058,6 +1058,9 @@ export interface ElectronAPI {
     default_radius: string
     resume_link: string
     onboarding_completed: string
+    gws_installed: string
+    gws_authenticated: string
+    gws_user_email: string
   }>
   setOutreachSetting: (key: string, value: string) => Promise<any>
   validateApiKey: (keyType: 'google_places' | 'apollo', apiKey: string) => Promise<{ valid: boolean; message: string }>
@@ -1088,6 +1091,17 @@ export interface ElectronAPI {
   deleteTemplate: (id: string) => Promise<void>
   generateMessage: (templateId: string, businessId: string, options?: any) => Promise<string>
   getOutreachPipelineStats: () => Promise<OutreachPipelineStats[]>
+  updateOutreach: (id: string, updates: Partial<OutreachMessage>) => Promise<OutreachMessage | null>
+
+  // Google Workspace CLI
+  gwsCheckAuth: () => Promise<{ installed: boolean; authenticated: boolean; error?: string }>
+  gwsSendEmail: (params: { outreachId?: string; businessId: string; to: string; subject: string; body: string }) =>
+    Promise<{ success: boolean; messageId?: string; error?: string }>
+  gwsCreateEvent: (params: { businessId: string; summary: string; startDateTime: string; endDateTime: string; attendeeEmail?: string; description?: string }) =>
+    Promise<{ success: boolean; eventId?: string; htmlLink?: string; error?: string }>
+  gwsExportSheets: () => Promise<{ success: boolean; spreadsheetUrl?: string; error?: string }>
+  gwsUploadDrive: (params: { format: 'csv' | 'json' }) =>
+    Promise<{ success: boolean; fileId?: string; webViewLink?: string; error?: string }>
 }
 
 declare global {

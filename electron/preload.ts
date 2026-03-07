@@ -461,6 +461,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   generateMessage: (templateId: string, businessId: string, options?: any) => ipcRenderer.invoke('generate-message', templateId, businessId, options),
   generateBatchMessages: (businessIds: string[], templateId: string, options?: any) => ipcRenderer.invoke('generate-batch-messages', businessIds, templateId, options),
   getOutreachPipelineStats: () => ipcRenderer.invoke('get-pipeline-stats'),
+  updateOutreach: (id: string, updates: any) => ipcRenderer.invoke('update-outreach', id, updates),
+
+  // Google Workspace CLI
+  gwsCheckAuth: () => ipcRenderer.invoke('gws-check-auth'),
+  gwsSendEmail: (params: { outreachId?: string; businessId: string; to: string; subject: string; body: string }) =>
+    ipcRenderer.invoke('gws-send-email', params),
+  gwsCreateEvent: (params: { businessId: string; summary: string; startDateTime: string; endDateTime: string; attendeeEmail?: string; description?: string }) =>
+    ipcRenderer.invoke('gws-create-event', params),
+  gwsExportSheets: () => ipcRenderer.invoke('gws-export-sheets'),
+  gwsUploadDrive: (params: { format: 'csv' | 'json' }) => ipcRenderer.invoke('gws-upload-drive', params),
+
   onBatchMessageProgress: (callback: (data: { current: number; total: number; businessName: string }) => void) => {
     const handler = (_: any, data: any) => callback(data)
     ipcRenderer.on('batch-message-progress', handler)

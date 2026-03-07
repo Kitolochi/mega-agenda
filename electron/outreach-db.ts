@@ -76,6 +76,9 @@ export interface OutreachSettings {
   default_radius: string
   resume_link: string
   onboarding_completed: string
+  gws_installed: string
+  gws_authenticated: string
+  gws_user_email: string
 }
 
 const SETTINGS_DEFAULTS: OutreachSettings = {
@@ -86,6 +89,9 @@ const SETTINGS_DEFAULTS: OutreachSettings = {
   default_radius: '25000',
   resume_link: '',
   onboarding_completed: 'false',
+  gws_installed: '',
+  gws_authenticated: '',
+  gws_user_email: '',
 }
 
 // ── JSON Database ──

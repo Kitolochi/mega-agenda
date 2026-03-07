@@ -47,7 +47,7 @@ interface AutoResearchProgress {
 }
 
 export default function OutreachTab() {
-  const { currentView, setView, fetchBusinesses, fetchPipelineStats, fetchTemplates } = useOutreachStore()
+  const { currentView, setView, fetchBusinesses, fetchPipelineStats, fetchTemplates, checkGwsAuth } = useOutreachStore()
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showTips, setShowTips] = useState(false)
@@ -77,7 +77,8 @@ export default function OutreachTab() {
     fetchBusinesses()
     fetchPipelineStats()
     fetchTemplates()
-  }, [checkOnboarding, fetchBusinesses, fetchPipelineStats, fetchTemplates])
+    checkGwsAuth()
+  }, [checkOnboarding, fetchBusinesses, fetchPipelineStats, fetchTemplates, checkGwsAuth])
 
   const handleOnboardingComplete = useCallback(() => {
     setShowOnboarding(false)
@@ -534,7 +535,18 @@ function BusinessDetail({
   onRefresh: () => void
 }) {
   const [statusDropdown, setStatusDropdown] = useState(false)
-  const { setView } = useOutreachStore()
+  const { setView, gwsStatus } = useOutreachStore()
+  const [showMeetingForm, setShowMeetingForm] = useState(false)
+  const [meetingData, setMeetingData] = useState({
+    summary: `Meeting with ${business.name}`,
+    date: '',
+    time: '13:00',
+    duration: '30',
+    attendeeEmail: contacts[0]?.email || '',
+    description: '',
+  })
+  const [meetingLoading, setMeetingLoading] = useState(false)
+  const [meetingResult, setMeetingResult] = useState<{ success: boolean; htmlLink?: string; error?: string } | null>(null)
 
   const handleStatusChange = async (status: OutreachBusinessStatus) => {
     await window.electronAPI.updateBusiness(business.id, { status })
@@ -748,6 +760,16 @@ function BusinessDetail({
         >
           Compose Message
         </button>
+        {gwsStatus.installed && (
+          <button
+            onClick={() => setShowMeetingForm(!showMeetingForm)}
+            disabled={!gwsStatus.authenticated}
+            title={!gwsStatus.authenticated ? 'Authenticate in Settings first' : 'Schedule a meeting'}
+            className="px-2.5 py-1.5 rounded-lg bg-accent-amber/20 hover:bg-accent-amber/30 text-[10px] font-medium text-accent-amber transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Schedule Meeting
+          </button>
+        )}
         <div className="relative">
           <button
             onClick={() => setStatusDropdown(!statusDropdown)}
@@ -774,6 +796,124 @@ function BusinessDetail({
           )}
         </div>
       </div>
+
+      {/* Schedule Meeting form */}
+      {showMeetingForm && (
+        <div className="mt-3 p-3 rounded-lg bg-surface-2/50 border border-accent-amber/20 space-y-2.5">
+          <div className="text-[10px] font-medium text-accent-amber">Schedule Meeting</div>
+          <input
+            type="text"
+            value={meetingData.summary}
+            onChange={e => setMeetingData(d => ({ ...d, summary: e.target.value }))}
+            placeholder="Meeting summary"
+            className="w-full bg-surface-2 border border-white/[0.06] rounded-lg px-3 py-1.5 text-xs text-white placeholder:text-muted/50 focus:outline-none focus:border-accent-amber/30"
+          />
+          <div className="grid grid-cols-3 gap-2">
+            <div>
+              <label className="text-[9px] text-white/30 mb-0.5 block">Date</label>
+              <input
+                type="date"
+                value={meetingData.date}
+                onChange={e => setMeetingData(d => ({ ...d, date: e.target.value }))}
+                className="w-full bg-surface-2 border border-white/[0.06] rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-accent-amber/30"
+              />
+            </div>
+            <div>
+              <label className="text-[9px] text-white/30 mb-0.5 block">Time</label>
+              <input
+                type="time"
+                value={meetingData.time}
+                onChange={e => setMeetingData(d => ({ ...d, time: e.target.value }))}
+                className="w-full bg-surface-2 border border-white/[0.06] rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-accent-amber/30"
+              />
+            </div>
+            <div>
+              <label className="text-[9px] text-white/30 mb-0.5 block">Duration</label>
+              <select
+                value={meetingData.duration}
+                onChange={e => setMeetingData(d => ({ ...d, duration: e.target.value }))}
+                className="w-full bg-surface-2 border border-white/[0.06] rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-accent-amber/30"
+              >
+                <option value="30">30 min</option>
+                <option value="60">1 hour</option>
+                <option value="90">1.5 hours</option>
+              </select>
+            </div>
+          </div>
+          <input
+            type="email"
+            value={meetingData.attendeeEmail}
+            onChange={e => setMeetingData(d => ({ ...d, attendeeEmail: e.target.value }))}
+            placeholder="Attendee email (optional)"
+            className="w-full bg-surface-2 border border-white/[0.06] rounded-lg px-3 py-1.5 text-xs text-white placeholder:text-muted/50 focus:outline-none focus:border-accent-amber/30"
+          />
+          <textarea
+            value={meetingData.description}
+            onChange={e => setMeetingData(d => ({ ...d, description: e.target.value }))}
+            placeholder="Description (optional)"
+            rows={2}
+            className="w-full bg-surface-2 border border-white/[0.06] rounded-lg px-3 py-1.5 text-xs text-white placeholder:text-muted/50 focus:outline-none focus:border-accent-amber/30 resize-none"
+          />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={async () => {
+                if (!meetingData.date || !meetingData.time) return
+                setMeetingLoading(true)
+                setMeetingResult(null)
+                try {
+                  const startDateTime = `${meetingData.date}T${meetingData.time}:00`
+                  const endDate = new Date(`${meetingData.date}T${meetingData.time}:00`)
+                  endDate.setMinutes(endDate.getMinutes() + parseInt(meetingData.duration))
+                  const endDateTime = endDate.toISOString().replace('Z', '').slice(0, 19)
+                  const result = await window.electronAPI.gwsCreateEvent({
+                    businessId: business.id,
+                    summary: meetingData.summary,
+                    startDateTime,
+                    endDateTime,
+                    attendeeEmail: meetingData.attendeeEmail || undefined,
+                    description: meetingData.description || undefined,
+                  })
+                  setMeetingResult(result)
+                  if (result.success) onRefresh()
+                } catch (err: any) {
+                  setMeetingResult({ success: false, error: err.message })
+                } finally {
+                  setMeetingLoading(false)
+                }
+              }}
+              disabled={!meetingData.date || !meetingData.time || meetingLoading}
+              className="px-3 py-1.5 rounded-lg bg-accent-amber/20 hover:bg-accent-amber/30 text-[10px] font-medium text-accent-amber transition-all disabled:opacity-40"
+            >
+              {meetingLoading ? 'Creating...' : 'Create Event'}
+            </button>
+            <button
+              onClick={() => { setShowMeetingForm(false); setMeetingResult(null) }}
+              className="px-3 py-1.5 rounded-lg text-[10px] text-muted hover:text-white transition-all"
+            >
+              Cancel
+            </button>
+          </div>
+          {meetingResult && (
+            <div className={cn('text-[10px] px-2 py-1 rounded', meetingResult.success ? 'text-accent-emerald bg-accent-emerald/10' : 'text-red-400 bg-red-400/10')}>
+              {meetingResult.success ? (
+                <span>
+                  Event created!{' '}
+                  {meetingResult.htmlLink && (
+                    <button
+                      onClick={() => window.electronAPI.openExternal(meetingResult.htmlLink!)}
+                      className="text-accent-blue hover:text-accent-blue/80 underline"
+                    >
+                      Open in Calendar
+                    </button>
+                  )}
+                </span>
+              ) : (
+                meetingResult.error
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -961,13 +1101,17 @@ function DiscoverPanel() {
 // ============================================================
 
 function MessageComposer() {
-  const { templates, selectedBusiness, businesses, contacts, fetchContacts, fetchTemplates } = useOutreachStore()
+  const { templates, selectedBusiness, businesses, contacts, fetchContacts, fetchTemplates, gwsStatus, fetchBusinesses } = useOutreachStore()
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [selectedBusinessId, setSelectedBusinessId] = useState(selectedBusiness?.id || '')
   const [selectedContactId, setSelectedContactId] = useState('')
   const [draftText, setDraftText] = useState('')
   const [generating, setGenerating] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [recipientEmail, setRecipientEmail] = useState('')
+  const [emailSubject, setEmailSubject] = useState('')
+  const [sending, setSending] = useState(false)
+  const [sendResult, setSendResult] = useState<{ success: boolean; error?: string } | null>(null)
 
   useEffect(() => {
     fetchTemplates()
@@ -985,6 +1129,12 @@ function MessageComposer() {
       fetchContacts(selectedBusinessId)
     }
   }, [selectedBusinessId, selectedBusiness?.id, fetchContacts])
+
+  // Auto-fill recipient email from selected contact
+  useEffect(() => {
+    const contact = contacts.find(c => c.id === selectedContactId) || contacts[0]
+    if (contact?.email) setRecipientEmail(contact.email)
+  }, [selectedContactId, contacts])
 
   const selectedTemplate = templates.find(t => t.id === selectedTemplateId)
 
@@ -1091,13 +1241,15 @@ function MessageComposer() {
         <div className="p-4 rounded-xl bg-surface-1/50 border border-white/[0.06] space-y-3">
           <div className="flex items-center justify-between">
             <h4 className="text-xs font-medium text-white">Draft</h4>
-            <button
-              onClick={handleCopy}
-              disabled={!draftText}
-              className="px-2.5 py-1.5 rounded-lg bg-accent-emerald/20 hover:bg-accent-emerald/30 text-[10px] font-medium text-accent-emerald transition-all disabled:opacity-40"
-            >
-              {copied ? 'Copied!' : 'Copy to Clipboard'}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleCopy}
+                disabled={!draftText}
+                className="px-2.5 py-1.5 rounded-lg bg-accent-emerald/20 hover:bg-accent-emerald/30 text-[10px] font-medium text-accent-emerald transition-all disabled:opacity-40"
+              >
+                {copied ? 'Copied!' : 'Copy to Clipboard'}
+              </button>
+            </div>
           </div>
 
           <textarea
@@ -1108,6 +1260,87 @@ function MessageComposer() {
             placeholder={generating ? 'Generating...' : 'Your drafted message will appear here...'}
           />
 
+          {/* Gmail send section */}
+          {gwsStatus.installed && selectedTemplate?.channel === 'email' && draftText && (
+            <div className="p-2.5 rounded-lg bg-surface-2/50 border border-white/[0.04] space-y-2">
+              <div className="text-[10px] font-medium text-white/60">Send via Gmail</div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[9px] text-white/30 mb-0.5 block">Recipient</label>
+                  <input
+                    type="email"
+                    value={recipientEmail}
+                    onChange={e => setRecipientEmail(e.target.value)}
+                    placeholder="recipient@example.com"
+                    className="w-full bg-surface-2 border border-white/[0.06] rounded-lg px-2.5 py-1.5 text-xs text-white placeholder:text-muted/50 focus:outline-none focus:border-accent-blue/30"
+                  />
+                </div>
+                <div>
+                  <label className="text-[9px] text-white/30 mb-0.5 block">Subject</label>
+                  <input
+                    type="text"
+                    value={emailSubject}
+                    onChange={e => setEmailSubject(e.target.value)}
+                    placeholder="Email subject"
+                    className="w-full bg-surface-2 border border-white/[0.06] rounded-lg px-2.5 py-1.5 text-xs text-white placeholder:text-muted/50 focus:outline-none focus:border-accent-blue/30"
+                  />
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={async () => {
+                    if (!recipientEmail || !emailSubject || !draftText || !selectedBusinessId) return
+                    setSending(true)
+                    setSendResult(null)
+                    try {
+                      // Create outreach record first
+                      const outreach = await window.electronAPI.createOutreach({
+                        businessId: selectedBusinessId,
+                        contactId: selectedContactId || null,
+                        channel: 'email' as const,
+                        messageText: draftText,
+                        status: 'draft',
+                        sentAt: null,
+                        respondedAt: null,
+                      })
+                      const result = await window.electronAPI.gwsSendEmail({
+                        outreachId: outreach.id,
+                        businessId: selectedBusinessId,
+                        to: recipientEmail,
+                        subject: emailSubject,
+                        body: draftText,
+                      })
+                      setSendResult(result)
+                      if (result.success) fetchBusinesses()
+                    } catch (err: any) {
+                      setSendResult({ success: false, error: err.message })
+                    } finally {
+                      setSending(false)
+                    }
+                  }}
+                  disabled={!gwsStatus.authenticated || !recipientEmail || !emailSubject || sending}
+                  title={!gwsStatus.authenticated ? 'Authenticate in Settings first' : ''}
+                  className="px-3 py-1.5 rounded-lg bg-accent-blue/20 hover:bg-accent-blue/30 text-[10px] font-medium text-accent-blue transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+                >
+                  {sending ? (
+                    <>
+                      <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      Sending...
+                    </>
+                  ) : 'Send via Gmail'}
+                </button>
+                {sendResult && (
+                  <span className={cn('text-[10px]', sendResult.success ? 'text-accent-emerald' : 'text-red-400')}>
+                    {sendResult.success ? 'Sent!' : sendResult.error}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Channel tip */}
           {selectedTemplate && (
             <div className="flex items-start gap-2 p-2 rounded-lg bg-surface-2/50">
@@ -1116,7 +1349,7 @@ function MessageComposer() {
               </svg>
               <span className="text-[10px] text-muted">
                 {selectedTemplate.channel === 'linkedin' && 'Paste this into a LinkedIn connection request or InMail.'}
-                {selectedTemplate.channel === 'email' && 'Copy and paste into your email client.'}
+                {selectedTemplate.channel === 'email' && (gwsStatus.authenticated ? 'You can send directly via Gmail above, or copy and paste.' : 'Copy and paste into your email client.')}
                 {selectedTemplate.channel === 'instagram' && 'Paste this into an Instagram DM.'}
                 {selectedTemplate.channel === 'facebook' && 'Paste this into a Facebook message.'}
                 {selectedTemplate.channel === 'twitter' && 'Paste this into a Twitter/X DM.'}
@@ -1135,7 +1368,10 @@ function MessageComposer() {
 // ============================================================
 
 function PipelineDashboard() {
-  const { pipelineStats, fetchPipelineStats, businesses, setFilter, setView } = useOutreachStore()
+  const { pipelineStats, fetchPipelineStats, businesses, setFilter, setView, gwsStatus } = useOutreachStore()
+  const [exporting, setExporting] = useState<'sheets' | 'drive' | null>(null)
+  const [exportResult, setExportResult] = useState<{ type: string; success: boolean; url?: string; error?: string } | null>(null)
+  const [driveFormat, setDriveFormat] = useState<'csv' | 'json'>('csv')
 
   useEffect(() => {
     fetchPipelineStats()
@@ -1236,6 +1472,100 @@ function PipelineDashboard() {
           })}
         </div>
       </div>
+
+      {/* Export buttons (visible when gws is installed) */}
+      {gwsStatus.installed && (
+        <div className="p-4 rounded-xl bg-surface-1/50 border border-white/[0.06] space-y-3">
+          <h4 className="text-xs font-medium text-white">Export Data</h4>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={async () => {
+                setExporting('sheets')
+                setExportResult(null)
+                try {
+                  const result = await window.electronAPI.gwsExportSheets()
+                  setExportResult({ type: 'sheets', ...result })
+                } catch (err: any) {
+                  setExportResult({ type: 'sheets', success: false, error: err.message })
+                } finally {
+                  setExporting(null)
+                }
+              }}
+              disabled={!gwsStatus.authenticated || exporting !== null}
+              title={!gwsStatus.authenticated ? 'Authenticate in Settings first' : 'Export all businesses to Google Sheets'}
+              className="px-3 py-2 rounded-lg bg-accent-emerald/20 hover:bg-accent-emerald/30 text-[10px] font-medium text-accent-emerald transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+            >
+              {exporting === 'sheets' ? (
+                <>
+                  <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Exporting...
+                </>
+              ) : 'Export to Sheets'}
+            </button>
+
+            <div className="flex items-center gap-1.5">
+              <select
+                value={driveFormat}
+                onChange={e => setDriveFormat(e.target.value as 'csv' | 'json')}
+                className="bg-surface-2 border border-white/[0.06] rounded-lg px-2 py-2 text-[10px] text-white focus:outline-none"
+              >
+                <option value="csv">CSV</option>
+                <option value="json">JSON</option>
+              </select>
+              <button
+                onClick={async () => {
+                  setExporting('drive')
+                  setExportResult(null)
+                  try {
+                    const result = await window.electronAPI.gwsUploadDrive({ format: driveFormat })
+                    setExportResult({ type: 'drive', success: result.success, url: result.webViewLink, error: result.error })
+                  } catch (err: any) {
+                    setExportResult({ type: 'drive', success: false, error: err.message })
+                  } finally {
+                    setExporting(null)
+                  }
+                }}
+                disabled={!gwsStatus.authenticated || exporting !== null}
+                title={!gwsStatus.authenticated ? 'Authenticate in Settings first' : 'Upload file to Google Drive'}
+                className="px-3 py-2 rounded-lg bg-accent-blue/20 hover:bg-accent-blue/30 text-[10px] font-medium text-accent-blue transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+              >
+                {exporting === 'drive' ? (
+                  <>
+                    <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    Uploading...
+                  </>
+                ) : 'Save to Drive'}
+              </button>
+            </div>
+          </div>
+
+          {exportResult && (
+            <div className={cn('text-[10px] px-2 py-1.5 rounded', exportResult.success ? 'text-accent-emerald bg-accent-emerald/10' : 'text-red-400 bg-red-400/10')}>
+              {exportResult.success ? (
+                <span>
+                  {exportResult.type === 'sheets' ? 'Exported to Google Sheets!' : 'Uploaded to Google Drive!'}{' '}
+                  {exportResult.url && (
+                    <button
+                      onClick={() => window.electronAPI.openExternal(exportResult.url!)}
+                      className="text-accent-blue hover:text-accent-blue/80 underline"
+                    >
+                      Open
+                    </button>
+                  )}
+                </span>
+              ) : (
+                exportResult.error
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

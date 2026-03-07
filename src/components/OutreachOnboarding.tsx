@@ -13,6 +13,9 @@ interface OutreachSettingsData {
   default_radius: string
   resume_link: string
   onboarding_completed: string
+  gws_installed: string
+  gws_authenticated: string
+  gws_user_email: string
 }
 
 interface SeedProgress {
@@ -45,6 +48,9 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
     default_radius: '25000',
     resume_link: '',
     onboarding_completed: 'false',
+    gws_installed: '',
+    gws_authenticated: '',
+    gws_user_email: '',
   })
   const [googleKeyStatus, setGoogleKeyStatus] = useState<{ valid: boolean; message: string } | null>(null)
   const [apolloKeyStatus, setApolloKeyStatus] = useState<{ valid: boolean; message: string } | null>(null)
@@ -570,10 +576,15 @@ export function OutreachSettingsPanel({ onClose }: OutreachSettingsPanelProps) {
     default_radius: '25000',
     resume_link: '',
     onboarding_completed: 'false',
+    gws_installed: '',
+    gws_authenticated: '',
+    gws_user_email: '',
   })
   const [googleKeyStatus, setGoogleKeyStatus] = useState<{ valid: boolean; message: string } | null>(null)
   const [apolloKeyStatus, setApolloKeyStatus] = useState<{ valid: boolean; message: string } | null>(null)
   const [validating, setValidating] = useState<'google' | 'apollo' | null>(null)
+  const [gwsChecking, setGwsChecking] = useState(false)
+  const [gwsStatus, setGwsStatus] = useState<{ installed: boolean; authenticated: boolean; error?: string } | null>(null)
 
   useEffect(() => {
     window.electronAPI.getOutreachSettings().then(setSettings)
@@ -745,6 +756,80 @@ export function OutreachSettingsPanel({ onClose }: OutreachSettingsPanelProps) {
               placeholder="https://your-site.com/resume"
               className="w-full bg-surface-2 border border-white/[0.06] rounded-lg px-3 py-2 text-xs text-white placeholder:text-muted/50 focus:outline-none focus:border-accent-emerald/30"
             />
+          </div>
+
+          {/* Divider */}
+          <div className="border-t border-white/[0.06]" />
+
+          {/* Google Workspace */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] text-white/60 font-medium">Google Workspace</label>
+              <div className="flex items-center gap-1.5">
+                <span className={cn(
+                  'w-1.5 h-1.5 rounded-full',
+                  gwsStatus?.authenticated ? 'bg-accent-emerald' : gwsStatus?.installed ? 'bg-accent-amber' : 'bg-white/20'
+                )} />
+                <span className="text-[10px] text-white/40">
+                  {gwsStatus?.authenticated ? 'Connected' : gwsStatus?.installed ? 'Not authenticated' : 'Not configured'}
+                </span>
+              </div>
+            </div>
+
+            <div className="p-2.5 rounded-lg bg-surface-2/50 space-y-2">
+              <p className="text-[10px] text-white/40">
+                Send emails via Gmail, schedule calendar events, and export to Sheets/Drive.
+              </p>
+              <div className="text-[10px] text-white/30 space-y-1">
+                <p>1. Install: <code className="text-accent-blue/70 bg-surface-3 px-1 py-0.5 rounded">npm install -g @anthropic-ai/gws</code></p>
+                <p>2. Authenticate: <code className="text-accent-blue/70 bg-surface-3 px-1 py-0.5 rounded">gws auth login</code></p>
+              </div>
+            </div>
+
+            <button
+              onClick={async () => {
+                setGwsChecking(true)
+                setGwsStatus(null)
+                try {
+                  const result = await window.electronAPI.gwsCheckAuth()
+                  setGwsStatus(result)
+                } catch (err: any) {
+                  setGwsStatus({ installed: false, authenticated: false, error: err.message })
+                } finally {
+                  setGwsChecking(false)
+                }
+              }}
+              disabled={gwsChecking}
+              className="px-3 py-2 rounded-lg bg-surface-3 hover:bg-surface-4 text-[10px] text-white/70 hover:text-white transition-all disabled:opacity-40"
+            >
+              {gwsChecking ? 'Checking...' : 'Test Connection'}
+            </button>
+
+            {gwsStatus && (
+              <div className={cn(
+                'text-[10px] px-2 py-1 rounded',
+                gwsStatus.authenticated ? 'text-accent-emerald bg-accent-emerald/10'
+                  : gwsStatus.installed ? 'text-accent-amber bg-accent-amber/10'
+                  : 'text-red-400 bg-red-400/10'
+              )}>
+                {gwsStatus.authenticated
+                  ? 'Google Workspace connected successfully'
+                  : gwsStatus.installed
+                  ? `Installed but not authenticated. Run: gws auth login`
+                  : gwsStatus.error || 'gws CLI not found. Install it first.'}
+              </div>
+            )}
+
+            <div>
+              <label className="text-[10px] text-white/30 mb-1 block">Gmail Address (for From header)</label>
+              <input
+                type="email"
+                value={settings.gws_user_email}
+                onChange={e => handleSave('gws_user_email', e.target.value)}
+                placeholder="you@gmail.com"
+                className="w-full bg-surface-2 border border-white/[0.06] rounded-lg px-3 py-2 text-xs text-white placeholder:text-muted/50 focus:outline-none focus:border-accent-emerald/30"
+              />
+            </div>
           </div>
         </div>
 

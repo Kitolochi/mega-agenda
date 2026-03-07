@@ -1,5 +1,8 @@
 import https from 'https'
-import { ipcMain, BrowserWindow } from 'electron'
+import path from 'path'
+import fs from 'fs'
+import os from 'os'
+import { ipcMain, BrowserWindow, app } from 'electron'
 import {
   getBusinesses,
   getBusiness,
@@ -10,6 +13,7 @@ import {
   createContact,
   getBusinessOutreach,
   createOutreach,
+  updateOutreach,
   getTemplates,
   createTemplate,
   updateTemplate,
@@ -25,6 +29,13 @@ import {
 import type { OutreachSettings } from '../outreach-db'
 import { generatePersonalizedMessage, generateBatchMessages } from '../outreach-messages'
 import { seedCharlotteBusinesses } from '../outreach-seed'
+import {
+  gwsCheckAuth,
+  gmailSend,
+  calendarCreateEvent,
+  sheetsExportPipeline,
+  driveUploadFile,
+} from '../gws-bridge'
 
 function httpsGetStatus(url: string): Promise<{ ok: boolean; status: number; body: string }> {
   return new Promise((resolve) => {
@@ -258,4 +269,125 @@ export function registerOutreachHandlers(mainWindow: BrowserWindow) {
 
   // Pipeline stats
   ipcMain.handle('get-pipeline-stats', () => getPipelineStats())
+
+  // ── Update outreach record ──
+  ipcMain.handle('update-outreach', (_, id: string, updates: any) => updateOutreach(id, updates))
+
+  // ── Google Workspace CLI ──
+
+  ipcMain.handle('gws-check-auth', async () => {
+    const status = await gwsCheckAuth()
+    setOutreachSetting('gws_installed', status.installed ? 'true' : '')
+    setOutreachSetting('gws_authenticated', status.authenticated ? 'true' : '')
+    return status
+  })
+
+  ipcMain.handle('gws-send-email', async (_, params: {
+    outreachId?: string
+    businessId: string
+    to: string
+    subject: string
+    body: string
+  }) => {
+    const fromEmail = getOutreachSetting('gws_user_email') || undefined
+    const result = await gmailSend(params.to, params.subject, params.body, fromEmail)
+
+    if (result.success) {
+      // Save as outreach record if outreachId provided, otherwise create new
+      if (params.outreachId) {
+        updateOutreach(params.outreachId, {
+          status: 'sent',
+          sentAt: new Date().toISOString(),
+        })
+      } else {
+        createOutreach({
+          businessId: params.businessId,
+          channel: 'email',
+          messageText: params.body,
+          status: 'sent',
+          sentAt: new Date().toISOString(),
+        })
+      }
+
+      // Auto-update business status to 'Contacted' if currently 'New'
+      const biz = getBusiness(params.businessId)
+      if (biz && biz.status === 'New') {
+        updateBusiness(params.businessId, { status: 'Contacted' })
+      }
+    }
+
+    return result
+  })
+
+  ipcMain.handle('gws-create-event', async (_, params: {
+    businessId: string
+    summary: string
+    startDateTime: string
+    endDateTime: string
+    attendeeEmail?: string
+    description?: string
+  }) => {
+    const result = await calendarCreateEvent({
+      summary: params.summary,
+      startDateTime: params.startDateTime,
+      endDateTime: params.endDateTime,
+      attendeeEmail: params.attendeeEmail,
+      description: params.description,
+    })
+
+    if (result.success) {
+      updateBusiness(params.businessId, { status: 'Meeting Scheduled' })
+    }
+
+    return result
+  })
+
+  ipcMain.handle('gws-export-sheets', async () => {
+    const allBusinesses = getBusinesses()
+    const header = ['Name', 'Address', 'Phone', 'Website', 'Category', 'Status', 'Rating', 'Notes', 'Created']
+    const rows = [header, ...allBusinesses.map(b => [
+      b.name,
+      b.address,
+      b.phone,
+      b.website,
+      b.category,
+      b.status,
+      b.rating?.toString() || '',
+      b.notes,
+      b.createdAt,
+    ])]
+    const title = `Outreach Pipeline — ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+    return sheetsExportPipeline(title, rows)
+  })
+
+  ipcMain.handle('gws-upload-drive', async (_, params: { format: 'csv' | 'json' }) => {
+    const allBusinesses = getBusinesses()
+    const tmpDir = os.tmpdir()
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+    const fileName = `outreach-pipeline-${timestamp}.${params.format}`
+    const tmpPath = path.join(tmpDir, fileName)
+
+    try {
+      if (params.format === 'csv') {
+        const header = 'Name,Address,Phone,Website,Category,Status,Rating,Notes,Created'
+        const csvRows = allBusinesses.map(b => {
+          const escape = (s: string) => `"${(s || '').replace(/"/g, '""')}"`
+          return [
+            escape(b.name), escape(b.address), escape(b.phone), escape(b.website),
+            escape(b.category), escape(b.status), b.rating?.toString() || '',
+            escape(b.notes), escape(b.createdAt),
+          ].join(',')
+        })
+        fs.writeFileSync(tmpPath, [header, ...csvRows].join('\n'), 'utf-8')
+      } else {
+        fs.writeFileSync(tmpPath, JSON.stringify(allBusinesses, null, 2), 'utf-8')
+      }
+
+      const result = await driveUploadFile(fileName, tmpPath)
+      return result
+    } finally {
+      // Clean up temp file
+      try { fs.unlinkSync(tmpPath) } catch { /* ignore */ }
+    }
+  })
 }

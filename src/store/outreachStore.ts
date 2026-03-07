@@ -16,6 +16,13 @@ interface OutreachFilters {
   search: string
 }
 
+interface GwsStatus {
+  installed: boolean
+  authenticated: boolean
+  checked: boolean
+  error?: string
+}
+
 interface OutreachState {
   businesses: OutreachBusiness[]
   selectedBusiness: OutreachBusiness | null
@@ -28,6 +35,7 @@ interface OutreachState {
   loading: boolean
   loadingContacts: boolean
   loadingHistory: boolean
+  gwsStatus: GwsStatus
 
   setView: (view: OutreachView) => void
   setFilter: (key: keyof OutreachFilters, value: string) => void
@@ -37,6 +45,7 @@ interface OutreachState {
   fetchTemplates: () => Promise<void>
   fetchPipelineStats: () => Promise<void>
   fetchOutreachHistory: (businessId: string) => Promise<void>
+  checkGwsAuth: () => Promise<void>
 }
 
 export const useOutreachStore = create<OutreachState>((set, get) => ({
@@ -51,6 +60,7 @@ export const useOutreachStore = create<OutreachState>((set, get) => ({
   loading: false,
   loadingContacts: false,
   loadingHistory: false,
+  gwsStatus: { installed: false, authenticated: false, checked: false },
 
   setView: (view) => set({ currentView: view }),
 
@@ -102,6 +112,22 @@ export const useOutreachStore = create<OutreachState>((set, get) => ({
       set({ outreachHistory: history })
     } finally {
       set({ loadingHistory: false })
+    }
+  },
+
+  checkGwsAuth: async () => {
+    try {
+      const result = await window.electronAPI.gwsCheckAuth()
+      set({
+        gwsStatus: {
+          installed: result.installed,
+          authenticated: result.authenticated,
+          checked: true,
+          error: result.error,
+        },
+      })
+    } catch {
+      set({ gwsStatus: { installed: false, authenticated: false, checked: true } })
     }
   },
 }))
