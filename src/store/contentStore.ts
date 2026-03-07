@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { ContentDraft, ContentType } from '../types'
+import { ContentDraft, ContentType, TweetScore } from '../types'
 
 interface ContentState {
   drafts: ContentDraft[]
@@ -10,6 +10,8 @@ interface ContentState {
   streamText: string
   researching: boolean
   streaming: boolean
+  scoring: boolean
+  tweetScores: TweetScore[] | null
   refineInput: string
 
   // Actions
@@ -19,6 +21,8 @@ interface ContentState {
   setStreamText: (text: string) => void
   setResearching: (v: boolean) => void
   setStreaming: (v: boolean) => void
+  setScoring: (v: boolean) => void
+  setTweetScores: (scores: TweetScore[] | null) => void
   setRefineInput: (v: string) => void
   setActiveDraftId: (id: string | null) => void
 
@@ -45,6 +49,8 @@ export const useContentStore = create<ContentState>((set, get) => ({
   streamText: '',
   researching: false,
   streaming: false,
+  scoring: false,
+  tweetScores: null,
   refineInput: '',
 
   setContentType: (type) => set({ contentType: type }),
@@ -53,6 +59,8 @@ export const useContentStore = create<ContentState>((set, get) => ({
   setStreamText: (text) => set({ streamText: text }),
   setResearching: (v) => set({ researching: v }),
   setStreaming: (v) => set({ streaming: v }),
+  setScoring: (v) => set({ scoring: v }),
+  setTweetScores: (scores) => set({ tweetScores: scores }),
   setRefineInput: (v) => set({ refineInput: v }),
   setActiveDraftId: (id) => set({ activeDraftId: id }),
 
@@ -71,6 +79,8 @@ export const useContentStore = create<ContentState>((set, get) => ({
       contentType: 'tweet',
       researching: false,
       streaming: false,
+      scoring: false,
+      tweetScores: null,
       refineInput: '',
     })
     await get().loadDrafts()
@@ -107,7 +117,7 @@ export const useContentStore = create<ContentState>((set, get) => ({
       messages: [{ id: Date.now().toString(36), role: 'user' as const, content: userPrompt, timestamp: new Date().toISOString() }],
     })
 
-    set({ streaming: true, streamText: '' })
+    set({ streaming: true, streamText: '', scoring: false, tweetScores: null })
     await window.electronAPI.contentGenerate(activeDraftId, messages, contentType)
   },
 
@@ -123,7 +133,7 @@ export const useContentStore = create<ContentState>((set, get) => ({
 
     await window.electronAPI.updateContentDraft(activeDraftId, { status: 'refining' })
 
-    set({ streaming: true, streamText: '' })
+    set({ streaming: true, streamText: '', scoring: false, tweetScores: null })
     await window.electronAPI.contentGenerate(activeDraftId, messages, contentType)
   },
 
@@ -196,6 +206,8 @@ export const useContentStore = create<ContentState>((set, get) => ({
       contentType: draft.contentType,
       researching: false,
       streaming: false,
+      scoring: false,
+      tweetScores: null,
       refineInput: '',
     })
   },

@@ -7,6 +7,8 @@ export function useContentStreaming() {
   const setResearching = useContentStore(s => s.setResearching)
   const setStreamText = useContentStore(s => s.setStreamText)
   const setStreaming = useContentStore(s => s.setStreaming)
+  const setScoring = useContentStore(s => s.setScoring)
+  const setTweetScores = useContentStore(s => s.setTweetScores)
   const loadDrafts = useContentStore(s => s.loadDrafts)
 
   const researchBuf = useRef('')
@@ -52,6 +54,10 @@ export function useContentStreaming() {
     const cleanupDraftEnd = window.electronAPI.onContentStreamEnd(async (data) => {
       if (data.draftId === activeDraftId) {
         setStreaming(false)
+        const contentType = useContentStore.getState().contentType
+        if (contentType === 'tweet') {
+          setScoring(true)
+        }
         // Save content to draft
         if (activeDraftId) {
           await window.electronAPI.updateContentDraft(activeDraftId, {
@@ -69,6 +75,19 @@ export function useContentStreaming() {
       }
     })
 
+    const cleanupScoresReady = window.electronAPI.onContentScoresReady((data) => {
+      if (data.draftId === activeDraftId) {
+        setTweetScores(data.scores)
+        setScoring(false)
+      }
+    })
+
+    const cleanupScoresError = window.electronAPI.onContentScoresError((data) => {
+      if (data.draftId === activeDraftId) {
+        setScoring(false)
+      }
+    })
+
     return () => {
       cleanupResearchChunk()
       cleanupResearchEnd()
@@ -76,8 +95,10 @@ export function useContentStreaming() {
       cleanupDraftChunk()
       cleanupDraftEnd()
       cleanupDraftError()
+      cleanupScoresReady()
+      cleanupScoresError()
     }
-  }, [activeDraftId, setResearchText, setResearching, setStreamText, setStreaming, loadDrafts])
+  }, [activeDraftId, setResearchText, setResearching, setStreamText, setStreaming, setScoring, setTweetScores, loadDrafts])
 
   // Reset buffers when active draft changes
   useEffect(() => {

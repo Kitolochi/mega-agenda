@@ -1,7 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import { BrowserWindow } from 'electron'
-import { callLLMWithWebSearch, streamLLM } from './llm'
+import { callLLM, callLLMWithWebSearch, streamLLM } from './llm'
 
 // Load voice research at module init
 let voiceResearch = ''
@@ -89,6 +89,45 @@ RULES:
 - Use the brand emoji 🌱 sparingly
 - No hashtags on Twitter content
 - Be a confident realist: bold claims + honest caveats`
+
+function scoreTweets(mainWindow: BrowserWindow, draftId: string, tweetContent: string): void {
+  const scoringPrompt = `Score each tweet variation on three dimensions (1-10 scale).
+
+SCORING RUBRIC:
+- Hook (1-10): Does the first line stop the scroll? 10 = impossible to ignore, 1 = generic.
+- Clarity (1-10): Would someone who never heard of crypto instantly understand? 10 = crystal clear to a 12-year-old.
+- Viral (1-10): Would someone retweet this to look smart? 10 = instantly quotable.
+
+Respond ONLY with valid JSON array, no markdown fences:
+[{ "index": 1, "hook": N, "clarity": N, "viral": N }, ...]
+
+TWEETS TO SCORE:
+${tweetContent}`
+
+  callLLM({
+    prompt: scoringPrompt,
+    tier: 'fast',
+    maxTokens: 512,
+    timeout: 30000,
+  }).then((result) => {
+    try {
+      // Strip markdown fences if present
+      const cleaned = result.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
+      const scores = JSON.parse(cleaned)
+      if (Array.isArray(scores)) {
+        mainWindow.webContents.send('content-scores-ready', { draftId, scores })
+      } else {
+        throw new Error('Response is not an array')
+      }
+    } catch (parseErr: any) {
+      console.warn('[content-writer] Failed to parse tweet scores:', parseErr.message)
+      mainWindow.webContents.send('content-scores-error', { draftId, error: 'Failed to parse scores' })
+    }
+  }).catch((err) => {
+    console.warn('[content-writer] Tweet scoring failed:', err.message)
+    mainWindow.webContents.send('content-scores-error', { draftId, error: err.message || 'Scoring failed' })
+  })
+}
 
 // Abort controllers
 let researchAbortController: { abort: () => void } | null = null
@@ -179,6 +218,8 @@ ${tweetOverride}
 
 Write the content directly. Do not include meta-commentary like "Here's a tweet:" — just output the content itself.`
 
+  let draftText = ''
+
   draftAbortController = streamLLM(
     {
       messages,
@@ -189,11 +230,15 @@ Write the content directly. Do not include meta-commentary like "Here's a tweet:
     },
     {
       onData: (text) => {
+        draftText += text
         mainWindow.webContents.send('content-stream-chunk', { draftId, text })
       },
       onEnd: () => {
         mainWindow.webContents.send('content-stream-end', { draftId })
         draftAbortController = null
+        if (contentType === 'tweet') {
+          scoreTweets(mainWindow, draftId, draftText)
+        }
       },
       onError: (error) => {
         mainWindow.webContents.send('content-stream-error', { draftId, error })

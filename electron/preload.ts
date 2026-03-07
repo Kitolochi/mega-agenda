@@ -408,6 +408,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('content-stream-error', handler)
     return () => { ipcRenderer.removeListener('content-stream-error', handler) }
   },
+  onContentScoresReady: (callback: (data: { draftId: string; scores: any[] }) => void) => {
+    const handler = (_: any, data: any) => callback(data)
+    ipcRenderer.on('content-scores-ready', handler)
+    return () => { ipcRenderer.removeListener('content-scores-ready', handler) }
+  },
+  onContentScoresError: (callback: (data: { draftId: string; error: string }) => void) => {
+    const handler = (_: any, data: any) => callback(data)
+    ipcRenderer.on('content-scores-error', handler)
+    return () => { ipcRenderer.removeListener('content-scores-error', handler) }
+  },
 
   // Bank Sync
   getBankConnections: () => ipcRenderer.invoke('get-bank-connections'),

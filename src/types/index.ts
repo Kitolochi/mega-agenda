@@ -706,6 +706,13 @@ export interface OutreachPipelineStats {
 // Content Writer Types
 export type ContentType = 'tweet' | 'thread' | 'blog_post' | 'article' | 'discord_post' | 'newsletter'
 
+export interface TweetScore {
+  index: number
+  hook: number
+  clarity: number
+  viral: number
+}
+
 export interface ContentMessage {
   id: string
   role: 'user' | 'assistant'
@@ -1036,6 +1043,8 @@ export interface ElectronAPI {
   onContentStreamChunk: (callback: (data: { draftId: string; text: string }) => void) => () => void
   onContentStreamEnd: (callback: (data: { draftId: string }) => void) => () => void
   onContentStreamError: (callback: (data: { draftId: string; error: string }) => void) => () => void
+  onContentScoresReady: (callback: (data: { draftId: string; scores: TweetScore[] }) => void) => () => void
+  onContentScoresError: (callback: (data: { draftId: string; error: string }) => void) => () => void
 
   // Bank Sync
   getBankConnections: () => Promise<BankConnection[]>

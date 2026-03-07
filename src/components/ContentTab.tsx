@@ -53,6 +53,8 @@ function parseTweetBlocks(text: string) {
 
 function TweetCards({ text }: { text: string }) {
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null)
+  const tweetScores = useContentStore(s => s.tweetScores)
+  const scoring = useContentStore(s => s.scoring)
   const blocks = parseTweetBlocks(text)
 
   const copyOne = (tweetText: string, idx: number) => {
@@ -82,16 +84,41 @@ function TweetCards({ text }: { text: string }) {
     <div className="space-y-3">
       {blocks.map((block, i) => {
         const len = block.tweetText.length
+        const score = tweetScores?.find(s => s.index === i + 1)
+        const avg = score ? Math.round((score.hook + score.clarity + score.viral) / 3 * 10) / 10 : null
+        const avgColor = avg !== null
+          ? avg >= 8 ? 'text-accent-emerald' : avg >= 5 ? 'text-accent-amber' : 'text-accent-red'
+          : ''
         return (
           <div key={i} className="bg-surface-2 border border-white/[0.06] rounded-lg p-3 space-y-2">
-            {block.device && (
-              <div className="text-[10px] font-medium text-accent-blue/70 uppercase tracking-wider">
-                {block.device}
-              </div>
-            )}
+            <div className="flex items-center justify-between">
+              {block.device && (
+                <div className="text-[10px] font-medium text-accent-blue/70 uppercase tracking-wider">
+                  {block.device}
+                </div>
+              )}
+              {score && avg !== null && (
+                <div className={`text-[11px] font-semibold ${avgColor}`}>
+                  {avg.toFixed(1)}
+                </div>
+              )}
+              {scoring && !score && (
+                <div className="flex items-center gap-1.5">
+                  <div className="w-2.5 h-2.5 border border-white/20 border-t-accent-amber rounded-full animate-spin" />
+                  <span className="text-[9px] text-white/30">Scoring</span>
+                </div>
+              )}
+            </div>
             <div className="text-[12px] text-white/85 leading-relaxed whitespace-pre-wrap">
               {block.tweetText}
             </div>
+            {score && (
+              <div className="flex items-center gap-3 text-[10px]">
+                <span className="text-accent-amber">Hook {score.hook}</span>
+                <span className="text-accent-emerald">Clarity {score.clarity}</span>
+                <span className="text-accent-purple">Viral {score.viral}</span>
+              </div>
+            )}
             {block.strategy && (
               <div className="text-[10px] text-white/40 italic border-t border-white/[0.04] pt-1.5">
                 {block.strategy}
