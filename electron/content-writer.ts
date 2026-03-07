@@ -91,15 +91,17 @@ RULES:
 - Be a confident realist: bold claims + honest caveats`
 
 function scoreTweets(mainWindow: BrowserWindow, draftId: string, tweetContent: string): void {
-  const scoringPrompt = `Score each tweet variation on three dimensions (1-10 scale).
+  const scoringPrompt = `You are a ruthlessly honest social media strategist. Score each tweet variation on three dimensions (1-10 scale). Be decisive — most tweets are mediocre (4-6). Only give 8+ if it genuinely stops the scroll. Don't be generous.
 
 SCORING RUBRIC:
-- Hook (1-10): Does the first line stop the scroll? 10 = impossible to ignore, 1 = generic.
-- Clarity (1-10): Would someone who never heard of crypto instantly understand? 10 = crystal clear to a 12-year-old.
-- Viral (1-10): Would someone retweet this to look smart? 10 = instantly quotable.
+- Hook (1-10): Does the first line stop the scroll? 10 = impossible to ignore, 1 = generic opener. Most hooks are a 5.
+- Clarity (1-10): Would someone who never heard of crypto instantly understand? 10 = crystal clear to a 12-year-old, 1 = insider jargon soup.
+- Viral (1-10): Would someone retweet this to look smart? 10 = instantly quotable, screenshot-worthy. 1 = nobody shares this.
 
-Respond ONLY with valid JSON array, no markdown fences:
-[{ "index": 1, "hook": N, "clarity": N, "viral": N }, ...]
+IMPORTANT: Use the FULL range. A 7 is genuinely good. An 8 is excellent. A 9-10 is rare. Don't cluster everything at 7-8.
+
+Respond ONLY with valid JSON array using double quotes, no markdown fences:
+[{"index": 1, "hook": N, "clarity": N, "viral": N}, ...]
 
 TWEETS TO SCORE:
 ${tweetContent}`
@@ -111,16 +113,25 @@ ${tweetContent}`
     timeout: 30000,
   }).then((result) => {
     try {
-      // Strip markdown fences if present
-      const cleaned = result.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
-      const scores = JSON.parse(cleaned)
-      if (Array.isArray(scores)) {
+      // Extract scores via regex — handles any JSON formatting quirks
+      const scorePattern = /index['":\s]*(\d+)[^}]*hook['":\s]*(\d+)[^}]*clarity['":\s]*(\d+)[^}]*viral['":\s]*(\d+)/gi
+      const scores: { index: number; hook: number; clarity: number; viral: number }[] = []
+      let match
+      while ((match = scorePattern.exec(result)) !== null) {
+        scores.push({
+          index: parseInt(match[1]),
+          hook: parseInt(match[2]),
+          clarity: parseInt(match[3]),
+          viral: parseInt(match[4]),
+        })
+      }
+      if (scores.length > 0) {
         mainWindow.webContents.send('content-scores-ready', { draftId, scores })
       } else {
-        throw new Error('Response is not an array')
+        throw new Error('No scores found in response')
       }
     } catch (parseErr: any) {
-      console.warn('[content-writer] Failed to parse tweet scores:', parseErr.message)
+      console.warn('[content-writer] Failed to parse tweet scores:', parseErr.message, '\nRaw:', result.slice(0, 200))
       mainWindow.webContents.send('content-scores-error', { draftId, error: 'Failed to parse scores' })
     }
   }).catch((err) => {

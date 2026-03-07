@@ -84,7 +84,7 @@ function TweetCards({ text }: { text: string }) {
     <div className="space-y-3">
       {blocks.map((block, i) => {
         const len = block.tweetText.length
-        const score = tweetScores?.find(s => s.index === i + 1)
+        const score = tweetScores?.[i] || tweetScores?.find(s => s.index === i + 1)
         const avg = score ? Math.round((score.hook + score.clarity + score.viral) / 3 * 10) / 10 : null
         const avgColor = avg !== null
           ? avg >= 8 ? 'text-accent-emerald' : avg >= 5 ? 'text-accent-amber' : 'text-accent-red'

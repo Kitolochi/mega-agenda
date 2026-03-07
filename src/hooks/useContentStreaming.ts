@@ -76,16 +76,12 @@ export function useContentStreaming() {
     })
 
     const cleanupScoresReady = window.electronAPI.onContentScoresReady((data) => {
-      if (data.draftId === activeDraftId) {
-        setTweetScores(data.scores)
-        setScoring(false)
-      }
+      setTweetScores(data.scores)
+      setScoring(false)
     })
 
-    const cleanupScoresError = window.electronAPI.onContentScoresError((data) => {
-      if (data.draftId === activeDraftId) {
-        setScoring(false)
-      }
+    const cleanupScoresError = window.electronAPI.onContentScoresError(() => {
+      setScoring(false)
     })
 
     return () => {
