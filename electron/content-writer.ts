@@ -133,22 +133,17 @@ RULES:
 - Be a confident realist: bold claims + honest caveats`
 
 function scoreTweets(mainWindow: BrowserWindow, draftId: string, tweetContent: string): void {
-  const scoringPrompt = `Score each tweet variation below. Return ONLY a JSON array, no other text.
-
-Format: [{"index":1,"hook":N,"clarity":N,"viral":N},{"index":2,"hook":N,"clarity":N,"viral":N},{"index":3,"hook":N,"clarity":N,"viral":N},{"index":4,"hook":N,"clarity":N,"viral":N},{"index":5,"hook":N,"clarity":N,"viral":N}]
-
-Scoring (1-10): hook=scroll-stopping power, clarity=understandable without context, viral=would someone RT this.
-Use full range. Most tweets are 4-6. Only 8+ if genuinely excellent.
-
-TWEETS:
-${tweetContent}`
-
   callLLM({
-    prompt: scoringPrompt,
+    messages: [
+      { role: 'user', content: `Score each tweet 1-10 on hook (scroll-stopping), clarity (instantly understandable), viral (would RT). Use full range, most are 4-6. Return compact JSON array only.\n\nTWEETS:\n${tweetContent}` },
+      { role: 'assistant', content: '[{"index":1,' }
+    ],
     tier: 'fast',
     maxTokens: 1024,
     timeout: 45000,
-  }).then((result) => {
+  }).then((rawResult) => {
+    // Prepend the prefill since the API returns only the completion after it
+    const result = '[{"index":1,' + rawResult
     try {
       console.log('[content-writer] Score raw:', result.slice(0, 500))
       let scores: { index: number; hook: number; clarity: number; viral: number }[] = []
