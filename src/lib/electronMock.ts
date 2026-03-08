@@ -372,5 +372,88 @@ export function installElectronMock() {
     onContentStreamChunk: noopUnsub as any,
     onContentStreamEnd: noopUnsub as any,
     onContentStreamError: noopUnsub as any,
+    onContentScoresReady: noopUnsub as any,
+    onContentScoresError: noopUnsub as any,
+    getScoreSnapshots: emptyArray as any,
+    getTweetPatterns: emptyArray as any,
+    extractTweetPatterns: emptyArray as any,
+    getSessionInsights: emptyArray as any,
+    importSessionTweet: async () => ({} as any),
+    onContentAutoRefineStart: noopUnsub as any,
+    updateOutreach: async () => null,
+
+    // Calendar
+    getCalendarEvents: emptyArray as any,
+    getDailyAgenda: async () => ({ tasks: [], events: [] }),
+    createCalendarEvent: async (data: any) => ({ ...data, id: Date.now().toString(), createdAt: new Date().toISOString() }),
+    updateCalendarEvent: async () => null,
+    deleteCalendarEvent: noop as any,
+    getCalendarHistory: async () => ({ tasks: [], events: [] }),
+    syncGcalEvents: async () => ({ success: false }),
+    fireDailyNotification: async () => null,
+
+    // Routines
+    getRoutines: emptyArray as any,
+    getRoutine: async () => null,
+    createRoutine: async (data: any) => ({ ...data, id: Date.now().toString(), createdAt: new Date().toISOString() }),
+    updateRoutine: async () => null,
+    deleteRoutine: noop as any,
+    runRoutine: async () => null,
+    getRoutineResults: emptyArray as any,
+    getRoutineResultsForDate: emptyArray as any,
+    deleteRoutineResult: noop as any,
+    onRoutinesUpdated: noopUnsub as any,
+
+    // Agents
+    getAgents: emptyArray as any,
+    getAgent: async () => null,
+    createAgent: async (data: any) => ({ ...data, id: Date.now().toString(), status: 'idle', spentMonthlyCents: 0, budgetResetDate: '', createdAt: '', updatedAt: '' }),
+    updateAgent: async () => null,
+    deleteAgent: noop as any,
+    setAgentStatus: async () => null,
+    getAgentIssues: emptyArray as any,
+    getAgentIssue: async () => null,
+    createAgentIssue: async (data: any) => ({ ...data, id: Date.now().toString(), createdAt: '', updatedAt: '' }),
+    updateAgentIssue: async () => null,
+    deleteAgentIssue: noop as any,
+    getHeartbeatRuns: emptyArray as any,
+    runAgentHeartbeat: async () => null,
+    completeHeartbeatRun: async () => null,
+    getCostEvents: emptyArray as any,
+    getAgentCostSummary: async () => ({ totalCents: 0, monthCents: 0, eventCount: 0 }),
+    pollAgentSessions: emptyArray as any,
+    onAgentsUpdated: noopUnsub as any,
+
+    // Guide Chat
+    guideChatSend: noop as any,
+    guideChatAbort: noop as any,
+    onGuideChatChunk: noopUnsub as any,
+    onGuideChatEnd: noopUnsub as any,
+    onGuideChatError: noopUnsub as any,
+
+    // Google Workspace
+    gwsCheckAuth: async () => ({ installed: false, authenticated: false }),
+    gwsSendEmail: async () => ({ success: false }),
+    gwsCreateEvent: async () => ({ success: false }),
+    gwsExportSheets: async () => ({ success: false }),
+    gwsUploadDrive: async () => ({ success: false }),
+
+    // Pomodoro extras
+    savePomodoroSession: async () => ({} as any),
+    getPomodoroStats: async () => ({ todaySessions: 0, todayMinutes: 0, weekSessions: 0, weekMinutes: 0, streak: 0, mostFocusedTask: null }),
+
+    // AgentsView Analytics
+    avPing: async () => false,
+    avGetStats: async () => ({ session_count: 0, message_count: 0, project_count: 0, machine_count: 0, earliest_session: '' }),
+    avGetSummary: async () => ({ total_sessions: 0, total_messages: 0, active_projects: 0, active_days: 0, avg_messages: 0, median_messages: 0, p90_messages: 0, most_active_project: '', concentration: 0, agents: {} }),
+    avGetTools: async () => ({ total_calls: 0, by_category: [], by_agent: [], trend: [] }),
+    avGetVelocity: async () => ({ overall: { turn_cycle_sec: { p50: 0, p90: 0 }, first_response_sec: { p50: 0, p90: 0 }, msgs_per_active_min: 0, chars_per_active_min: 0, tool_calls_per_active_min: 0 }, by_agent: [], by_complexity: [] }),
+    avGetHeatmap: async () => ({ metric: 'messages', entries: [] }),
+    avGetProjects: async () => ({ projects: [] }),
+    avGetSessions: async () => ({ count: 0, length_distribution: [], duration_distribution: [], autonomy_distribution: [] }),
+    avGetTopSessions: async () => ({ metric: 'messages', sessions: [] }),
+    avGetSessionList: async () => ({ sessions: [], next_cursor: null, total: 0 }),
+    avGetInsights: async () => ({ insights: [] }),
+    avGetSyncStatus: async () => ({ last_sync: '', stats: { total_sessions: 0, synced: 0, skipped: 0, failed: 0 } }),
   } as any
 }
