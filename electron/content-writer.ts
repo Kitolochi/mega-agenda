@@ -151,22 +151,43 @@ ${tweetContent}`
   callLLM({
     prompt: scoringPrompt,
     tier: 'fast',
-    maxTokens: 512,
-    timeout: 30000,
+    maxTokens: 1024,
+    timeout: 45000,
   }).then((result) => {
     try {
-      // Extract scores via regex — handles any JSON formatting quirks
-      const scorePattern = /index['":\s]*(\d+)[^}]*hook['":\s]*(\d+)[^}]*clarity['":\s]*(\d+)[^}]*viral['":\s]*(\d+)/gi
-      const scores: { index: number; hook: number; clarity: number; viral: number }[] = []
-      let match
-      while ((match = scorePattern.exec(result)) !== null) {
-        scores.push({
-          index: parseInt(match[1]),
-          hook: parseInt(match[2]),
-          clarity: parseInt(match[3]),
-          viral: parseInt(match[4]),
-        })
+      console.log('[content-writer] Score response length:', result.length, 'chars')
+      let scores: { index: number; hook: number; clarity: number; viral: number }[] = []
+
+      // Try JSON.parse first (most reliable)
+      try {
+        const jsonMatch = result.match(/\[[\s\S]*\]/)
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0])
+          if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].hook !== undefined) {
+            scores = parsed.map((s: any) => ({
+              index: Number(s.index),
+              hook: Number(s.hook),
+              clarity: Number(s.clarity),
+              viral: Number(s.viral),
+            }))
+          }
+        }
+      } catch { /* fall through to regex */ }
+
+      // Fallback: regex extraction
+      if (scores.length === 0) {
+        const scorePattern = /index['":\s]*(\d+)[^}]*hook['":\s]*(\d+)[^}]*clarity['":\s]*(\d+)[^}]*viral['":\s]*(\d+)/gi
+        let match
+        while ((match = scorePattern.exec(result)) !== null) {
+          scores.push({
+            index: parseInt(match[1]),
+            hook: parseInt(match[2]),
+            clarity: parseInt(match[3]),
+            viral: parseInt(match[4]),
+          })
+        }
       }
+
       if (scores.length > 0) {
         mainWindow.webContents.send('content-scores-ready', { draftId, scores })
         try { updateContentDraftScores(draftId, scores) } catch (e: any) {
@@ -176,7 +197,7 @@ ${tweetContent}`
         throw new Error('No scores found in response')
       }
     } catch (parseErr: any) {
-      console.warn('[content-writer] Failed to parse tweet scores:', parseErr.message, '\nRaw:', result.slice(0, 200))
+      console.warn('[content-writer] Failed to parse tweet scores:', parseErr.message, '\nRaw:', result.slice(0, 500))
       mainWindow.webContents.send('content-scores-error', { draftId, error: 'Failed to parse scores' })
     }
   }).catch((err) => {
