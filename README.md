@@ -265,7 +265,7 @@ src/                       # Renderer (React)
 ### Install & Run
 
 ```bash
-git clone https://github.com/Kitolochi/mega-agenda.git
+git clone https://github.com/YOUR_USERNAME/mega-agenda.git
 cd mega-agenda
 npm install
 npm run dev

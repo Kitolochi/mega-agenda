@@ -160,6 +160,13 @@ function executeWeeklyReview(): { summary: string; detail: string } {
 
 function executeCustomCommand(config: Record<string, any>): Promise<{ summary: string; detail: string }> {
   const command = config.command || 'echo "No command configured"'
+
+  // Block shell metacharacters to prevent command injection
+  const dangerousPatterns = /[;&|`$(){}[\]<>!]/
+  if (dangerousPatterns.test(command)) {
+    return Promise.resolve({ summary: 'Blocked', detail: 'Command contains disallowed characters' })
+  }
+
   const shell = process.platform === 'win32' ? 'cmd.exe' : '/bin/sh'
   const flag = process.platform === 'win32' ? '/c' : '-c'
 

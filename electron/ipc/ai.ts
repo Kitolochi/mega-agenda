@@ -589,7 +589,7 @@ export function registerAIHandlers(mainWindow: BrowserWindow) {
     fs.mkdirSync(tmpDir, { recursive: true })
 
     for (const task of tolaunch.slice(0, 10)) {
-      const safePrompt = `[Master Plan Task] ${task.title}: ${task.description}`.replace(/%/g, '%%').replace(/"/g, "'")
+      const safePrompt = `[Master Plan Task] ${task.title}: ${task.description}`.replace(/%/g, '%%').replace(/"/g, "'").replace(/[&|<>^]/g, '^$&')
       const batFile = path.join(tmpDir, `plan-${task.id}-${Date.now()}.bat`)
       fs.writeFileSync(batFile, [
         '@echo off',
@@ -684,7 +684,7 @@ export function registerAIHandlers(mainWindow: BrowserWindow) {
         execSync('git init', { cwd: repoDir, stdio: 'pipe' })
         execSync('git config user.email "mega-agenda@local"', { cwd: repoDir, stdio: 'pipe' })
         execSync('git config user.name "Mega Agenda"', { cwd: repoDir, stdio: 'pipe' })
-        execSync(`git commit --allow-empty -m "init: ${(goal?.title || goalId).replace(/"/g, "'")}"`, { cwd: repoDir, stdio: 'pipe' })
+        execSync(`git commit --allow-empty -m "init: ${(goal?.title || goalId).replace(/"/g, "'").replace(/[&|<>^]/g, '^$&')}"`, { cwd: repoDir, stdio: 'pipe' })
       } catch (err) {
         console.error('Git init failed:', err)
       }
@@ -761,7 +761,7 @@ export function registerAIHandlers(mainWindow: BrowserWindow) {
         'Commit your work with a descriptive commit message when done.',
         `Use: git add -A && git commit -m "your message"`,
       ].join('\n')
-      const safePrompt = promptLines.replace(/%/g, '%%').replace(/"/g, "'")
+      const safePrompt = promptLines.replace(/%/g, '%%').replace(/"/g, "'").replace(/[&|<>^]/g, '^$&')
       const batFile = path.join(tmpDir, `goal-${task.id}-${Date.now()}.bat`)
       fs.writeFileSync(batFile, [
         '@echo off',

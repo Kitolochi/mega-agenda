@@ -30,4 +30,19 @@ describe('renderMarkdown', () => {
     const result = renderMarkdown('line one\nline two')
     expect(result).toContain('<br/>')
   })
+
+  it('escapes HTML to prevent XSS', () => {
+    const result = renderMarkdown('<script>alert("xss")</script>')
+    expect(result).not.toContain('<script>')
+    expect(result).toContain('&lt;script&gt;')
+    expect(result).toContain('&quot;')
+  })
+
+  it('escapes HTML but still renders markdown syntax', () => {
+    const result = renderMarkdown('**bold** and <img onerror=alert(1)>')
+    expect(result).toContain('<strong')
+    expect(result).toContain('bold')
+    expect(result).not.toContain('<img')
+    expect(result).toContain('&lt;img')
+  })
 })

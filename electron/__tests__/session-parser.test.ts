@@ -109,7 +109,7 @@ describe('discoverSessions', () => {
   })
 
   it('captures correct metadata fields', async () => {
-    const projDir = createProjectDir('C--Users-chris-test')
+    const projDir = createProjectDir('C--Users-testuser-test')
     const filePath = writeSession(projDir, 'abc-def.jsonl', [
       '{"type":"user","message":{"content":"hello world"}}',
     ])
@@ -119,7 +119,7 @@ describe('discoverSessions', () => {
     const sessions = discoverSessions()
     expect(sessions).toHaveLength(1)
     expect(sessions[0].path).toBe(filePath)
-    expect(sessions[0].project).toBe('C--Users-chris-test')
+    expect(sessions[0].project).toBe('C--Users-testuser-test')
     expect(sessions[0].sessionId).toBe('abc-def')
     expect(sessions[0].size).toBe(stat.size)
     expect(sessions[0].mtimeMs).toBe(stat.mtimeMs)
@@ -185,7 +185,7 @@ describe('sessionFileHash', () => {
 
 describe('parseSession', () => {
   // Helper to create a meta pointing at a fixture file
-  function fixtureMeta(fixtureName: string, project = 'C--Users-chris-test', sessionId = 'test-sess'): SessionMeta {
+  function fixtureMeta(fixtureName: string, project = 'C--Users-testuser-test', sessionId = 'test-sess'): SessionMeta {
     const filePath = path.join(fixturesDir, fixtureName)
     const stat = fs.statSync(filePath)
     return { path: filePath, project, sessionId, size: stat.size, mtimeMs: stat.mtimeMs }
@@ -412,10 +412,10 @@ describe('parseSession', () => {
     const filePath = writeSession(projDir, 's.jsonl', [
       `{"type":"user","message":{"content":"${content}"}}`,
     ])
-    const meta = makeMeta(filePath, 'C--Users-chris-mega-agenda', 's')
+    const meta = makeMeta(filePath, 'C--Users-testuser-mega-agenda', 's')
     const chunks = await parseSession(meta)
     expect(chunks.length).toBeGreaterThanOrEqual(1)
-    // friendlyProjectName('C--Users-chris-mega-agenda') → last 2 parts → 'mega-agenda'
+    // friendlyProjectName('C--Users-testuser-mega-agenda') → last 2 parts → 'mega-agenda'
     expect(chunks[0].domain).toBe('sessions/mega-agenda')
   })
 
@@ -426,11 +426,11 @@ describe('parseSession', () => {
     const filePath = writeSession(projDir, 's.jsonl', [
       `{"type":"user","message":{"content":"${content}"}}`,
     ])
-    const meta = makeMeta(filePath, 'C--Users-chris-test', 'abc-def-123')
+    const meta = makeMeta(filePath, 'C--Users-testuser-test', 'abc-def-123')
     const chunks = await parseSession(meta)
     expect(chunks.length).toBeGreaterThanOrEqual(1)
-    // friendlyProjectName('C--Users-chris-test') splits to ['C','Users','chris','test'] → last 2 → 'chris-test'
-    expect(chunks[0].sourceFile).toBe('sessions/chris-test/abc-def-123.jsonl')
+    // friendlyProjectName('C--Users-testuser-test') splits to ['C','Users','testuser','test'] → last 2 → 'testuser-test'
+    expect(chunks[0].sourceFile).toBe('sessions/testuser-test/abc-def-123.jsonl')
   })
 
   it('uses first user prompt as heading', async () => {

@@ -161,7 +161,7 @@ export default function AgentForm({ agent, onClose }: AgentFormProps) {
             <input
               value={cwd}
               onChange={e => setCwd(e.target.value)}
-              placeholder="e.g. C:\Users\chris\my-project"
+              placeholder="e.g. C:\Users\username\my-project"
               className="w-full px-3 py-2 bg-surface-2 border border-white/10 rounded-lg text-white text-sm focus:border-accent-blue/50 focus:outline-none"
             />
           </div>

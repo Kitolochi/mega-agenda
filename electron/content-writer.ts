@@ -1,17 +1,19 @@
 import fs from 'fs'
 import path from 'path'
+import os from 'os'
 import { BrowserWindow } from 'electron'
 import { callLLM, callLLMWithWebSearch, streamLLM } from './llm'
 import { getTwitterSettings, updateContentDraftScores, addScoreSnapshot, getScoreSnapshots, getAllScoredDrafts, getTweetPatterns, saveTweetPatterns } from './database'
 import { fetchAllLists } from './twitter'
 
-// Load voice research at module init
+// Load voice research from app data dir (user-configurable)
 let voiceResearch = ''
 try {
-  voiceResearch = fs.readFileSync(
-    path.join('C:', 'Users', 'chris', 'blueprint-output', 'superseed-content-agent', 'voice-research.md'),
-    'utf-8'
-  )
+  const appDataDir = path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'mega-agenda')
+  const voicePath = path.join(appDataDir, 'voice-research.md')
+  if (fs.existsSync(voicePath)) {
+    voiceResearch = fs.readFileSync(voicePath, 'utf-8')
+  }
 } catch {
   console.warn('[content-writer] Could not load voice-research.md')
 }
@@ -59,12 +61,12 @@ async function getTopPerformingTweets(): Promise<string> {
 const CONTENT_TYPE_INSTRUCTIONS: Record<string, string> = {
   tweet: `Write 5 tweet variations (max 280 chars each). Each MUST use a different rhetorical device.
 
-VOICE — Alex Hormozi meets crypto:
+VOICE:
 - Write at a 5th-grade reading level. If a 12-year-old can't understand it, rewrite it.
-- Zero jargon. No "DeFi primitives", "yield optimization", "collateralization ratios", "protocol mechanics", "liquidity provision". Say what things DO in plain English.
+- Zero jargon. Say what things DO in plain English.
 - Short sentences. Punchy. Like this.
-- Speak to the pain or desire directly: debt stress, wanting passive income, feeling ripped off by banks.
-- Use concrete numbers and specifics over vague claims. "$10,000 loan" beats "your loan". "3 months" beats "over time".
+- Speak to the pain or desire directly.
+- Use concrete numbers and specifics over vague claims.
 - Contrarian but logical — challenge what everyone assumes, then show why the alternative is obvious.
 - Pattern interrupt the feed. First 5 words decide if they read the rest.
 - Talk like a smart friend explaining something at a bar, not a whitepaper.
@@ -74,16 +76,16 @@ BANNED PHRASES — never use these AI-isms or marketing clichés:
 If you catch yourself writing any of these, delete and use a normal word instead.
 
 RHETORICAL TOOLKIT — pick one per variation:
-- Antithesis: juxtapose two opposites ("Banks charge you interest. We pay it for you.")
-- Tricolon: three-part rhythm ("Borrow. Wait. Get repaid.")
-- Question-as-hook: provocative question ("What if your loan just... paid itself off?")
-- Setup→Twist: flip conventional wisdom ("Everyone says debt is bad. What if your debt made you money?")
-- One-liner: single devastating sentence ("Your loan is paying itself off while you sleep.")
-- Analogy: unexpected everyday comparison ("It's like a gym membership that works out FOR you.")
-- Future-as-present: state the vision as fact ("Your loan is repaying itself right now.")
-- Contrast: before/after, old way/new way ("Old way: pay interest. New way: earn it.")
-- Direct address: talk straight to one person ("You're paying your bank's electric bill. Stop.")
-- Story-in-a-sentence: micro-narrative ("Took out a loan. Didn't pay it back. It paid itself. True story.")
+- Antithesis: juxtapose two opposites
+- Tricolon: three-part rhythm
+- Question-as-hook: provocative question
+- Setup→Twist: flip conventional wisdom
+- One-liner: single devastating sentence
+- Analogy: unexpected everyday comparison
+- Future-as-present: state the vision as fact
+- Contrast: before/after, old way/new way
+- Direct address: talk straight to one person
+- Story-in-a-sentence: micro-narrative
 
 ENGAGEMENT STRATEGY — tag each variation:
 - 💬 Reply-bait: provokes opinions, hot takes, "agree or disagree?" energy
@@ -95,7 +97,7 @@ ENGAGEMENT STRATEGY — tag each variation:
 CONSTRAINTS:
 - 280 characters MAX per variation. Count carefully.
 - No hashtags. Zero.
-- 0-2 emojis max. 🌱 when on-brand.
+- 0-2 emojis max.
 - Every word must earn its place. Cut ruthlessly.
 - Lead with the most surprising or contrarian angle.
 - End with tension, curiosity, or a mic-drop.
@@ -119,16 +121,14 @@ Generate 5 variations, each a genuinely different angle AND engagement strategy 
   newsletter: 'Write a newsletter edition (500-1000 words). Personal "we" voice. Mix of updates + insight. Clear sections with headers. Conversational but informative.',
 }
 
-const BASE_SYSTEM_PROMPT = `You are Superseed's content writer. You write content that matches Superseed's brand voice precisely.
+const BASE_SYSTEM_PROMPT = `You are a content writer. You write content that matches the brand voice described below.
 
 ${voiceResearch}
 
 RULES:
-- Never use hype language, ponzi comparisons, or VC-friendly framing
-- Never make vaporware promises
+- Never use hype language or make vaporware promises
 - Use "we" for team perspective, "you" for reader
 - Ground bold claims in concrete mechanics
-- Use the brand emoji 🌱 sparingly
 - No hashtags on Twitter content
 - Be a confident realist: bold claims + honest caveats`
 
@@ -495,15 +495,15 @@ export function researchTopic(
     researchAbortController = null
   }
 
-  const researchPrompt = `Research this topic in the context of Superseed, DeFi, and crypto: "${topic}"
+  const researchPrompt = `Research this topic: "${topic}"
 
 Find recent news, data points, and relevant context. Then produce:
 
 1. **Key Findings** — 3-5 bullet points of the most relevant recent information
-2. **Content Outline** — 5-7 bullet points for content about this topic from Superseed's perspective
-3. **Talking Points** — 2-3 unique angles or contrarian takes that align with Superseed's voice
+2. **Content Outline** — 5-7 bullet points for content about this topic
+3. **Talking Points** — 2-3 unique angles or contrarian takes
 
-Focus on facts, numbers, and concrete details. If the topic relates to Superseed's products (self-repaying loans, Supercollateral, SuperCDP, Supermarket, Proof of Repayment), include relevant product context.`
+Focus on facts, numbers, and concrete details.`
 
   callLLMWithWebSearch({
     prompt: researchPrompt,
@@ -550,23 +550,12 @@ export async function streamContentDraft(
   const tweetOverride = contentType === 'tweet' ? `
 
 CRITICAL OVERRIDE FOR TWEETS:
-The voice research above describes Superseed's general brand voice. For tweets, IGNORE the language style and vocabulary from the voice research. Use it ONLY for factual context (what products exist, what they do, roadmap facts).
+For tweets, use the voice research ONLY for factual context. Write in plain, accessible language.
 
-DO NOT use these words/phrases in tweets: "financial primitive", "protocol revenue", "flywheel", "TVL", "composable", "ecosystem", "infrastructure", "onchain individual", "governance", "OP Stack", "Superchain", "collateralization", "liquidity", "yield optimization", "DeFi", "stablecoin-focused money market", "revenue-generating", "tokenomics".
+Translate all jargon into plain English. Every tweet should be instantly understandable by someone with no domain expertise.
 
-INSTEAD translate everything into plain English:
-- "protocol revenue" → "the money the app makes"
-- "self-repaying loans" → "loans that pay themselves off" (this one is already simple enough)
-- "TVL" → "money people have deposited"
-- "yield" → "earnings" or "returns"
-- "collateral" → "what you put up"
-- "DeFi" → just describe what it does, don't label the category
-- "stablecoin" → "digital dollar" or just "dollar"
-
-Write like you're texting a smart friend who knows nothing about crypto. Every tweet should be instantly understandable by someone who has never heard of blockchain.
-
-ALSO BANNED — AI-isms and cliché phrases. NEVER use: "flips the script", "game-changer", "let that sink in", "here's the thing", "hot take", "unpopular opinion", "buckle up", "mind-blowing", "groundbreaking", "next-level", "seamless", "journey", "delve", "navigate", "landscape", "reimagine", "unlock", "empower", "supercharge", "deep dive", "ever-evolving", "it's worth noting", "in today's world". Write like a real person, not an AI.
-${topTweets ? `\nHIGH-ENGAGEMENT REFERENCE TWEETS (study their structure, not their topic):\n${topTweets}\nApply similar hooks, rhythm, and specificity to Superseed content. Do NOT copy topics — only learn from structure.\n` : ''}${intuitionSection}` : ''
+BANNED — AI-isms and cliché phrases. NEVER use: "flips the script", "game-changer", "let that sink in", "here's the thing", "hot take", "unpopular opinion", "buckle up", "mind-blowing", "groundbreaking", "next-level", "seamless", "journey", "delve", "navigate", "landscape", "reimagine", "unlock", "empower", "supercharge", "deep dive", "ever-evolving", "it's worth noting", "in today's world". Write like a real person, not an AI.
+${topTweets ? `\nHIGH-ENGAGEMENT REFERENCE TWEETS (study their structure, not their topic):\n${topTweets}\nApply similar hooks, rhythm, and specificity. Do NOT copy topics — only learn from structure.\n` : ''}${intuitionSection}` : ''
 
   const system = `${BASE_SYSTEM_PROMPT}
 

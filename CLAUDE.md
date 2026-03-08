@@ -72,7 +72,7 @@ Personal life management Electron app -- dashboard for tasks, goals, notes, AI c
 ### Flow 2: Create an Agent
 1. Click **+ New Agent** button
 2. Fill in: Name = "Code Agent", Role = Engineer, Description = "Writes code", Task Type = Code
-3. Set Working Directory to an existing project path (e.g. `C:\Users\chris\mega-agenda`)
+3. Set Working Directory to an existing project path (e.g. `C:\Users\YOUR_USERNAME\mega-agenda`)
 4. Leave budget at $0 (unlimited), heartbeat unchecked
 5. Click **Create**
 6. Verify the agent card appears in Overview with:

@@ -87,9 +87,9 @@ function extractTextContent(parsed: any): string {
   return ''
 }
 
-/** Derive a friendly project name from the directory name (e.g. "C--Users-chris-mega-agenda" → "mega-agenda") */
+/** Derive a friendly project name from the directory name (e.g. "C--Users-username-mega-agenda" → "mega-agenda") */
 function friendlyProjectName(dirName: string): string {
-  // Strip the common "C--Users-chris-" prefix pattern
+  // Strip the common "C--Users-username-" prefix pattern
   const parts = dirName.split('-').filter(Boolean)
   // Take the last meaningful segments
   if (parts.length > 3) return parts.slice(-2).join('-')

@@ -54,12 +54,12 @@
     "vitest": "^4.0.18"
   },
   "build": {
-    "appId": "com.chris.megaagenda",
+    "appId": "com.megaagenda.app",
     "productName": "Mega Agenda",
     "directories": {
       "output": "release"
     },
-    "asar": false,
+    "asar": true,
     "npmRebuild": true,
     "files": [
       "dist/**/*",

@@ -257,7 +257,17 @@ export function registerSystemHandlers(mainWindow: BrowserWindow) {
 
   // Open URL in browser
   ipcMain.handle('open-external', (_, url: string) => {
-    return shell.openExternal(url)
+    try {
+      const parsed = new URL(url)
+      if (!['http:', 'https:', 'mailto:'].includes(parsed.protocol)) {
+        console.warn('Blocked shell.openExternal with protocol:', parsed.protocol)
+        return false
+      }
+      return shell.openExternal(url)
+    } catch {
+      console.warn('Invalid URL passed to shell.openExternal:', url)
+      return false
+    }
   })
 
   // Window controls
@@ -289,8 +299,12 @@ export function registerSystemHandlers(mainWindow: BrowserWindow) {
     const memoryDir = getMemoryDir()
     try {
       const targetDir = folder ? path.join(memoryDir, folder) : memoryDir
-      if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true })
       const filePath = path.join(targetDir, name)
+      const resolved = path.resolve(filePath)
+      if (!resolved.startsWith(path.resolve(memoryDir))) {
+        throw new Error('Path traversal detected')
+      }
+      if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true })
       fs.writeFileSync(filePath, content, 'utf-8')
       const stat = fs.statSync(filePath)
       return { name, path: filePath, content, modifiedAt: stat.mtime.toISOString(), folder, isDirectory: false, size: stat.size }
@@ -303,6 +317,8 @@ export function registerSystemHandlers(mainWindow: BrowserWindow) {
     const memoryDir = getMemoryDir()
     try {
       const filePath = path.join(memoryDir, relativePath)
+      const resolved = path.resolve(filePath)
+      if (!resolved.startsWith(path.resolve(memoryDir))) return false
       if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
       return true
     } catch {
@@ -314,6 +330,8 @@ export function registerSystemHandlers(mainWindow: BrowserWindow) {
     const memoryDir = getMemoryDir()
     try {
       const folderPath = path.join(memoryDir, relativePath)
+      const resolved = path.resolve(folderPath)
+      if (!resolved.startsWith(path.resolve(memoryDir))) return false
       fs.mkdirSync(folderPath, { recursive: true })
       return true
     } catch {
@@ -325,6 +343,8 @@ export function registerSystemHandlers(mainWindow: BrowserWindow) {
     const memoryDir = getMemoryDir()
     try {
       const folderPath = path.join(memoryDir, relativePath)
+      const resolved = path.resolve(folderPath)
+      if (!resolved.startsWith(path.resolve(memoryDir))) return false
       if (!fs.existsSync(folderPath)) return false
       const contents = fs.readdirSync(folderPath)
       if (contents.length > 0) return false // only delete empty folders
@@ -448,7 +468,7 @@ export function registerSystemHandlers(mainWindow: BrowserWindow) {
     const tmpDir = path.join(app.getPath('temp'), 'mega-agenda')
     fs.mkdirSync(tmpDir, { recursive: true })
     const batFile = path.join(tmpDir, `launch-${Date.now()}.bat`)
-    const safePrompt = prompt.replace(/%/g, '%%').replace(/"/g, "'")
+    const safePrompt = prompt.replace(/%/g, '%%').replace(/"/g, "'").replace(/[&|<>^]/g, '^$&')
     fs.writeFileSync(batFile, [
       '@echo off',
       `cd /d "${workingDir}"`,
