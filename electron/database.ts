@@ -504,6 +504,7 @@ export interface HeartbeatRun {
   costCents?: number
   summary?: string
   error?: string
+  tags?: string[]
   createdAt: string
 }
 

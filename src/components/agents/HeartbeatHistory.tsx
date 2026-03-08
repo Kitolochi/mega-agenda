@@ -137,6 +137,15 @@ export default function HeartbeatHistory() {
                         </div>
                       )}
 
+                      {run.tags && run.tags.length > 0 && (
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[10px] text-white/30">Tags:</span>
+                          {run.tags.map((tag, i) => (
+                            <span key={i} className="px-1.5 py-0.5 rounded text-[10px] bg-surface-3/50 text-white/40">{tag}</span>
+                          ))}
+                        </div>
+                      )}
+
                       <div className="text-xs text-white/20 bg-surface-3/20 rounded-lg p-3 max-h-32 overflow-y-auto font-mono">
                         {run.prompt.slice(0, 500)}{run.prompt.length > 500 ? '...' : ''}
                       </div>

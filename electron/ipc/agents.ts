@@ -107,10 +107,31 @@ export function registerAgentHandlers(mainWindow: BrowserWindow) {
   })
 
   ipcMain.handle('complete-heartbeat-run', (_, runId: string, updates: any) => {
+    // Auto-generate tags from agent/issue metadata and run status
+    const existingRun = getHeartbeatRuns().find(r => r.id === runId)
+    const tags: string[] = []
+    if (existingRun) {
+      const agent = getAgent(existingRun.agentId)
+      if (agent) {
+        if (agent.role && agent.role !== 'custom') tags.push(agent.role)
+        if (agent.adapterConfig?.taskType) tags.push(agent.adapterConfig.taskType)
+      }
+      const status = updates.status || existingRun.status
+      if (['succeeded', 'failed', 'timed_out'].includes(status)) {
+        tags.push(status === 'timed_out' ? 'timed-out' : status)
+      }
+      if (existingRun.issueId) {
+        const issue = getAgentIssue(existingRun.issueId)
+        if (issue?.priority) tags.push(issue.priority)
+      }
+      tags.push(existingRun.source)
+    }
+
     const run = updateHeartbeatRun(runId, {
       ...updates,
       completedAt: new Date().toISOString(),
       durationMs: updates.durationMs,
+      tags: tags.length > 0 ? tags : undefined,
     })
     if (run) {
       const agent = getAgent(run.agentId)
