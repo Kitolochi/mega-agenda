@@ -729,6 +729,7 @@ export interface ContentDraft {
   content: string
   messages: ContentMessage[]
   status: 'researching' | 'outlined' | 'drafting' | 'refining' | 'ready'
+  scores?: TweetScore[]
   createdAt: string
   updatedAt: string
 }

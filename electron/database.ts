@@ -393,6 +393,7 @@ interface ContentDraft {
   content: string
   messages: ContentMessage[]
   status: 'researching' | 'outlined' | 'drafting' | 'refining' | 'ready'
+  scores?: { index: number; hook: number; clarity: number; viral: number }[]
   createdAt: string
   updatedAt: string
 }
@@ -2427,6 +2428,16 @@ export function updateContentDraft(id: string, updates: Partial<ContentDraft>): 
   if (updates.content !== undefined) draft.content = updates.content
   if (updates.messages !== undefined) draft.messages = updates.messages
   if (updates.status !== undefined) draft.status = updates.status
+  if (updates.scores !== undefined) draft.scores = updates.scores
+  draft.updatedAt = new Date().toISOString()
+  saveDatabase()
+  return draft
+}
+
+export function updateContentDraftScores(id: string, scores: { index: number; hook: number; clarity: number; viral: number }[]): ContentDraft | null {
+  const draft = db.contentDrafts.find(d => d.id === id)
+  if (!draft) return null
+  draft.scores = scores
   draft.updatedAt = new Date().toISOString()
   saveDatabase()
   return draft

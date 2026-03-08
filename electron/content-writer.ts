@@ -2,6 +2,8 @@ import fs from 'fs'
 import path from 'path'
 import { BrowserWindow } from 'electron'
 import { callLLM, callLLMWithWebSearch, streamLLM } from './llm'
+import { getTwitterSettings, updateContentDraftScores } from './database'
+import { fetchAllLists } from './twitter'
 
 // Load voice research at module init
 let voiceResearch = ''
@@ -12,6 +14,46 @@ try {
   )
 } catch {
   console.warn('[content-writer] Could not load voice-research.md')
+}
+
+// Top-performing tweet cache (30-min TTL)
+let topTweetCache: { tweets: string; fetchedAt: number } | null = null
+const CACHE_TTL = 30 * 60 * 1000
+
+async function getTopPerformingTweets(): Promise<string> {
+  if (topTweetCache && Date.now() - topTweetCache.fetchedAt < CACHE_TTL) {
+    return topTweetCache.tweets
+  }
+
+  try {
+    const settings = getTwitterSettings()
+    if (!settings.bearerToken || !settings.listIds?.length) {
+      return ''
+    }
+
+    const allTweets = await fetchAllLists(settings.bearerToken, settings.listIds)
+    if (!allTweets.length) return ''
+
+    // Score by engagement: retweets*3 + likes*2 + replies*1
+    const scored = allTweets
+      .map(t => ({
+        ...t,
+        engagementScore: (t.likeCount * 2) + (t.retweetCount * 3) + (t.replyCount * 1)
+      }))
+      .sort((a, b) => b.engagementScore - a.engagementScore)
+      .slice(0, 5)
+
+    const formatted = scored
+      .map((t, i) => `${i + 1}. "@${t.authorUsername}: ${t.text.replace(/\n/g, ' ')}" — ${t.likeCount} likes, ${t.retweetCount} RTs`)
+      .join('\n')
+
+    topTweetCache = { tweets: formatted, fetchedAt: Date.now() }
+    console.log(`[content-writer] Top tweets loaded: ${scored.length}`)
+    return formatted
+  } catch (err: any) {
+    console.warn('[content-writer] Failed to fetch top tweets:', err.message)
+    return ''
+  }
 }
 
 const CONTENT_TYPE_INSTRUCTIONS: Record<string, string> = {
@@ -127,6 +169,7 @@ ${tweetContent}`
       }
       if (scores.length > 0) {
         mainWindow.webContents.send('content-scores-ready', { draftId, scores })
+        updateContentDraftScores(draftId, scores)
       } else {
         throw new Error('No scores found in response')
       }
@@ -187,12 +230,12 @@ export function abortResearch(): void {
   }
 }
 
-export function streamContentDraft(
+export async function streamContentDraft(
   mainWindow: BrowserWindow,
   draftId: string,
   messages: { role: string; content: string }[],
   contentType: string
-): void {
+): Promise<void> {
   // Abort any existing draft stream
   if (draftAbortController) {
     draftAbortController.abort()
@@ -200,6 +243,9 @@ export function streamContentDraft(
   }
 
   const typeInstruction = CONTENT_TYPE_INSTRUCTIONS[contentType] || CONTENT_TYPE_INSTRUCTIONS.tweet
+
+  // Fetch top-performing tweets for intelligence injection
+  const topTweets = contentType === 'tweet' ? await getTopPerformingTweets() : ''
 
   const tweetOverride = contentType === 'tweet' ? `
 
@@ -219,7 +265,8 @@ INSTEAD translate everything into plain English:
 
 Write like you're texting a smart friend who knows nothing about crypto. Every tweet should be instantly understandable by someone who has never heard of blockchain.
 
-ALSO BANNED — AI-isms and cliché phrases. NEVER use: "flips the script", "game-changer", "let that sink in", "here's the thing", "hot take", "unpopular opinion", "buckle up", "mind-blowing", "groundbreaking", "next-level", "seamless", "journey", "delve", "navigate", "landscape", "reimagine", "unlock", "empower", "supercharge", "deep dive", "ever-evolving", "it's worth noting", "in today's world". Write like a real person, not an AI.` : ''
+ALSO BANNED — AI-isms and cliché phrases. NEVER use: "flips the script", "game-changer", "let that sink in", "here's the thing", "hot take", "unpopular opinion", "buckle up", "mind-blowing", "groundbreaking", "next-level", "seamless", "journey", "delve", "navigate", "landscape", "reimagine", "unlock", "empower", "supercharge", "deep dive", "ever-evolving", "it's worth noting", "in today's world". Write like a real person, not an AI.
+${topTweets ? `\nHIGH-ENGAGEMENT REFERENCE TWEETS (study their structure, not their topic):\n${topTweets}\nApply similar hooks, rhythm, and specificity to Superseed content. Do NOT copy topics — only learn from structure.\n` : ''}` : ''
 
   const system = `${BASE_SYSTEM_PROMPT}
 
