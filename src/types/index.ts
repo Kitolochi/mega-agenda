@@ -1270,6 +1270,13 @@ export interface ElectronAPI {
   pollAgentSessions: () => Promise<HeartbeatRun[]>
   onAgentsUpdated: (callback: () => void) => () => void
 
+  // Guide Chat
+  guideChatSend: (messages: { role: string; content: string }[]) => Promise<void>
+  guideChatAbort: () => Promise<void>
+  onGuideChatChunk: (callback: (data: { text: string }) => void) => () => void
+  onGuideChatEnd: (callback: (data: { model: string }) => void) => () => void
+  onGuideChatError: (callback: (data: { error: string }) => void) => () => void
+
   // Google Workspace CLI
   gwsCheckAuth: () => Promise<{ installed: boolean; authenticated: boolean; error?: string }>
   gwsSendEmail: (params: { outreachId?: string; businessId: string; to: string; subject: string; body: string }) =>

@@ -7,6 +7,7 @@ import AddTaskModal from '../AddTaskModal'
 import WelcomeModal from '../WelcomeModal'
 import VoiceChatOverlay from '../VoiceChatOverlay'
 import CommandPalette from '../CommandPalette'
+import GuideAgent from '../GuideAgent'
 import AnimatedBackground from '../AnimatedBackground'
 import { useTaskStore } from '../../store'
 import { playModalOpen, playModalClose } from '../../utils/sounds'
@@ -46,7 +47,7 @@ export default function AppShell() {
       {activeTab === 'dashboard' && !selectedCategory && (
         <button
           onClick={() => { setShowAddModal(true); playModalOpen() }}
-          className="absolute bottom-5 right-5 z-20 w-12 h-12 bg-gradient-to-br from-accent-blue to-accent-purple rounded-2xl flex items-center justify-center text-white hover:scale-110 active:scale-95 transition-all duration-200 animate-fab-pulse group"
+          className="absolute bottom-20 right-5 z-20 w-12 h-12 bg-gradient-to-br from-accent-blue to-accent-purple rounded-2xl flex items-center justify-center text-white hover:scale-110 active:scale-95 transition-all duration-200 animate-fab-pulse group"
         >
           <svg className="w-5 h-5 transition-transform duration-200 group-hover:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
@@ -81,6 +82,9 @@ export default function AppShell() {
 
       {/* Command Palette (Ctrl+K) */}
       <CommandPalette />
+
+      {/* Guide Agent (floating help) */}
+      <GuideAgent />
     </div>
   )
 }

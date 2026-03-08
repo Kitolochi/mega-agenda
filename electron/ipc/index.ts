@@ -16,6 +16,7 @@ import { registerOutreachHandlers } from './outreach'
 import { registerCalendarHandlers } from './calendar'
 import { registerRoutineHandlers } from './routines'
 import { registerAgentHandlers } from './agents'
+import { registerGuideChatHandlers } from './guide-chat'
 
 export function registerAllHandlers(mainWindow: BrowserWindow) {
   registerTaskHandlers(mainWindow)
@@ -35,4 +36,5 @@ export function registerAllHandlers(mainWindow: BrowserWindow) {
   registerCalendarHandlers(mainWindow)
   registerRoutineHandlers(mainWindow)
   registerAgentHandlers(mainWindow)
+  registerGuideChatHandlers(mainWindow)
 }

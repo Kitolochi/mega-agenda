@@ -536,6 +536,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('agents-updated', callback)
   },
 
+  // Guide Chat
+  guideChatSend: (messages: { role: string; content: string }[]) => ipcRenderer.invoke('guide-chat-send', messages),
+  guideChatAbort: () => ipcRenderer.invoke('guide-chat-abort'),
+  onGuideChatChunk: (callback: (data: { text: string }) => void) => {
+    const handler = (_: any, data: { text: string }) => callback(data)
+    ipcRenderer.on('guide-chat-chunk', handler)
+    return () => { ipcRenderer.removeListener('guide-chat-chunk', handler) }
+  },
+  onGuideChatEnd: (callback: (data: { model: string }) => void) => {
+    const handler = (_: any, data: any) => callback(data)
+    ipcRenderer.on('guide-chat-end', handler)
+    return () => { ipcRenderer.removeListener('guide-chat-end', handler) }
+  },
+  onGuideChatError: (callback: (data: { error: string }) => void) => {
+    const handler = (_: any, data: any) => callback(data)
+    ipcRenderer.on('guide-chat-error', handler)
+    return () => { ipcRenderer.removeListener('guide-chat-error', handler) }
+  },
+
   // Clipboard
   readClipboard: () => ipcRenderer.sendSync('read-clipboard'),
   writeClipboard: (text: string) => ipcRenderer.send('write-clipboard', text),
