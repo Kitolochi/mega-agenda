@@ -1,7 +1,10 @@
+import { Notification } from 'electron'
 import {
   getAgents,
   getAgent,
+  getAgentIssue,
   getAgentIssues,
+  setAgentStatus,
   updateAgent,
   updateAgentIssue,
   createHeartbeatRun,
@@ -13,7 +16,7 @@ import {
   type AgentIssue,
   type HeartbeatRun,
 } from './database'
-import { findSessionByPromptFragment } from './cli-logs'
+import { findSessionByPromptFragment, getSessionFilePath, isSessionComplete, extractSessionResult } from './cli-logs'
 
 // Token pricing (per million tokens, in cents)
 const TOKEN_PRICING: Record<string, { input: number; output: number }> = {
@@ -60,6 +63,74 @@ function getAgentConfig(taskType?: string): { preamble: string; allowedTools: st
         allowedTools: '"Bash(*)" "Edit(*)" "Write(*)" "Read(*)" "Glob(*)" "Grep(*)" "WebFetch(*)" "WebSearch(*)"',
       }
   }
+}
+
+// --- Module-level launch function for retry support ---
+type LaunchFn = (opts: { prompt: string; cwd: string; env: NodeJS.ProcessEnv; title?: string; allowedTools?: string }) => void
+let storedLaunchFn: LaunchFn | null = null
+
+/** Store the terminal launcher so pollAgentSessions can retry launches */
+export function setLaunchFn(fn: LaunchFn): void {
+  storedLaunchFn = fn
+}
+
+/** Complete a heartbeat run with auto-generated tags and status transitions */
+export function completeRun(runId: string, updates: { status: HeartbeatRun['status']; summary?: string; durationMs?: number; inputTokens?: number; outputTokens?: number; costCents?: number; error?: string }): HeartbeatRun | null {
+  const existingRun = getHeartbeatRuns().find(r => r.id === runId)
+  if (!existingRun) return null
+
+  // Auto-generate tags
+  const tags: string[] = []
+  const agent = getAgent(existingRun.agentId)
+  if (agent) {
+    if (agent.role && agent.role !== 'custom') tags.push(agent.role)
+    if (agent.adapterConfig?.taskType) tags.push(agent.adapterConfig.taskType)
+  }
+  if (['succeeded', 'failed', 'timed_out'].includes(updates.status)) {
+    tags.push(updates.status === 'timed_out' ? 'timed-out' : updates.status)
+  }
+  if (existingRun.issueId) {
+    const issue = getAgentIssue(existingRun.issueId)
+    if (issue?.priority) tags.push(issue.priority)
+  }
+  tags.push(existingRun.source)
+
+  const run = updateHeartbeatRun(runId, {
+    ...updates,
+    completedAt: new Date().toISOString(),
+    tags: tags.length > 0 ? tags : undefined,
+  })
+
+  if (run) {
+    // Reset agent to idle
+    if (agent && agent.status === 'running') {
+      setAgentStatus(agent.id, 'idle')
+    }
+    // Move issue to in_review on success
+    if (run.issueId && updates.status === 'succeeded') {
+      updateAgentIssue(run.issueId, { status: 'in_review', result: updates.summary })
+    }
+  }
+
+  return run
+}
+
+/** Requeue an issue back to todo so it can be picked up again */
+export function requeueIssue(issueId: string): void {
+  updateAgentIssue(issueId, {
+    status: 'todo',
+    checkedOutAt: undefined,
+    checkedOutRunId: undefined,
+  })
+}
+
+/** Show a desktop notification when an agent hits its budget threshold */
+export function emitBudgetAlert(agent: Agent, ratio: number): void {
+  const pct = Math.round(ratio * 100)
+  new Notification({
+    title: `Agent Budget Alert: ${agent.name}`,
+    body: `${pct}% of monthly budget used ($${(agent.spentMonthlyCents / 100).toFixed(2)} / $${(agent.budgetMonthlyCents / 100).toFixed(2)}). Agent paused.`,
+  }).show()
 }
 
 /** Check if an agent's heartbeat is due (mirrors isRoutineDue logic from routines.ts) */
