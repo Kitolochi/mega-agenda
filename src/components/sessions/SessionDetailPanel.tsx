@@ -1,0 +1,90 @@
+import { useSessionsStore } from '../../store'
+import { renderMarkdown } from '../../utils/markdown'
+
+export default function SessionDetailPanel() {
+  const { sessionDetail, sessionMessages, loadingDetail, selectSession } = useSessionsStore()
+
+  if (loadingDetail) {
+    return (
+      <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-5">
+        <div className="flex justify-center py-8">
+          <div className="w-5 h-5 border-2 border-accent-blue/30 border-t-accent-blue rounded-full animate-spin" />
+        </div>
+      </div>
+    )
+  }
+
+  if (!sessionDetail) return null
+
+  const duration = sessionDetail.ended_at && sessionDetail.started_at
+    ? Math.round((new Date(sessionDetail.ended_at).getTime() - new Date(sessionDetail.started_at).getTime()) / 60000)
+    : null
+
+  return (
+    <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl">
+      {/* Header */}
+      <div className="flex items-start justify-between p-5 border-b border-white/[0.06]">
+        <div className="min-w-0 flex-1">
+          <div className="text-xs text-white/80 line-clamp-2 mb-2">
+            {sessionDetail.first_message}
+          </div>
+          <div className="flex flex-wrap gap-3 text-[10px] text-muted">
+            <span className="text-accent-blue">{sessionDetail.project}</span>
+            <span>{sessionDetail.message_count} messages ({sessionDetail.user_message_count} user)</span>
+            {duration !== null && <span>{duration}m duration</span>}
+            <span>{new Date(sessionDetail.started_at).toLocaleString()}</span>
+            {sessionDetail.parent_session_id && (
+              <span className="text-accent-purple">continuation</span>
+            )}
+          </div>
+        </div>
+        <button
+          onClick={() => selectSession(null)}
+          className="ml-3 p-1.5 text-muted hover:text-white rounded-lg hover:bg-white/[0.06] transition-colors shrink-0"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      {/* Messages */}
+      {sessionMessages?.messages && sessionMessages.messages.length > 0 && (
+        <div className="max-h-[600px] overflow-y-auto">
+          {sessionMessages.messages.map((msg) => (
+            <div
+              key={msg.id}
+              className={`px-5 py-3 border-b border-white/[0.03] ${
+                msg.role === 'user' ? 'bg-white/[0.02]' : ''
+              }`}
+            >
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className={`text-[10px] font-medium uppercase tracking-wider ${
+                  msg.role === 'user' ? 'text-accent-blue' : 'text-accent-purple'
+                }`}>
+                  {msg.role}
+                </span>
+                <span className="text-[10px] text-muted">#{msg.ordinal}</span>
+              </div>
+              <div
+                className="prose prose-invert prose-sm max-w-none text-white/70 [&_p]:text-xs [&_li]:text-xs [&_code]:text-accent-blue [&_code]:bg-white/[0.04] [&_code]:px-1 [&_code]:rounded [&_pre]:bg-white/[0.04] [&_pre]:rounded-lg [&_pre]:p-3 [&_pre]:text-xs"
+                dangerouslySetInnerHTML={{
+                  __html: renderMarkdown(
+                    msg.content.length > 2000
+                      ? msg.content.slice(0, 2000) + '\n\n*...truncated...*'
+                      : msg.content
+                  ),
+                }}
+              />
+            </div>
+          ))}
+          {sessionMessages.count > sessionMessages.messages.length && (
+            <div className="px-5 py-3 text-center text-xs text-muted">
+              Showing {sessionMessages.messages.length} of {sessionMessages.count} messages
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}

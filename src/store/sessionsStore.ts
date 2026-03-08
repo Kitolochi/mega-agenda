@@ -2,10 +2,11 @@ import { create } from 'zustand'
 import type {
   AVStats, AVSummary, AVTools, AVVelocity, AVHeatmap,
   AVProjects, AVSessions, AVTopSessions, AVSessionList,
-  AVInsights, AVSyncStatus,
+  AVInsights, AVSyncStatus, AVSessionDetail, AVSessionMessages,
 } from '../types'
 
 type SubView = 'overview' | 'tools' | 'velocity' | 'sessions' | 'insights'
+type DateRange = 7 | 30 | 90 | null // null = all time
 
 interface SessionsState {
   subView: SubView
@@ -13,7 +14,21 @@ interface SessionsState {
   loading: boolean
   error: string | null
   lastRefresh: number | null
+  dateRange: DateRange
+  syncing: boolean
+  generatingInsights: boolean
 
+  // Filters
+  projectFilter: string | null
+  searchQuery: string
+
+  // Session detail
+  selectedSessionId: string | null
+  sessionDetail: AVSessionDetail | null
+  sessionMessages: AVSessionMessages | null
+  loadingDetail: boolean
+
+  // Data
   stats: AVStats | null
   summary: AVSummary | null
   tools: AVTools | null
@@ -26,7 +41,11 @@ interface SessionsState {
   insights: AVInsights | null
   syncStatus: AVSyncStatus | null
 
+  // Actions
   setSubView: (v: SubView) => void
+  setDateRange: (d: DateRange) => void
+  setProjectFilter: (p: string | null) => void
+  setSearchQuery: (q: string) => void
   checkOnline: () => Promise<boolean>
   loadAll: () => Promise<void>
   loadOverview: () => Promise<void>
@@ -34,6 +53,10 @@ interface SessionsState {
   loadVelocity: () => Promise<void>
   loadSessions: () => Promise<void>
   loadInsights: () => Promise<void>
+  loadSessionList: () => Promise<void>
+  selectSession: (id: string | null) => Promise<void>
+  syncSessions: (full?: boolean) => Promise<void>
+  generateInsights: () => Promise<void>
 }
 
 export const useSessionsStore = create<SessionsState>((set, get) => ({
@@ -42,6 +65,17 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
   loading: false,
   error: null,
   lastRefresh: null,
+  dateRange: null,
+  syncing: false,
+  generatingInsights: false,
+
+  projectFilter: null,
+  searchQuery: '',
+
+  selectedSessionId: null,
+  sessionDetail: null,
+  sessionMessages: null,
+  loadingDetail: false,
 
   stats: null,
   summary: null,
@@ -64,6 +98,26 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
     else if (v === 'insights' && !s.insights) s.loadInsights()
   },
 
+  setDateRange: (d) => {
+    set({ dateRange: d })
+    // Reload data that supports date filtering
+    const s = get()
+    if (!s.online) return
+    s.loadOverview()
+    if (s.tools) s.loadTools()
+    if (s.velocity) s.loadVelocity()
+  },
+
+  setProjectFilter: (p) => {
+    set({ projectFilter: p })
+    get().loadSessionList()
+  },
+
+  setSearchQuery: (q) => {
+    set({ searchQuery: q })
+    get().loadSessionList()
+  },
+
   checkOnline: async () => {
     try {
       const ok = await window.electronAPI.avPing()
@@ -83,9 +137,10 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
       return
     }
     try {
+      const days = get().dateRange ?? undefined
       const [stats, summary, heatmap, projects, topSessions, syncStatus] = await Promise.all([
         window.electronAPI.avGetStats(),
-        window.electronAPI.avGetSummary(),
+        window.electronAPI.avGetSummary(days),
         window.electronAPI.avGetHeatmap(),
         window.electronAPI.avGetProjects(),
         window.electronAPI.avGetTopSessions(),
@@ -100,8 +155,9 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
   loadOverview: async () => {
     set({ loading: true, error: null })
     try {
+      const days = get().dateRange ?? undefined
       const [summary, heatmap, projects, topSessions] = await Promise.all([
-        window.electronAPI.avGetSummary(),
+        window.electronAPI.avGetSummary(days),
         window.electronAPI.avGetHeatmap(),
         window.electronAPI.avGetProjects(),
         window.electronAPI.avGetTopSessions(),
@@ -115,7 +171,8 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
   loadTools: async () => {
     set({ loading: true, error: null })
     try {
-      const tools = await window.electronAPI.avGetTools()
+      const days = get().dateRange ?? undefined
+      const tools = await window.electronAPI.avGetTools(days)
       set({ tools, loading: false })
     } catch (e: any) {
       set({ error: e.message, loading: false })
@@ -125,7 +182,8 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
   loadVelocity: async () => {
     set({ loading: true, error: null })
     try {
-      const velocity = await window.electronAPI.avGetVelocity()
+      const days = get().dateRange ?? undefined
+      const velocity = await window.electronAPI.avGetVelocity(days)
       set({ velocity, loading: false })
     } catch (e: any) {
       set({ error: e.message, loading: false })
@@ -137,7 +195,11 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
     try {
       const [sessions, sessionList] = await Promise.all([
         window.electronAPI.avGetSessions(),
-        window.electronAPI.avGetSessionList(50),
+        window.electronAPI.avGetSessionList({
+          limit: 50,
+          project: get().projectFilter ?? undefined,
+          search: get().searchQuery || undefined,
+        }),
       ])
       set({ sessions, sessionList, loading: false })
     } catch (e: any) {
@@ -155,6 +217,57 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
       set({ insights, syncStatus, loading: false })
     } catch (e: any) {
       set({ error: e.message, loading: false })
+    }
+  },
+
+  loadSessionList: async () => {
+    try {
+      const sessionList = await window.electronAPI.avGetSessionList({
+        limit: 50,
+        project: get().projectFilter ?? undefined,
+        search: get().searchQuery || undefined,
+      })
+      set({ sessionList })
+    } catch {}
+  },
+
+  selectSession: async (id) => {
+    if (!id) {
+      set({ selectedSessionId: null, sessionDetail: null, sessionMessages: null })
+      return
+    }
+    set({ selectedSessionId: id, loadingDetail: true })
+    try {
+      const [sessionDetail, sessionMessages] = await Promise.all([
+        window.electronAPI.avGetSessionDetail(id),
+        window.electronAPI.avGetSessionMessages(id, 200),
+      ])
+      set({ sessionDetail, sessionMessages, loadingDetail: false })
+    } catch (e: any) {
+      set({ error: e.message, loadingDetail: false })
+    }
+  },
+
+  syncSessions: async (full) => {
+    set({ syncing: true, error: null })
+    try {
+      await window.electronAPI.avSync(full)
+      set({ syncing: false })
+      get().loadAll()
+    } catch (e: any) {
+      set({ syncing: false, error: e.message })
+    }
+  },
+
+  generateInsights: async () => {
+    set({ generatingInsights: true, error: null })
+    try {
+      const today = new Date().toISOString().split('T')[0]
+      await window.electronAPI.avGenerateInsights('daily_activity', today, today)
+      set({ generatingInsights: false })
+      get().loadInsights()
+    } catch (e: any) {
+      set({ generatingInsights: false, error: e.message })
     }
   },
 }))
