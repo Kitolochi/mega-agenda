@@ -265,12 +265,26 @@ export function executeAgentHeartbeat(
         allowedTools,
       })
     } catch (err: any) {
-      updateHeartbeatRun(run.id, {
-        status: 'failed',
-        error: err.message,
-        completedAt: new Date().toISOString(),
-      })
-      updateAgent(agent.id, { status: 'error', lastError: err.message })
+      const retryCount = 0
+      if (retryCount < 3) {
+        const backoffSeconds = [30, 60, 120][retryCount]
+        const nextRetryAt = new Date(Date.now() + backoffSeconds * 1000).toISOString()
+        updateHeartbeatRun(run.id, {
+          status: 'queued',
+          retryCount: retryCount + 1,
+          nextRetryAt,
+          error: err.message,
+        })
+        // Keep agent as 'running' to block new heartbeats during retry
+      } else {
+        updateHeartbeatRun(run.id, {
+          status: 'failed',
+          error: err.message,
+          completedAt: new Date().toISOString(),
+        })
+        updateAgent(agent.id, { status: 'error', lastError: err.message })
+        if (issue) requeueIssue(issue.id)
+      }
     }
   }
 
@@ -287,9 +301,17 @@ export function runDueAgentHeartbeats(
   for (const agent of agents) {
     if (!isAgentHeartbeatDue(agent)) continue
 
-    // Check budget
-    if (agent.budgetMonthlyCents > 0 && agent.spentMonthlyCents >= agent.budgetMonthlyCents) {
-      continue
+    // Check budget — pause at 80% threshold with desktop notification
+    if (agent.budgetMonthlyCents > 0) {
+      const ratio = agent.spentMonthlyCents / agent.budgetMonthlyCents
+      if (ratio >= 0.8 && agent.status !== 'paused') {
+        updateAgent(agent.id, { status: 'paused' })
+        emitBudgetAlert(agent, ratio)
+        continue
+      }
+      if (agent.spentMonthlyCents >= agent.budgetMonthlyCents) {
+        continue
+      }
     }
 
     // Try to check out an issue
@@ -301,37 +323,132 @@ export function runDueAgentHeartbeats(
   return results
 }
 
-/** Poll running agent sessions to detect completion */
-export async function pollAgentSessions(): Promise<void> {
-  const runningRuns = getHeartbeatRuns().filter(r => r.status === 'running')
+/** Poll running agent sessions to detect completion. Returns true if any state changed. */
+export async function pollAgentSessions(): Promise<boolean> {
+  let changed = false
+  const allRuns = getHeartbeatRuns()
 
+  // Part A: Retry processing — re-attempt queued runs whose backoff has elapsed
+  const retryRuns = allRuns.filter(r => r.status === 'queued' && r.nextRetryAt && r.nextRetryAt <= new Date().toISOString())
+  for (const run of retryRuns) {
+    try {
+      if (!storedLaunchFn) continue
+      const agent = getAgent(run.agentId)
+      if (!agent) continue
+      const config = agent.adapterConfig
+      const agentConfig = getAgentConfig(config.taskType)
+      const allowedTools = config.allowedTools || agentConfig.allowedTools
+      const cwd = config.cwd || process.cwd()
+
+      storedLaunchFn({
+        prompt: run.prompt,
+        cwd,
+        env: process.env,
+        title: `Agent: ${agent.name} (retry)`,
+        allowedTools,
+      })
+      updateHeartbeatRun(run.id, { status: 'running', error: undefined })
+      changed = true
+    } catch (err: any) {
+      const retryCount = run.retryCount || 0
+      if (retryCount < 3) {
+        const backoffSeconds = [30, 60, 120][Math.min(retryCount, 2)]
+        updateHeartbeatRun(run.id, {
+          retryCount: retryCount + 1,
+          nextRetryAt: new Date(Date.now() + backoffSeconds * 1000).toISOString(),
+          error: err.message,
+        })
+      } else {
+        completeRun(run.id, { status: 'failed', error: `Launch failed after ${retryCount} retries: ${err.message}` })
+        if (run.issueId) requeueIssue(run.issueId)
+      }
+      changed = true
+    }
+  }
+
+  // Part B & C: Check running runs for auto-complete and timeout
+  const runningRuns = allRuns.filter(r => r.status === 'running')
   for (const run of runningRuns) {
     try {
       // Try to find the session by looking for the prompt fragment
-      const fragment = run.prompt.slice(0, 80)
-      const sessionId = await findSessionByPromptFragment(fragment, run.startedAt)
-
-      if (sessionId && sessionId !== run.sessionId) {
-        updateHeartbeatRun(run.id, { sessionId })
+      if (!run.sessionId) {
+        const fragment = run.prompt.slice(0, 80)
+        const sessionId = await findSessionByPromptFragment(fragment, run.startedAt)
+        if (sessionId) {
+          updateHeartbeatRun(run.id, { sessionId })
+          run.sessionId = sessionId
+          changed = true
+        }
       }
 
-      // Check if a running run has been going for too long (2 hours)
+      // Part B: Auto-complete — detect finished sessions
+      if (run.sessionId) {
+        const filePath = getSessionFilePath(run.sessionId)
+        if (filePath && isSessionComplete(filePath)) {
+          const result = await extractSessionResult(filePath)
+          const elapsed = Date.now() - new Date(run.startedAt).getTime()
+
+          if (result.totalInputTokens > 0 || result.summary) {
+            const costCents = estimateCostCents(result.totalInputTokens, result.totalOutputTokens, result.model)
+            completeRun(run.id, {
+              status: 'succeeded',
+              summary: result.summary,
+              durationMs: elapsed,
+              inputTokens: result.totalInputTokens,
+              outputTokens: result.totalOutputTokens,
+              costCents,
+            })
+
+            // Create cost event
+            createCostEvent({
+              agentId: run.agentId,
+              issueId: run.issueId,
+              heartbeatRunId: run.id,
+              source: 'heartbeat',
+              provider: 'anthropic',
+              model: result.model || 'claude-sonnet-4-5-20250929',
+              inputTokens: result.totalInputTokens,
+              outputTokens: result.totalOutputTokens,
+              costCents,
+              timestamp: new Date().toISOString(),
+            })
+
+            // Re-aggregate costs and check budget threshold
+            aggregateAgentCosts(run.agentId)
+            const agent = getAgent(run.agentId)
+            if (agent && agent.budgetMonthlyCents > 0) {
+              const ratio = agent.spentMonthlyCents / agent.budgetMonthlyCents
+              if (ratio >= 0.8 && agent.status !== 'paused') {
+                updateAgent(agent.id, { status: 'paused' })
+                emitBudgetAlert(agent, ratio)
+              }
+            }
+          } else {
+            // Session complete but no output — mark failed and requeue
+            completeRun(run.id, { status: 'failed', durationMs: elapsed, error: 'Session completed with no output' })
+            if (run.issueId) requeueIssue(run.issueId)
+          }
+          changed = true
+          continue
+        }
+      }
+
+      // Part C: Timeout requeue — 2 hour limit
       const elapsed = Date.now() - new Date(run.startedAt).getTime()
       if (elapsed > 2 * 60 * 60 * 1000) {
-        updateHeartbeatRun(run.id, {
+        completeRun(run.id, {
           status: 'timed_out',
-          completedAt: new Date().toISOString(),
           durationMs: elapsed,
         })
-        const agent = getAgent(run.agentId)
-        if (agent) {
-          updateAgent(agent.id, { status: 'idle' })
-        }
+        if (run.issueId) requeueIssue(run.issueId)
+        changed = true
       }
     } catch (err) {
       console.error(`[agents] Poll error for run ${run.id}:`, err)
     }
   }
+
+  return changed
 }
 
 /** Aggregate cost events for an agent and update spentMonthlyCents */

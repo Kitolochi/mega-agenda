@@ -10,7 +10,7 @@ import { fireDailyNotification } from './ipc/calendar'
 import { syncAllGoalContextFiles } from './ipc/ai'
 import { scaffoldDomainFolders } from './ipc/system'
 import { runDueRoutines, runAppLaunchRoutines } from './routines'
-import { runDueAgentHeartbeats, pollAgentSessions } from './agents'
+import { runDueAgentHeartbeats, pollAgentSessions, setLaunchFn } from './agents'
 import { setAgentLaunchFn } from './ipc/agents'
 
 let mainWindow: BrowserWindow | null = null
@@ -26,7 +26,7 @@ function launchInExternalTerminal(opts: {
 }): void {
   const tmpDir = path.join(app.getPath('temp'), 'mega-agenda')
   fs.mkdirSync(tmpDir, { recursive: true })
-  const safePrompt = opts.prompt.replace(/%/g, '%%').replace(/"/g, "'")
+  const safePrompt = opts.prompt.replace(/%/g, '%%').replace(/"/g, "'").replace(/[&|<>^]/g, '^$&')
   const tools = opts.allowedTools || '"Bash(*)" "Edit(*)" "Write(*)" "Read(*)" "Glob(*)" "Grep(*)" "WebFetch(*)" "WebSearch(*)"'
   const claudeCmd = `npx --yes @anthropic-ai/claude-code --dangerously-skip-permissions --allowedTools ${tools} -- "${safePrompt}"`
 
@@ -84,6 +84,7 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
     },
   })
 
@@ -185,6 +186,17 @@ if (!gotTheLock) {
 }
 
 app.whenReady().then(() => {
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [
+          "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https: wss:"
+        ]
+      }
+    })
+  })
+
   // Auto-grant microphone permission for voice commands
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
     callback(['media', 'clipboard-read', 'notifications'].includes(permission))
@@ -197,8 +209,9 @@ app.whenReady().then(() => {
   // Register all IPC handlers from modular files
   registerAllHandlers(mainWindow!)
 
-  // Wire up agent launch function
+  // Wire up agent launch function (IPC handler + module-level for retries)
   setAgentLaunchFn(launchInExternalTerminal)
+  setLaunchFn(launchInExternalTerminal)
 
   // Check recurring tasks every 60s; notify renderer to re-fetch if any were reset
   setInterval(() => {
@@ -223,10 +236,11 @@ app.whenReady().then(() => {
     } catch (e) { console.error('Agent heartbeat error:', e) }
   }, 60 * 1000)
 
-  // Poll agent sessions every 30s when runs are active
+  // Poll agent sessions every 30s — auto-complete, retry, and timeout detection
   setInterval(async () => {
     try {
-      await pollAgentSessions()
+      const changed = await pollAgentSessions()
+      if (changed) mainWindow?.webContents.send('agents-updated')
     } catch (e) { console.error('Agent session poll error:', e) }
   }, 30 * 1000)
 
