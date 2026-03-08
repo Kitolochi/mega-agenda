@@ -30,8 +30,8 @@ export function registerContentHandlers(mainWindow: BrowserWindow) {
   })
 
   // Draft generation
-  ipcMain.handle('content-generate', (_, draftId: string, messages: { role: string; content: string }[], contentType: string) => {
-    streamContentDraft(mainWindow, draftId, messages, contentType)
+  ipcMain.handle('content-generate', async (_, draftId: string, messages: { role: string; content: string }[], contentType: string) => {
+    await streamContentDraft(mainWindow, draftId, messages, contentType)
   })
   ipcMain.handle('content-abort', () => {
     abortDraft()

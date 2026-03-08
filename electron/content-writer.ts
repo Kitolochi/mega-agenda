@@ -169,7 +169,9 @@ ${tweetContent}`
       }
       if (scores.length > 0) {
         mainWindow.webContents.send('content-scores-ready', { draftId, scores })
-        updateContentDraftScores(draftId, scores)
+        try { updateContentDraftScores(draftId, scores) } catch (e: any) {
+          console.warn('[content-writer] Failed to persist scores:', e.message)
+        }
       } else {
         throw new Error('No scores found in response')
       }
