@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useAgentStore } from '../../store'
 import AgentCard from './AgentCard'
 import AgentForm from './AgentForm'
@@ -81,12 +82,13 @@ export default function AgentsTab() {
       {subView === 'costs' && <CostDashboard />}
       {subView === 'history' && <HeartbeatHistory />}
 
-      {/* Agent Form Dialog */}
-      {showForm && (
+      {/* Agent Form Dialog — portal to body to escape backdrop-filter containing block */}
+      {showForm && createPortal(
         <AgentForm
           agent={editingAgent}
           onClose={() => { setShowForm(false); setEditingAgent(null) }}
-        />
+        />,
+        document.body
       )}
     </div>
   )
