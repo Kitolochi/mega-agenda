@@ -505,6 +505,8 @@ export interface HeartbeatRun {
   summary?: string
   error?: string
   tags?: string[]
+  retryCount?: number
+  nextRetryAt?: string
   createdAt: string
 }
 

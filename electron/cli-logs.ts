@@ -309,6 +309,86 @@ export async function findSessionByPromptFragment(
   return null
 }
 
+// --- Session utilities for agent auto-completion ---
+
+export interface SessionResult {
+  summary: string
+  totalInputTokens: number
+  totalOutputTokens: number
+  model: string
+}
+
+/** Find the JSONL file path for a given session ID */
+export function getSessionFilePath(sessionId: string): string | null {
+  const projectsDir = getClaudeProjectsDir()
+  if (!fs.existsSync(projectsDir)) return null
+
+  try {
+    const projectDirs = fs.readdirSync(projectsDir, { withFileTypes: true })
+      .filter(d => d.isDirectory())
+
+    for (const projDir of projectDirs) {
+      const filePath = path.join(projectsDir, projDir.name, `${sessionId}.jsonl`)
+      if (fs.existsSync(filePath)) return filePath
+    }
+  } catch {}
+
+  return null
+}
+
+/** Check if a session file is complete (no writes in the last 90 seconds) */
+export function isSessionComplete(filePath: string): boolean {
+  try {
+    const stat = fs.statSync(filePath)
+    return Date.now() - stat.mtimeMs > 90_000
+  } catch {
+    return false
+  }
+}
+
+/** Extract token usage and summary from a completed session JSONL */
+export async function extractSessionResult(filePath: string): Promise<SessionResult> {
+  return new Promise((resolve) => {
+    let totalInputTokens = 0
+    let totalOutputTokens = 0
+    let model = ''
+    let lastTextContent = ''
+
+    const stream = fs.createReadStream(filePath, { encoding: 'utf-8' })
+    const rl = readline.createInterface({ input: stream, crlfDelay: Infinity })
+
+    rl.on('line', (line) => {
+      try {
+        const parsed = JSON.parse(line)
+        if (parsed.type === 'assistant') {
+          if (parsed.message?.usage) {
+            totalInputTokens += parsed.message.usage.input_tokens || 0
+            totalOutputTokens += parsed.message.usage.output_tokens || 0
+          }
+          if (parsed.message?.model) {
+            model = parsed.message.model
+          }
+          const text = extractTextContent(parsed)
+          if (text) lastTextContent = text
+        }
+      } catch {}
+    })
+
+    rl.on('close', () => {
+      resolve({
+        summary: lastTextContent.slice(0, 2000),
+        totalInputTokens,
+        totalOutputTokens,
+        model,
+      })
+    })
+
+    rl.on('error', () => {
+      resolve({ summary: '', totalInputTokens: 0, totalOutputTokens: 0, model: '' })
+    })
+  })
+}
+
 async function searchInSession(
   filePath: string,
   sessionId: string,
