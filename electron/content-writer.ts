@@ -133,19 +133,14 @@ RULES:
 - Be a confident realist: bold claims + honest caveats`
 
 function scoreTweets(mainWindow: BrowserWindow, draftId: string, tweetContent: string): void {
-  const scoringPrompt = `You are a ruthlessly honest social media strategist. Score each tweet variation on three dimensions (1-10 scale). Be decisive — most tweets are mediocre (4-6). Only give 8+ if it genuinely stops the scroll. Don't be generous.
+  const scoringPrompt = `Score each tweet variation below. Return ONLY a JSON array, no other text.
 
-SCORING RUBRIC:
-- Hook (1-10): Does the first line stop the scroll? 10 = impossible to ignore, 1 = generic opener. Most hooks are a 5.
-- Clarity (1-10): Would someone who never heard of crypto instantly understand? 10 = crystal clear to a 12-year-old, 1 = insider jargon soup.
-- Viral (1-10): Would someone retweet this to look smart? 10 = instantly quotable, screenshot-worthy. 1 = nobody shares this.
+Format: [{"index":1,"hook":N,"clarity":N,"viral":N},{"index":2,"hook":N,"clarity":N,"viral":N},{"index":3,"hook":N,"clarity":N,"viral":N},{"index":4,"hook":N,"clarity":N,"viral":N},{"index":5,"hook":N,"clarity":N,"viral":N}]
 
-IMPORTANT: Use the FULL range. A 7 is genuinely good. An 8 is excellent. A 9-10 is rare. Don't cluster everything at 7-8.
+Scoring (1-10): hook=scroll-stopping power, clarity=understandable without context, viral=would someone RT this.
+Use full range. Most tweets are 4-6. Only 8+ if genuinely excellent.
 
-Respond ONLY with valid JSON array using double quotes, no markdown fences:
-[{"index": 1, "hook": N, "clarity": N, "viral": N}, ...]
-
-TWEETS TO SCORE:
+TWEETS:
 ${tweetContent}`
 
   callLLM({
@@ -155,7 +150,7 @@ ${tweetContent}`
     timeout: 45000,
   }).then((result) => {
     try {
-      console.log('[content-writer] Score response length:', result.length, 'chars')
+      console.log('[content-writer] Score raw:', result.slice(0, 500))
       let scores: { index: number; hook: number; clarity: number; viral: number }[] = []
 
       // Try JSON.parse first (most reliable)
@@ -189,6 +184,7 @@ ${tweetContent}`
       }
 
       if (scores.length > 0) {
+        console.log('[content-writer] Parsed', scores.length, 'scores')
         mainWindow.webContents.send('content-scores-ready', { draftId, scores })
         try { updateContentDraftScores(draftId, scores) } catch (e: any) {
           console.warn('[content-writer] Failed to persist scores:', e.message)
