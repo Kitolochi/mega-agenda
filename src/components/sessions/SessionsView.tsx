@@ -1,0 +1,68 @@
+import { useSessionsStore } from '../../store'
+import HistogramChart from './HistogramChart'
+
+export default function SessionsView() {
+  const { sessions, sessionList, loading } = useSessionsStore()
+
+  if (loading && !sessions) {
+    return <div className="flex justify-center py-12"><div className="w-5 h-5 border-2 border-accent-blue/30 border-t-accent-blue rounded-full animate-spin" /></div>
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Histograms */}
+      {sessions && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <HistogramChart
+            title="Message Length Distribution"
+            buckets={sessions.length_distribution}
+            color="rgba(59, 130, 246, 0.7)"
+          />
+          <HistogramChart
+            title="Duration Distribution"
+            buckets={sessions.duration_distribution}
+            color="rgba(168, 85, 247, 0.7)"
+          />
+          <HistogramChart
+            title="Autonomy Distribution"
+            buckets={sessions.autonomy_distribution}
+            color="rgba(16, 185, 129, 0.7)"
+          />
+        </div>
+      )}
+
+      {/* Recent sessions list */}
+      {sessionList?.sessions && sessionList.sessions.length > 0 && (
+        <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-5">
+          <h3 className="text-sm font-medium text-white/80 mb-4">
+            Recent Sessions <span className="text-muted font-normal">({sessionList.total} total)</span>
+          </h3>
+          <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 bg-surface-1">
+                <tr className="text-muted border-b border-white/[0.06]">
+                  <th className="text-left py-2 pr-3 font-medium">Project</th>
+                  <th className="text-left py-2 px-3 font-medium">First Message</th>
+                  <th className="text-right py-2 px-3 font-medium">Msgs</th>
+                  <th className="text-right py-2 px-3 font-medium">Started</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sessionList.sessions.map((s) => (
+                  <tr key={s.id} className="border-b border-white/[0.03] hover:bg-white/[0.02]">
+                    <td className="py-2 pr-3 text-accent-blue">{s.project}</td>
+                    <td className="py-2 px-3 text-white/70 max-w-md truncate">{s.first_message.slice(0, 80)}</td>
+                    <td className="py-2 px-3 text-right text-white">{s.message_count}</td>
+                    <td className="py-2 px-3 text-right text-muted whitespace-nowrap">
+                      {new Date(s.started_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
