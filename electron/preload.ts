@@ -421,6 +421,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getScoreSnapshots: () => ipcRenderer.invoke('get-score-snapshots'),
   getTweetPatterns: () => ipcRenderer.invoke('get-tweet-patterns'),
   extractTweetPatterns: () => ipcRenderer.invoke('extract-tweet-patterns'),
+  getSessionInsights: () => ipcRenderer.invoke('get-session-insights'),
+  importSessionTweet: (text: string, topic: string) => ipcRenderer.invoke('import-session-tweet', text, topic),
   onContentAutoRefineStart: (callback: (data: { draftId: string; weakCount: number; avgScore: number }) => void) => {
     const handler = (_: any, data: any) => callback(data)
     ipcRenderer.on('content-auto-refine-start', handler)

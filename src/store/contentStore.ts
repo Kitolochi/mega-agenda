@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { ContentDraft, ContentType, TweetScore } from '../types'
+import { ContentDraft, ContentType, SessionInsight, TweetScore } from '../types'
 
 interface ContentState {
   drafts: ContentDraft[]
@@ -14,6 +14,7 @@ interface ContentState {
   tweetScores: TweetScore[] | null
   autoRefining: boolean
   refineInput: string
+  sessionInsights: SessionInsight[]
 
   // Actions
   setContentType: (type: ContentType) => void
@@ -40,6 +41,8 @@ interface ContentState {
   handleDelete: (id: string) => Promise<void>
   handleSave: () => Promise<void>
   selectDraft: (id: string) => Promise<void>
+  fetchSessionInsights: () => Promise<void>
+  importSessionTweet: (text: string, topic: string) => Promise<void>
 }
 
 export const useContentStore = create<ContentState>((set, get) => ({
@@ -55,6 +58,7 @@ export const useContentStore = create<ContentState>((set, get) => ({
   tweetScores: null,
   autoRefining: false,
   refineInput: '',
+  sessionInsights: [],
 
   setContentType: (type) => set({ contentType: type }),
   setTopic: (topic) => set({ topic }),
@@ -215,5 +219,26 @@ export const useContentStore = create<ContentState>((set, get) => ({
       tweetScores: draft.scores || null,
       refineInput: '',
     })
+  },
+
+  fetchSessionInsights: async () => {
+    const insights = await window.electronAPI.getSessionInsights()
+    set({ sessionInsights: insights })
+  },
+
+  importSessionTweet: async (text: string, topic: string) => {
+    const draft = await window.electronAPI.importSessionTweet(text, topic)
+    set({
+      activeDraftId: draft.id,
+      topic,
+      streamText: text,
+      contentType: 'tweet',
+      researching: false,
+      streaming: false,
+      scoring: false,
+      tweetScores: null,
+      refineInput: '',
+    })
+    await get().loadDrafts()
   },
 }))

@@ -759,6 +759,15 @@ export interface ContentDraft {
   updatedAt: string
 }
 
+export interface SessionInsight {
+  id: number
+  date_from: string
+  date_to: string
+  project: string | null
+  tweets: { text: string; theme: string; format?: string; source_project?: string }[]
+  created_at: string
+}
+
 export interface CalendarEvent {
   id: string
   title: string
@@ -1199,6 +1208,8 @@ export interface ElectronAPI {
   getScoreSnapshots: () => Promise<ScoreSnapshot[]>
   getTweetPatterns: () => Promise<TweetPattern[]>
   extractTweetPatterns: () => Promise<TweetPattern[]>
+  getSessionInsights: () => Promise<SessionInsight[]>
+  importSessionTweet: (text: string, topic: string) => Promise<ContentDraft>
   onContentAutoRefineStart: (callback: (data: { draftId: string; weakCount: number; avgScore: number }) => void) => () => void
 
   // Bank Sync

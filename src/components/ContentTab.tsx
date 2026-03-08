@@ -150,14 +150,17 @@ function TweetCards({ text }: { text: string }) {
 export default function ContentTab() {
   const {
     drafts, activeDraftId, contentType, topic, researchText, streamText,
-    researching, streaming, refineInput, autoRefining,
+    researching, streaming, refineInput, autoRefining, sessionInsights,
     setContentType, setTopic, setRefineInput,
     loadDrafts, handleNewTopic, handleResearch, handleGenerate,
     handleQuickAction, handleAbortResearch, handleAbortDraft,
     handleCopy, handleDelete, handleSave, selectDraft,
+    fetchSessionInsights, importSessionTweet,
   } = useContentStore()
 
   const [showHistory, setShowHistory] = useState(false)
+  const [showInsights, setShowInsights] = useState(false)
+  const [expandedInsight, setExpandedInsight] = useState<number | null>(null)
   const [copied, setCopied] = useState(false)
   const [trendAvg, setTrendAvg] = useState<number | null>(null)
 
@@ -226,6 +229,62 @@ export default function ContentTab() {
                   </button>
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+        <div className="relative">
+          <Button variant="ghost" size="sm" onClick={() => {
+            if (!showInsights) fetchSessionInsights()
+            setShowInsights(!showInsights)
+          }}>
+            Import from Sessions {showInsights ? '▴' : '▾'}
+          </Button>
+          {showInsights && (
+            <div className="absolute top-full left-0 mt-1 w-80 bg-surface-2 border border-white/[0.08] rounded-lg shadow-xl z-50 max-h-96 overflow-y-auto">
+              {sessionInsights.length === 0 ? (
+                <div className="px-3 py-4 text-[11px] text-white/30 text-center">
+                  No session insights yet. Run /daily-tweets first.
+                </div>
+              ) : (
+                sessionInsights.map(insight => (
+                  <div key={insight.id} className="border-b border-white/[0.04] last:border-b-0">
+                    <div
+                      className="flex items-center justify-between px-3 py-2 hover:bg-white/[0.04] cursor-pointer text-[11px]"
+                      onClick={() => setExpandedInsight(expandedInsight === insight.id ? null : insight.id)}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-white/80">{insight.date_from}</span>
+                        <span className="text-white/30">{insight.project || 'all'}</span>
+                      </div>
+                      <span className="text-white/40">{insight.tweets.length} tweets</span>
+                    </div>
+                    {expandedInsight === insight.id && (
+                      <div className="px-3 pb-2 space-y-1.5">
+                        {insight.tweets.map((tweet, ti) => (
+                          <div
+                            key={ti}
+                            className="flex items-start gap-2 p-2 rounded bg-surface-3 hover:bg-surface-4 cursor-pointer transition-colors"
+                            onClick={() => {
+                              importSessionTweet(tweet.text, tweet.theme || tweet.source_project || 'session-insight')
+                              setShowInsights(false)
+                              setExpandedInsight(null)
+                            }}
+                          >
+                            <div className="flex-1 min-w-0">
+                              <div className="text-[11px] text-white/80 line-clamp-2">{tweet.text}</div>
+                              <div className="flex items-center gap-2 mt-1">
+                                {tweet.theme && <span className="text-[9px] text-accent-blue/60">{tweet.theme}</span>}
+                                <span className="text-[9px] text-white/25">{tweet.text.length}/280</span>
+                              </div>
+                            </div>
+                            <span className="text-[9px] text-accent-emerald/60 shrink-0 mt-0.5">Import</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
             </div>
           )}
         </div>
