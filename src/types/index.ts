@@ -774,6 +774,90 @@ export interface RoutineResult {
   date: string
 }
 
+// Agent Orchestration Types
+export interface Agent {
+  id: string
+  name: string
+  role: 'engineer' | 'researcher' | 'writer' | 'planner' | 'designer' | 'custom'
+  description: string
+  adapter: 'claude_local'
+  adapterConfig: {
+    taskType?: 'research' | 'code' | 'writing' | 'planning' | 'communication'
+    allowedTools?: string
+    preamble?: string
+    cwd?: string
+  }
+  reportsTo?: string
+  budgetMonthlyCents: number
+  spentMonthlyCents: number
+  budgetResetDate: string
+  status: 'active' | 'paused' | 'idle' | 'running' | 'error'
+  lastError?: string
+  heartbeat?: {
+    enabled: boolean
+    schedule: { trigger: 'interval' | 'daily' | 'weekly'; time?: string; intervalMinutes?: number; dayOfWeek?: number }
+    lastRun?: string
+  }
+  sessionState?: {
+    sessionId?: string
+    cumulativeInputTokens: number
+    cumulativeOutputTokens: number
+    cumulativeCostCents: number
+  }
+  createdAt: string
+  updatedAt: string
+}
+
+export interface AgentIssue {
+  id: string
+  title: string
+  description: string
+  status: 'backlog' | 'todo' | 'in_progress' | 'in_review' | 'done' | 'blocked' | 'cancelled'
+  priority: 'critical' | 'high' | 'medium' | 'low'
+  assignedAgentId?: string
+  goalId?: string
+  tags: string[]
+  checkedOutAt?: string
+  checkedOutRunId?: string
+  result?: string
+  deliverables?: string[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface HeartbeatRun {
+  id: string
+  agentId: string
+  issueId?: string
+  source: 'timer' | 'manual' | 'assignment'
+  status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'timed_out'
+  prompt: string
+  startedAt: string
+  completedAt?: string
+  durationMs?: number
+  sessionId?: string
+  inputTokens?: number
+  outputTokens?: number
+  costCents?: number
+  summary?: string
+  error?: string
+  createdAt: string
+}
+
+export interface CostEvent {
+  id: string
+  agentId: string
+  issueId?: string
+  heartbeatRunId?: string
+  source: 'heartbeat' | 'chat' | 'research' | 'manual'
+  provider: string
+  model: string
+  inputTokens: number
+  outputTokens: number
+  costCents: number
+  timestamp: string
+}
+
 export interface ElectronAPI {
   // Task operations
   getCategories: () => Promise<Category[]>
@@ -1164,6 +1248,26 @@ export interface ElectronAPI {
   getRoutineResultsForDate: (date: string) => Promise<RoutineResult[]>
   deleteRoutineResult: (id: string) => Promise<void>
   onRoutinesUpdated: (callback: () => void) => () => void
+
+  // Agent Orchestration
+  getAgents: () => Promise<Agent[]>
+  getAgent: (id: string) => Promise<Agent | null>
+  createAgent: (data: Omit<Agent, 'id' | 'createdAt' | 'updatedAt' | 'spentMonthlyCents' | 'budgetResetDate' | 'status'>) => Promise<Agent>
+  updateAgent: (id: string, updates: Partial<Agent>) => Promise<Agent | null>
+  deleteAgent: (id: string) => Promise<void>
+  setAgentStatus: (id: string, status: Agent['status'], lastError?: string) => Promise<Agent | null>
+  getAgentIssues: (filters?: { agentId?: string; status?: AgentIssue['status'] }) => Promise<AgentIssue[]>
+  getAgentIssue: (id: string) => Promise<AgentIssue | null>
+  createAgentIssue: (data: Omit<AgentIssue, 'id' | 'createdAt' | 'updatedAt'>) => Promise<AgentIssue>
+  updateAgentIssue: (id: string, updates: Partial<AgentIssue>) => Promise<AgentIssue | null>
+  deleteAgentIssue: (id: string) => Promise<void>
+  getHeartbeatRuns: (filters?: { agentId?: string; issueId?: string; limit?: number }) => Promise<HeartbeatRun[]>
+  runAgentHeartbeat: (agentId: string, issueId?: string) => Promise<HeartbeatRun | null>
+  completeHeartbeatRun: (runId: string, updates: Partial<HeartbeatRun>) => Promise<HeartbeatRun | null>
+  getCostEvents: (filters?: { agentId?: string; limit?: number }) => Promise<CostEvent[]>
+  getAgentCostSummary: (agentId: string) => Promise<{ totalCents: number; monthCents: number; eventCount: number }>
+  pollAgentSessions: () => Promise<HeartbeatRun[]>
+  onAgentsUpdated: (callback: () => void) => () => void
 
   // Google Workspace CLI
   gwsCheckAuth: () => Promise<{ installed: boolean; authenticated: boolean; error?: string }>

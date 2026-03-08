@@ -15,6 +15,7 @@ import { registerContentHandlers } from './content'
 import { registerOutreachHandlers } from './outreach'
 import { registerCalendarHandlers } from './calendar'
 import { registerRoutineHandlers } from './routines'
+import { registerAgentHandlers } from './agents'
 
 export function registerAllHandlers(mainWindow: BrowserWindow) {
   registerTaskHandlers(mainWindow)
@@ -33,4 +34,5 @@ export function registerAllHandlers(mainWindow: BrowserWindow) {
   registerOutreachHandlers(mainWindow)
   registerCalendarHandlers(mainWindow)
   registerRoutineHandlers(mainWindow)
+  registerAgentHandlers(mainWindow)
 }

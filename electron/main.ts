@@ -10,6 +10,8 @@ import { fireDailyNotification } from './ipc/calendar'
 import { syncAllGoalContextFiles } from './ipc/ai'
 import { scaffoldDomainFolders } from './ipc/system'
 import { runDueRoutines, runAppLaunchRoutines } from './routines'
+import { runDueAgentHeartbeats, pollAgentSessions } from './agents'
+import { setAgentLaunchFn } from './ipc/agents'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -195,6 +197,9 @@ app.whenReady().then(() => {
   // Register all IPC handlers from modular files
   registerAllHandlers(mainWindow!)
 
+  // Wire up agent launch function
+  setAgentLaunchFn(launchInExternalTerminal)
+
   // Check recurring tasks every 60s; notify renderer to re-fetch if any were reset
   setInterval(() => {
     if (checkRecurringTasks()) {
@@ -202,7 +207,7 @@ app.whenReady().then(() => {
     }
   }, 60 * 1000)
 
-  // Run due routines every 60s
+  // Run due routines + agent heartbeats every 60s
   setInterval(async () => {
     try {
       const results = await runDueRoutines()
@@ -210,7 +215,20 @@ app.whenReady().then(() => {
         mainWindow?.webContents.send('routines-updated')
       }
     } catch (e) { console.error('Routine scheduler error:', e) }
+    try {
+      const agentRuns = runDueAgentHeartbeats(launchInExternalTerminal)
+      if (agentRuns.length > 0) {
+        mainWindow?.webContents.send('agents-updated')
+      }
+    } catch (e) { console.error('Agent heartbeat error:', e) }
   }, 60 * 1000)
+
+  // Poll agent sessions every 30s when runs are active
+  setInterval(async () => {
+    try {
+      await pollAgentSessions()
+    } catch (e) { console.error('Agent session poll error:', e) }
+  }, 30 * 1000)
 
   // Sync goal context files on startup
   syncAllGoalContextFiles()

@@ -438,6 +438,89 @@ export interface RoutineResult {
   date: string               // YYYY-MM-DD for calendar day lookup
 }
 
+export interface Agent {
+  id: string
+  name: string
+  role: 'engineer' | 'researcher' | 'writer' | 'planner' | 'designer' | 'custom'
+  description: string
+  adapter: 'claude_local'
+  adapterConfig: {
+    taskType?: 'research' | 'code' | 'writing' | 'planning' | 'communication'
+    allowedTools?: string
+    preamble?: string
+    cwd?: string
+  }
+  reportsTo?: string
+  budgetMonthlyCents: number
+  spentMonthlyCents: number
+  budgetResetDate: string
+  status: 'active' | 'paused' | 'idle' | 'running' | 'error'
+  lastError?: string
+  heartbeat?: {
+    enabled: boolean
+    schedule: { trigger: 'interval' | 'daily' | 'weekly'; time?: string; intervalMinutes?: number; dayOfWeek?: number }
+    lastRun?: string
+  }
+  sessionState?: {
+    sessionId?: string
+    cumulativeInputTokens: number
+    cumulativeOutputTokens: number
+    cumulativeCostCents: number
+  }
+  createdAt: string
+  updatedAt: string
+}
+
+export interface AgentIssue {
+  id: string
+  title: string
+  description: string
+  status: 'backlog' | 'todo' | 'in_progress' | 'in_review' | 'done' | 'blocked' | 'cancelled'
+  priority: 'critical' | 'high' | 'medium' | 'low'
+  assignedAgentId?: string
+  goalId?: string
+  tags: string[]
+  checkedOutAt?: string
+  checkedOutRunId?: string
+  result?: string
+  deliverables?: string[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface HeartbeatRun {
+  id: string
+  agentId: string
+  issueId?: string
+  source: 'timer' | 'manual' | 'assignment'
+  status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'timed_out'
+  prompt: string
+  startedAt: string
+  completedAt?: string
+  durationMs?: number
+  sessionId?: string
+  inputTokens?: number
+  outputTokens?: number
+  costCents?: number
+  summary?: string
+  error?: string
+  createdAt: string
+}
+
+export interface CostEvent {
+  id: string
+  agentId: string
+  issueId?: string
+  heartbeatRunId?: string
+  source: 'heartbeat' | 'chat' | 'research' | 'manual'
+  provider: string
+  model: string
+  inputTokens: number
+  outputTokens: number
+  costCents: number
+  timestamp: string
+}
+
 interface Database {
   categories: Category[]
   tasks: Task[]
@@ -481,6 +564,10 @@ interface Database {
   lastDailyNotifDate: string
   routines: Routine[]
   routineResults: RoutineResult[]
+  agents: Agent[]
+  agentIssues: AgentIssue[]
+  heartbeatRuns: HeartbeatRun[]
+  costEvents: CostEvent[]
 }
 
 let db: Database
@@ -890,6 +977,24 @@ export function initDatabase(): Database {
   // Initialize routineResults if missing
   if (!Array.isArray((db as any).routineResults)) {
     db.routineResults = []
+    saveDatabase()
+  }
+
+  // Initialize agent orchestration arrays if missing
+  if (!Array.isArray((db as any).agents)) {
+    db.agents = []
+    saveDatabase()
+  }
+  if (!Array.isArray((db as any).agentIssues)) {
+    db.agentIssues = []
+    saveDatabase()
+  }
+  if (!Array.isArray((db as any).heartbeatRuns)) {
+    db.heartbeatRuns = []
+    saveDatabase()
+  }
+  if (!Array.isArray((db as any).costEvents)) {
+    db.costEvents = []
     saveDatabase()
   }
 
@@ -2721,4 +2826,178 @@ export function saveRoutineResult(result: Omit<RoutineResult, 'id'>): RoutineRes
 export function deleteRoutineResult(id: string): void {
   db.routineResults = db.routineResults.filter(r => r.id !== id)
   saveDatabase()
+}
+
+// ===== Agent Orchestration CRUD =====
+
+export function getAgents(): Agent[] {
+  return db.agents || []
+}
+
+export function getAgent(id: string): Agent | null {
+  return (db.agents || []).find(a => a.id === id) || null
+}
+
+export function createAgent(data: Omit<Agent, 'id' | 'createdAt' | 'updatedAt' | 'spentMonthlyCents' | 'budgetResetDate' | 'status'>): Agent {
+  const now = new Date().toISOString()
+  const firstOfMonth = now.slice(0, 8) + '01'
+  const agent: Agent = {
+    ...data,
+    id: generateId(),
+    spentMonthlyCents: 0,
+    budgetResetDate: firstOfMonth,
+    status: 'idle',
+    createdAt: now,
+    updatedAt: now,
+  }
+  db.agents.push(agent)
+  saveDatabase()
+  return agent
+}
+
+export function updateAgent(id: string, updates: Partial<Agent>): Agent | null {
+  const agent = db.agents.find(a => a.id === id)
+  if (!agent) return null
+  Object.assign(agent, updates, { updatedAt: new Date().toISOString() })
+  saveDatabase()
+  return agent
+}
+
+export function deleteAgent(id: string): void {
+  db.agents = db.agents.filter(a => a.id !== id)
+  db.agentIssues = db.agentIssues.filter(i => i.assignedAgentId !== id)
+  db.heartbeatRuns = db.heartbeatRuns.filter(r => r.agentId !== id)
+  db.costEvents = db.costEvents.filter(e => e.agentId !== id)
+  saveDatabase()
+}
+
+export function setAgentStatus(id: string, status: Agent['status'], lastError?: string): Agent | null {
+  const agent = db.agents.find(a => a.id === id)
+  if (!agent) return null
+  agent.status = status
+  if (lastError !== undefined) agent.lastError = lastError
+  agent.updatedAt = new Date().toISOString()
+  saveDatabase()
+  return agent
+}
+
+// Agent Issues
+
+export function getAgentIssues(filters?: { agentId?: string; status?: AgentIssue['status'] }): AgentIssue[] {
+  let issues = db.agentIssues || []
+  if (filters?.agentId) issues = issues.filter(i => i.assignedAgentId === filters.agentId)
+  if (filters?.status) issues = issues.filter(i => i.status === filters.status)
+  return issues.sort((a, b) => {
+    const prio = { critical: 0, high: 1, medium: 2, low: 3 }
+    return (prio[a.priority] ?? 2) - (prio[b.priority] ?? 2)
+  })
+}
+
+export function getAgentIssue(id: string): AgentIssue | null {
+  return (db.agentIssues || []).find(i => i.id === id) || null
+}
+
+export function createAgentIssue(data: Omit<AgentIssue, 'id' | 'createdAt' | 'updatedAt'>): AgentIssue {
+  const now = new Date().toISOString()
+  const issue: AgentIssue = {
+    ...data,
+    id: generateId(),
+    createdAt: now,
+    updatedAt: now,
+  }
+  db.agentIssues.push(issue)
+  saveDatabase()
+  return issue
+}
+
+export function updateAgentIssue(id: string, updates: Partial<AgentIssue>): AgentIssue | null {
+  const issue = db.agentIssues.find(i => i.id === id)
+  if (!issue) return null
+  Object.assign(issue, updates, { updatedAt: new Date().toISOString() })
+  saveDatabase()
+  return issue
+}
+
+export function deleteAgentIssue(id: string): void {
+  db.agentIssues = db.agentIssues.filter(i => i.id !== id)
+  saveDatabase()
+}
+
+export function getAgentIssuesByAgent(agentId: string): AgentIssue[] {
+  return getAgentIssues({ agentId })
+}
+
+// Heartbeat Runs
+
+export function getHeartbeatRuns(filters?: { agentId?: string; issueId?: string; limit?: number }): HeartbeatRun[] {
+  let runs = db.heartbeatRuns || []
+  if (filters?.agentId) runs = runs.filter(r => r.agentId === filters.agentId)
+  if (filters?.issueId) runs = runs.filter(r => r.issueId === filters.issueId)
+  runs = runs.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  if (filters?.limit) runs = runs.slice(0, filters.limit)
+  return runs
+}
+
+export function getHeartbeatRunsByAgent(agentId: string): HeartbeatRun[] {
+  return getHeartbeatRuns({ agentId })
+}
+
+export function createHeartbeatRun(data: Omit<HeartbeatRun, 'id' | 'createdAt'>): HeartbeatRun {
+  const run: HeartbeatRun = {
+    ...data,
+    id: generateId(),
+    createdAt: new Date().toISOString(),
+  }
+  db.heartbeatRuns.push(run)
+  // Cap at 1000 entries
+  if (db.heartbeatRuns.length > 1000) {
+    db.heartbeatRuns = db.heartbeatRuns
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, 1000)
+  }
+  saveDatabase()
+  return run
+}
+
+export function updateHeartbeatRun(id: string, updates: Partial<HeartbeatRun>): HeartbeatRun | null {
+  const run = db.heartbeatRuns.find(r => r.id === id)
+  if (!run) return null
+  Object.assign(run, updates)
+  saveDatabase()
+  return run
+}
+
+// Cost Events
+
+export function getCostEvents(filters?: { agentId?: string; limit?: number }): CostEvent[] {
+  let events = db.costEvents || []
+  if (filters?.agentId) events = events.filter(e => e.agentId === filters.agentId)
+  events = events.sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+  if (filters?.limit) events = events.slice(0, filters.limit)
+  return events
+}
+
+export function createCostEvent(data: Omit<CostEvent, 'id'>): CostEvent {
+  const event: CostEvent = {
+    ...data,
+    id: generateId(),
+  }
+  db.costEvents.push(event)
+  // Cap at 2000 entries
+  if (db.costEvents.length > 2000) {
+    db.costEvents = db.costEvents
+      .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+      .slice(0, 2000)
+  }
+  saveDatabase()
+  return event
+}
+
+export function getAgentCostSummary(agentId: string): { totalCents: number; monthCents: number; eventCount: number } {
+  const events = (db.costEvents || []).filter(e => e.agentId === agentId)
+  const totalCents = events.reduce((sum, e) => sum + e.costCents, 0)
+  const firstOfMonth = new Date().toISOString().slice(0, 8) + '01'
+  const monthEvents = events.filter(e => e.timestamp >= firstOfMonth)
+  const monthCents = monthEvents.reduce((sum, e) => sum + e.costCents, 0)
+  return { totalCents, monthCents, eventCount: events.length }
 }

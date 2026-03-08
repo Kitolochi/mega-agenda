@@ -513,6 +513,29 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('routines-updated', callback)
   },
 
+  // Agents
+  getAgents: () => ipcRenderer.invoke('get-agents'),
+  getAgent: (id: string) => ipcRenderer.invoke('get-agent', id),
+  createAgent: (data: any) => ipcRenderer.invoke('create-agent', data),
+  updateAgent: (id: string, updates: any) => ipcRenderer.invoke('update-agent', id, updates),
+  deleteAgent: (id: string) => ipcRenderer.invoke('delete-agent', id),
+  setAgentStatus: (id: string, status: string, lastError?: string) => ipcRenderer.invoke('set-agent-status', id, status, lastError),
+  getAgentIssues: (filters?: any) => ipcRenderer.invoke('get-agent-issues', filters),
+  getAgentIssue: (id: string) => ipcRenderer.invoke('get-agent-issue', id),
+  createAgentIssue: (data: any) => ipcRenderer.invoke('create-agent-issue', data),
+  updateAgentIssue: (id: string, updates: any) => ipcRenderer.invoke('update-agent-issue', id, updates),
+  deleteAgentIssue: (id: string) => ipcRenderer.invoke('delete-agent-issue', id),
+  getHeartbeatRuns: (filters?: any) => ipcRenderer.invoke('get-heartbeat-runs', filters),
+  runAgentHeartbeat: (agentId: string, issueId?: string) => ipcRenderer.invoke('run-agent-heartbeat', agentId, issueId),
+  completeHeartbeatRun: (runId: string, updates: any) => ipcRenderer.invoke('complete-heartbeat-run', runId, updates),
+  getCostEvents: (filters?: any) => ipcRenderer.invoke('get-cost-events', filters),
+  getAgentCostSummary: (agentId: string) => ipcRenderer.invoke('get-agent-cost-summary', agentId),
+  pollAgentSessions: () => ipcRenderer.invoke('poll-agent-sessions'),
+  onAgentsUpdated: (callback: () => void) => {
+    ipcRenderer.on('agents-updated', callback)
+    return () => ipcRenderer.removeListener('agents-updated', callback)
+  },
+
   // Clipboard
   readClipboard: () => ipcRenderer.sendSync('read-clipboard'),
   writeClipboard: (text: string) => ipcRenderer.send('write-clipboard', text),
