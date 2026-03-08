@@ -412,6 +412,32 @@ export interface CalendarEvent {
   createdAt: string
 }
 
+export interface Routine {
+  id: string
+  name: string
+  type: 'morning-briefing' | 'pr-monitor' | 'email-digest' | 'weekly-review' | 'custom'
+  schedule: {
+    trigger: 'app-launch' | 'interval' | 'daily' | 'weekly'
+    time?: string            // HH:mm for daily/weekly
+    intervalMinutes?: number // for interval trigger
+    dayOfWeek?: number       // 0-6 for weekly trigger
+  }
+  config: Record<string, any>
+  enabled: boolean
+  lastRun?: string           // ISO timestamp
+  createdAt: string
+}
+
+export interface RoutineResult {
+  id: string
+  routineId: string
+  timestamp: string          // ISO
+  summary: string
+  detail: string             // markdown content
+  status: 'success' | 'error'
+  date: string               // YYYY-MM-DD for calendar day lookup
+}
+
 interface Database {
   categories: Category[]
   tasks: Task[]
@@ -453,6 +479,8 @@ interface Database {
   categoryOverrides: Record<string, string>  // transactionId -> categoryKey
   calendarEvents: CalendarEvent[]
   lastDailyNotifDate: string
+  routines: Routine[]
+  routineResults: RoutineResult[]
 }
 
 let db: Database
@@ -850,6 +878,18 @@ export function initDatabase(): Database {
   // Initialize lastDailyNotifDate if missing
   if (!(db as any).lastDailyNotifDate) {
     db.lastDailyNotifDate = ''
+    saveDatabase()
+  }
+
+  // Initialize routines if missing
+  if (!Array.isArray((db as any).routines)) {
+    db.routines = []
+    saveDatabase()
+  }
+
+  // Initialize routineResults if missing
+  if (!Array.isArray((db as any).routineResults)) {
+    db.routineResults = []
     saveDatabase()
   }
 
@@ -2601,5 +2641,84 @@ export function getLastDailyNotifDate(): string {
 
 export function setLastDailyNotifDate(date: string): void {
   db.lastDailyNotifDate = date
+  saveDatabase()
+}
+
+// Routine CRUD
+export function getRoutines(): Routine[] {
+  return db.routines || []
+}
+
+export function getRoutine(id: string): Routine | null {
+  return (db.routines || []).find(r => r.id === id) || null
+}
+
+export function createRoutine(data: Omit<Routine, 'id' | 'createdAt'>): Routine {
+  const routine: Routine = {
+    ...data,
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+    createdAt: new Date().toISOString(),
+  }
+  db.routines.push(routine)
+  saveDatabase()
+  return routine
+}
+
+export function updateRoutine(id: string, updates: Partial<Routine>): Routine | null {
+  const idx = db.routines.findIndex(r => r.id === id)
+  if (idx === -1) return null
+  db.routines[idx] = { ...db.routines[idx], ...updates, id }
+  saveDatabase()
+  return db.routines[idx]
+}
+
+export function deleteRoutine(id: string): void {
+  db.routines = db.routines.filter(r => r.id !== id)
+  db.routineResults = db.routineResults.filter(r => r.routineId !== id)
+  saveDatabase()
+}
+
+export function setRoutineLastRun(id: string, timestamp: string): void {
+  const routine = db.routines.find(r => r.id === id)
+  if (routine) {
+    routine.lastRun = timestamp
+    saveDatabase()
+  }
+}
+
+// RoutineResult CRUD
+export function getRoutineResults(routineId?: string, date?: string, limit: number = 50): RoutineResult[] {
+  let results = db.routineResults || []
+  if (routineId) results = results.filter(r => r.routineId === routineId)
+  if (date) results = results.filter(r => r.date === date)
+  return results
+    .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+    .slice(0, limit)
+}
+
+export function getRoutineResultsForDate(date: string): RoutineResult[] {
+  return (db.routineResults || [])
+    .filter(r => r.date === date)
+    .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+}
+
+export function saveRoutineResult(result: Omit<RoutineResult, 'id'>): RoutineResult {
+  const entry: RoutineResult = {
+    ...result,
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+  }
+  db.routineResults.push(entry)
+  // Cap at 500 entries to prevent unbounded growth
+  if (db.routineResults.length > 500) {
+    db.routineResults = db.routineResults
+      .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+      .slice(0, 500)
+  }
+  saveDatabase()
+  return entry
+}
+
+export function deleteRoutineResult(id: string): void {
+  db.routineResults = db.routineResults.filter(r => r.id !== id)
   saveDatabase()
 }

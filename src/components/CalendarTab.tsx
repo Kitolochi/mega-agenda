@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import type { CalendarEvent, Task } from '../types'
+import type { CalendarEvent, Task, Routine, RoutineResult } from '../types'
 
 type ViewMode = 'month' | 'week'
 
@@ -11,6 +11,21 @@ const ACCENT_COLORS: { key: string; label: string; bg: string; dot: string }[] =
 ]
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+const ROUTINE_TYPES: { value: Routine['type']; label: string }[] = [
+  { value: 'morning-briefing', label: 'Morning Briefing' },
+  { value: 'pr-monitor', label: 'PR Monitor' },
+  { value: 'email-digest', label: 'Email Digest' },
+  { value: 'weekly-review', label: 'Weekly Review' },
+  { value: 'custom', label: 'Custom Command' },
+]
+
+const TRIGGER_TYPES: { value: Routine['schedule']['trigger']; label: string }[] = [
+  { value: 'app-launch', label: 'App Launch' },
+  { value: 'interval', label: 'Interval' },
+  { value: 'daily', label: 'Daily' },
+  { value: 'weekly', label: 'Weekly' },
+]
 
 function formatDate(d: Date): string {
   return d.toISOString().split('T')[0]
@@ -52,6 +67,20 @@ function getWeekDays(selectedDate: Date): { date: Date; inMonth: boolean }[] {
   return days
 }
 
+function describeSchedule(routine: Routine): string {
+  const s = routine.schedule
+  switch (s.trigger) {
+    case 'app-launch': return 'On app launch (once/day)'
+    case 'interval': return `Every ${s.intervalMinutes || 60}min`
+    case 'daily': return s.time ? `Daily at ${s.time}` : 'Daily'
+    case 'weekly': {
+      const day = DAY_NAMES[s.dayOfWeek ?? 1]
+      return s.time ? `${day} at ${s.time}` : `Every ${day}`
+    }
+    default: return 'Unknown'
+  }
+}
+
 export default function CalendarTab() {
   const today = useMemo(() => formatDate(new Date()), [])
   const [selectedDate, setSelectedDate] = useState(today)
@@ -75,11 +104,27 @@ export default function CalendarTab() {
   const [formRecurring, setFormRecurring] = useState(false)
 
   // History state
-  const [rightPanel, setRightPanel] = useState<'day' | 'history'>('day')
+  const [rightPanel, setRightPanel] = useState<'day' | 'history' | 'routines'>('day')
   const [historyQuery, setHistoryQuery] = useState('')
   const [historyTasks, setHistoryTasks] = useState<Task[]>([])
   const [historyEvents, setHistoryEvents] = useState<CalendarEvent[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
+
+  // Routines state
+  const [routines, setRoutines] = useState<Routine[]>([])
+  const [dayRoutineResults, setDayRoutineResults] = useState<RoutineResult[]>([])
+  const [showAddRoutine, setShowAddRoutine] = useState(false)
+  const [runningRoutineId, setRunningRoutineId] = useState<string | null>(null)
+  const [expandedResultId, setExpandedResultId] = useState<string | null>(null)
+
+  // Add routine form
+  const [rName, setRName] = useState('')
+  const [rType, setRType] = useState<Routine['type']>('morning-briefing')
+  const [rTrigger, setRTrigger] = useState<Routine['schedule']['trigger']>('app-launch')
+  const [rTime, setRTime] = useState('')
+  const [rInterval, setRInterval] = useState('60')
+  const [rDayOfWeek, setRDayOfWeek] = useState('1')
+  const [rCommand, setRCommand] = useState('')
 
   // Check gws auth on mount
   useEffect(() => {
@@ -125,6 +170,35 @@ export default function CalendarTab() {
   useEffect(() => {
     if (rightPanel === 'history') loadHistory()
   }, [rightPanel, loadHistory])
+
+  // Load routines
+  const loadRoutines = useCallback(async () => {
+    try {
+      const data = await window.electronAPI.getRoutines()
+      setRoutines(data)
+    } catch { /* ignore */ }
+  }, [])
+
+  useEffect(() => { loadRoutines() }, [loadRoutines])
+
+  // Load routine results for selected day
+  const loadDayRoutineResults = useCallback(async () => {
+    try {
+      const data = await window.electronAPI.getRoutineResultsForDate(selectedDate)
+      setDayRoutineResults(data)
+    } catch { /* ignore */ }
+  }, [selectedDate])
+
+  useEffect(() => { loadDayRoutineResults() }, [loadDayRoutineResults])
+
+  // Listen for routines-updated events
+  useEffect(() => {
+    const cleanup = window.electronAPI.onRoutinesUpdated(() => {
+      loadRoutines()
+      loadDayRoutineResults()
+    })
+    return cleanup
+  }, [loadRoutines, loadDayRoutineResults])
 
   // Build a lookup: date string -> { tasks: boolean, events: boolean, gcal: boolean }
   const dateMarkers = useMemo(() => {
@@ -207,6 +281,56 @@ export default function CalendarTab() {
     await loadDayAgenda()
   }
 
+  // Routine handlers
+  const handleRunRoutine = async (id: string) => {
+    setRunningRoutineId(id)
+    try {
+      await window.electronAPI.runRoutine(id)
+      await loadRoutines()
+      await loadDayRoutineResults()
+    } catch { /* ignore */ }
+    setRunningRoutineId(null)
+  }
+
+  const handleToggleRoutine = async (id: string, enabled: boolean) => {
+    await window.electronAPI.updateRoutine(id, { enabled })
+    await loadRoutines()
+  }
+
+  const handleDeleteRoutine = async (id: string) => {
+    await window.electronAPI.deleteRoutine(id)
+    await loadRoutines()
+    await loadDayRoutineResults()
+  }
+
+  const handleAddRoutine = async () => {
+    if (!rName.trim()) return
+    const config: Record<string, any> = {}
+    if (rType === 'custom') config.command = rCommand
+
+    await window.electronAPI.createRoutine({
+      name: rName.trim(),
+      type: rType,
+      schedule: {
+        trigger: rTrigger,
+        ...(rTrigger === 'daily' || rTrigger === 'weekly' ? { time: rTime || undefined } : {}),
+        ...(rTrigger === 'interval' ? { intervalMinutes: parseInt(rInterval) || 60 } : {}),
+        ...(rTrigger === 'weekly' ? { dayOfWeek: parseInt(rDayOfWeek) } : {}),
+      },
+      config,
+      enabled: true,
+    })
+    setRName('')
+    setRType('morning-briefing')
+    setRTrigger('app-launch')
+    setRTime('')
+    setRInterval('60')
+    setRDayOfWeek('1')
+    setRCommand('')
+    setShowAddRoutine(false)
+    await loadRoutines()
+  }
+
   const monthLabel = new Date(currentYear, currentMonth).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
   const days = viewMode === 'month'
     ? getMonthDays(currentYear, currentMonth)
@@ -215,6 +339,13 @@ export default function CalendarTab() {
   const selectedLabel = new Date(selectedDate + 'T12:00:00').toLocaleDateString('en-US', {
     weekday: 'long', month: 'long', day: 'numeric',
   })
+
+  // Map routineId -> routine name for result cards
+  const routineNameMap = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const r of routines) map[r.id] = r.name
+    return map
+  }, [routines])
 
   return (
     <div className="flex h-full">
@@ -320,7 +451,7 @@ export default function CalendarTab() {
       <div className="w-80 border-l border-white/[0.06] bg-surface-1/30 flex flex-col overflow-hidden">
         {/* Panel tabs */}
         <div className="flex border-b border-white/[0.06] px-3 pt-3 pb-0 gap-1">
-          {(['day', 'history'] as const).map(panel => (
+          {(['day', 'history', 'routines'] as const).map(panel => (
             <button
               key={panel}
               onClick={() => setRightPanel(panel)}
@@ -330,7 +461,7 @@ export default function CalendarTab() {
                   : 'text-muted hover:text-white/70'
               }`}
             >
-              {panel === 'day' ? 'Day' : 'History'}
+              {panel === 'day' ? 'Day' : panel === 'history' ? 'History' : 'Routines'}
             </button>
           ))}
         </div>
@@ -420,8 +551,60 @@ export default function CalendarTab() {
               </div>
             )}
 
-            {dayTasks.length === 0 && dayEvents.length === 0 && !showAddForm && (
-              <p className="text-xs text-muted/60 italic mb-4">No tasks or events</p>
+            {/* Routine Results for this day */}
+            {dayRoutineResults.length > 0 && (
+              <div className="mb-4">
+                <h3 className="text-[10px] font-semibold text-muted uppercase tracking-wider mb-2">Routine Results</h3>
+                <div className="space-y-1.5">
+                  {dayRoutineResults.map(result => {
+                    const isExpanded = expandedResultId === result.id
+                    return (
+                      <div key={result.id} className="rounded-lg bg-surface-2/40 border border-white/[0.04] overflow-hidden">
+                        <button
+                          onClick={() => setExpandedResultId(isExpanded ? null : result.id)}
+                          className="w-full flex items-start gap-2 p-2 text-left hover:bg-white/[0.02] transition-colors"
+                        >
+                          <span className={`w-2 h-2 rounded-full mt-1 flex-shrink-0 ${
+                            result.status === 'success' ? 'bg-accent-emerald' : 'bg-red-400'
+                          }`} />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs text-white/90 truncate">
+                                {routineNameMap[result.routineId] || 'Routine'}
+                              </span>
+                              <span className={`text-[8px] px-1 py-0.5 rounded font-medium flex-shrink-0 ${
+                                result.status === 'success'
+                                  ? 'bg-accent-emerald/20 text-accent-emerald'
+                                  : 'bg-red-500/20 text-red-400'
+                              }`}>
+                                {result.status}
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-muted truncate block">{result.summary}</span>
+                            <span className="text-[9px] text-muted/50">
+                              {new Date(result.timestamp).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                            </span>
+                          </div>
+                          <svg className={`w-3 h-3 text-muted flex-shrink-0 mt-1 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </button>
+                        {isExpanded && (
+                          <div className="px-3 pb-3 border-t border-white/[0.04]">
+                            <pre className="text-[10px] text-white/70 whitespace-pre-wrap mt-2 font-sans leading-relaxed max-h-48 overflow-auto">
+                              {result.detail}
+                            </pre>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {dayTasks.length === 0 && dayEvents.length === 0 && dayRoutineResults.length === 0 && !showAddForm && (
+              <p className="text-xs text-muted/60 italic mb-4">No tasks, events, or routine results</p>
             )}
 
             {/* Add Event Form */}
@@ -529,7 +712,7 @@ export default function CalendarTab() {
               </button>
             )}
           </div>
-        ) : (
+        ) : rightPanel === 'history' ? (
           /* History panel */
           <div className="flex-1 overflow-auto p-5 flex flex-col">
             {/* Search */}
@@ -617,6 +800,187 @@ export default function CalendarTab() {
                   </p>
                 )}
               </>
+            )}
+          </div>
+        ) : (
+          /* Routines panel */
+          <div className="flex-1 overflow-auto p-5 flex flex-col">
+            {routines.length > 0 && (
+              <div className="space-y-2 mb-4">
+                {routines.map(routine => (
+                  <div key={routine.id} className="p-2.5 rounded-lg bg-surface-2/40 border border-white/[0.04]">
+                    <div className="flex items-center gap-2 mb-1">
+                      {/* Enable/disable toggle */}
+                      <button
+                        onClick={() => handleToggleRoutine(routine.id, !routine.enabled)}
+                        className={`relative w-7 h-3.5 rounded-full transition-colors flex-shrink-0 ${routine.enabled ? 'bg-accent-emerald/60' : 'bg-white/[0.1]'}`}
+                      >
+                        <span className={`absolute top-0.5 w-2.5 h-2.5 rounded-full bg-white transition-transform ${routine.enabled ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
+                      </button>
+                      <span className={`text-xs font-medium flex-1 truncate ${routine.enabled ? 'text-white/90' : 'text-muted/60'}`}>
+                        {routine.name}
+                      </span>
+                      {/* Run button */}
+                      <button
+                        onClick={() => handleRunRoutine(routine.id)}
+                        disabled={runningRoutineId === routine.id}
+                        className="text-accent-blue hover:text-accent-blue/80 disabled:opacity-40 p-0.5"
+                        title="Run now"
+                      >
+                        {runningRoutineId === routine.id ? (
+                          <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />
+                          </svg>
+                        ) : (
+                          <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
+                          </svg>
+                        )}
+                      </button>
+                      {/* Delete button */}
+                      <button
+                        onClick={() => handleDeleteRoutine(routine.id)}
+                        className="text-muted hover:text-red-400 p-0.5"
+                        title="Delete"
+                      >
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2 text-[10px] text-muted ml-9">
+                      <span className="px-1.5 py-0.5 rounded bg-surface-0/50 border border-white/[0.04]">
+                        {ROUTINE_TYPES.find(t => t.value === routine.type)?.label || routine.type}
+                      </span>
+                      <span>{describeSchedule(routine)}</span>
+                    </div>
+                    {routine.lastRun && (
+                      <div className="text-[9px] text-muted/50 ml-9 mt-1">
+                        Last: {new Date(routine.lastRun).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {routines.length === 0 && !showAddRoutine && (
+              <p className="text-xs text-muted/60 italic mb-4">
+                No routines configured. Add one to automate recurring tasks.
+              </p>
+            )}
+
+            {/* Add Routine Form */}
+            {showAddRoutine ? (
+              <div className="mt-auto bg-surface-2/50 rounded-xl border border-white/[0.06] p-3 space-y-2.5">
+                <input
+                  value={rName}
+                  onChange={e => setRName(e.target.value)}
+                  placeholder="Routine name"
+                  autoFocus
+                  className="w-full bg-surface-0/50 border border-white/[0.06] rounded-lg px-3 py-1.5 text-xs text-white placeholder-muted/50 focus:outline-none focus:ring-1 focus:ring-accent-blue/50"
+                />
+                {/* Type */}
+                <div>
+                  <label className="text-[10px] text-muted mb-0.5 block">Type</label>
+                  <select
+                    value={rType}
+                    onChange={e => setRType(e.target.value as Routine['type'])}
+                    className="w-full bg-surface-0/50 border border-white/[0.06] rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-accent-blue/50"
+                  >
+                    {ROUTINE_TYPES.map(t => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                  </select>
+                </div>
+                {/* Trigger */}
+                <div>
+                  <label className="text-[10px] text-muted mb-0.5 block">Schedule</label>
+                  <select
+                    value={rTrigger}
+                    onChange={e => setRTrigger(e.target.value as Routine['schedule']['trigger'])}
+                    className="w-full bg-surface-0/50 border border-white/[0.06] rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-accent-blue/50"
+                  >
+                    {TRIGGER_TYPES.map(t => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                  </select>
+                </div>
+                {/* Conditional fields */}
+                {(rTrigger === 'daily' || rTrigger === 'weekly') && (
+                  <div>
+                    <label className="text-[10px] text-muted mb-0.5 block">Time</label>
+                    <input
+                      type="time"
+                      value={rTime}
+                      onChange={e => setRTime(e.target.value)}
+                      className="w-full bg-surface-0/50 border border-white/[0.06] rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-accent-blue/50"
+                    />
+                  </div>
+                )}
+                {rTrigger === 'weekly' && (
+                  <div>
+                    <label className="text-[10px] text-muted mb-0.5 block">Day</label>
+                    <select
+                      value={rDayOfWeek}
+                      onChange={e => setRDayOfWeek(e.target.value)}
+                      className="w-full bg-surface-0/50 border border-white/[0.06] rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-accent-blue/50"
+                    >
+                      {DAY_NAMES.map((d, i) => (
+                        <option key={i} value={i}>{d}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                {rTrigger === 'interval' && (
+                  <div>
+                    <label className="text-[10px] text-muted mb-0.5 block">Interval (minutes)</label>
+                    <input
+                      type="number"
+                      value={rInterval}
+                      onChange={e => setRInterval(e.target.value)}
+                      min="1"
+                      className="w-full bg-surface-0/50 border border-white/[0.06] rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-accent-blue/50"
+                    />
+                  </div>
+                )}
+                {rType === 'custom' && (
+                  <div>
+                    <label className="text-[10px] text-muted mb-0.5 block">Command</label>
+                    <input
+                      value={rCommand}
+                      onChange={e => setRCommand(e.target.value)}
+                      placeholder="echo hello world"
+                      className="w-full bg-surface-0/50 border border-white/[0.06] rounded-lg px-3 py-1.5 text-xs text-white placeholder-muted/50 font-mono focus:outline-none focus:ring-1 focus:ring-accent-blue/50"
+                    />
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleAddRoutine}
+                    disabled={!rName.trim()}
+                    className="flex-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-accent-blue/20 text-accent-blue border border-accent-blue/20 hover:bg-accent-blue/30 transition-colors disabled:opacity-40"
+                  >
+                    Add Routine
+                  </button>
+                  <button
+                    onClick={() => setShowAddRoutine(false)}
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg text-muted hover:text-white border border-white/[0.06] hover:bg-white/[0.06] transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowAddRoutine(true)}
+                className="mt-auto flex items-center justify-center gap-1.5 w-full py-2 text-xs font-medium text-muted hover:text-accent-blue border border-dashed border-white/[0.08] hover:border-accent-blue/30 rounded-lg transition-colors"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                </svg>
+                Add Routine
+              </button>
             )}
           </div>
         )}

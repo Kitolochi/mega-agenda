@@ -748,6 +748,32 @@ export interface CalendarEvent {
   createdAt: string
 }
 
+export interface Routine {
+  id: string
+  name: string
+  type: 'morning-briefing' | 'pr-monitor' | 'email-digest' | 'weekly-review' | 'custom'
+  schedule: {
+    trigger: 'app-launch' | 'interval' | 'daily' | 'weekly'
+    time?: string
+    intervalMinutes?: number
+    dayOfWeek?: number
+  }
+  config: Record<string, any>
+  enabled: boolean
+  lastRun?: string
+  createdAt: string
+}
+
+export interface RoutineResult {
+  id: string
+  routineId: string
+  timestamp: string
+  summary: string
+  detail: string
+  status: 'success' | 'error'
+  date: string
+}
+
 export interface ElectronAPI {
   // Task operations
   getCategories: () => Promise<Category[]>
@@ -1126,6 +1152,18 @@ export interface ElectronAPI {
   getCalendarHistory: (query?: string, limit?: number) => Promise<{ tasks: Task[]; events: CalendarEvent[] }>
   syncGcalEvents: () => Promise<{ success: boolean; synced?: number; error?: string }>
   fireDailyNotification: () => Promise<string | null>
+
+  // Routines
+  getRoutines: () => Promise<Routine[]>
+  getRoutine: (id: string) => Promise<Routine | null>
+  createRoutine: (data: Omit<Routine, 'id' | 'createdAt'>) => Promise<Routine>
+  updateRoutine: (id: string, updates: Partial<Routine>) => Promise<Routine | null>
+  deleteRoutine: (id: string) => Promise<void>
+  runRoutine: (id: string) => Promise<RoutineResult | null>
+  getRoutineResults: (routineId?: string, date?: string, limit?: number) => Promise<RoutineResult[]>
+  getRoutineResultsForDate: (date: string) => Promise<RoutineResult[]>
+  deleteRoutineResult: (id: string) => Promise<void>
+  onRoutinesUpdated: (callback: () => void) => () => void
 
   // Google Workspace CLI
   gwsCheckAuth: () => Promise<{ installed: boolean; authenticated: boolean; error?: string }>

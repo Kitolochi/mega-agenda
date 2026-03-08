@@ -9,6 +9,7 @@ import { registerAllHandlers } from './ipc'
 import { fireDailyNotification } from './ipc/calendar'
 import { syncAllGoalContextFiles } from './ipc/ai'
 import { scaffoldDomainFolders } from './ipc/system'
+import { runDueRoutines, runAppLaunchRoutines } from './routines'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -90,6 +91,10 @@ function createWindow() {
     mainWindow?.focus()
     // Fire daily agenda notification once per day on launch
     try { fireDailyNotification() } catch (e) { console.error('Daily notification error:', e) }
+    // Run app-launch routines
+    runAppLaunchRoutines().then(results => {
+      if (results.length > 0) mainWindow?.webContents.send('routines-updated')
+    }).catch(e => console.error('App-launch routines error:', e))
   })
 
   if (VITE_DEV_SERVER_URL) {
@@ -195,6 +200,16 @@ app.whenReady().then(() => {
     if (checkRecurringTasks()) {
       mainWindow?.webContents.send('tasks-updated')
     }
+  }, 60 * 1000)
+
+  // Run due routines every 60s
+  setInterval(async () => {
+    try {
+      const results = await runDueRoutines()
+      if (results.length > 0) {
+        mainWindow?.webContents.send('routines-updated')
+      }
+    } catch (e) { console.error('Routine scheduler error:', e) }
   }, 60 * 1000)
 
   // Sync goal context files on startup

@@ -498,6 +498,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
   syncGcalEvents: () => ipcRenderer.invoke('sync-gcal-events'),
   fireDailyNotification: () => ipcRenderer.invoke('fire-daily-notification'),
 
+  // Routines
+  getRoutines: () => ipcRenderer.invoke('get-routines'),
+  getRoutine: (id: string) => ipcRenderer.invoke('get-routine', id),
+  createRoutine: (data: any) => ipcRenderer.invoke('create-routine', data),
+  updateRoutine: (id: string, updates: any) => ipcRenderer.invoke('update-routine', id, updates),
+  deleteRoutine: (id: string) => ipcRenderer.invoke('delete-routine', id),
+  runRoutine: (id: string) => ipcRenderer.invoke('run-routine', id),
+  getRoutineResults: (routineId?: string, date?: string, limit?: number) => ipcRenderer.invoke('get-routine-results', routineId, date, limit),
+  getRoutineResultsForDate: (date: string) => ipcRenderer.invoke('get-routine-results-for-date', date),
+  deleteRoutineResult: (id: string) => ipcRenderer.invoke('delete-routine-result', id),
+  onRoutinesUpdated: (callback: () => void) => {
+    ipcRenderer.on('routines-updated', callback)
+    return () => ipcRenderer.removeListener('routines-updated', callback)
+  },
+
   // Clipboard
   readClipboard: () => ipcRenderer.sendSync('read-clipboard'),
   writeClipboard: (text: string) => ipcRenderer.send('write-clipboard', text),
