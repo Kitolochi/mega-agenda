@@ -9,6 +9,7 @@ export function useContentStreaming() {
   const setStreaming = useContentStore(s => s.setStreaming)
   const setScoring = useContentStore(s => s.setScoring)
   const setTweetScores = useContentStore(s => s.setTweetScores)
+  const setAutoRefining = useContentStore(s => s.setAutoRefining)
   const loadDrafts = useContentStore(s => s.loadDrafts)
 
   const researchBuf = useRef('')
@@ -78,10 +79,18 @@ export function useContentStreaming() {
     const cleanupScoresReady = window.electronAPI.onContentScoresReady((data) => {
       setTweetScores(data.scores)
       setScoring(false)
+      setAutoRefining(false)
     })
 
     const cleanupScoresError = window.electronAPI.onContentScoresError(() => {
       setScoring(false)
+      setAutoRefining(false)
+    })
+
+    const cleanupAutoRefine = window.electronAPI.onContentAutoRefineStart((data) => {
+      if (data.draftId === activeDraftId) {
+        setAutoRefining(true)
+      }
     })
 
     return () => {
@@ -93,8 +102,9 @@ export function useContentStreaming() {
       cleanupDraftError()
       cleanupScoresReady()
       cleanupScoresError()
+      cleanupAutoRefine()
     }
-  }, [activeDraftId, setResearchText, setResearching, setStreamText, setStreaming, setScoring, setTweetScores, loadDrafts])
+  }, [activeDraftId, setResearchText, setResearching, setStreamText, setStreaming, setScoring, setTweetScores, setAutoRefining, loadDrafts])
 
   // Reset buffers when active draft changes
   useEffect(() => {

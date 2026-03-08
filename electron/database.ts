@@ -393,7 +393,7 @@ interface ContentDraft {
   content: string
   messages: ContentMessage[]
   status: 'researching' | 'outlined' | 'drafting' | 'refining' | 'ready'
-  scores?: { index: number; hook: number; clarity: number; viral: number }[]
+  scores?: { index: number; hook: number; clarity: number; viral: number; feedback?: string; strengths?: string[]; weaknesses?: string[] }[]
   createdAt: string
   updatedAt: string
 }
@@ -560,6 +560,8 @@ interface Database {
   socialConnections: SocialConnection[]
   contactMappings: ContactMapping[]
   contentDrafts: ContentDraft[]
+  tweetPatterns: { id: string; type: 'positive' | 'negative'; pattern: string; avgScore: number; occurrences: number; exampleTweet: string; extractedAt: string }[]
+  scoreSnapshots: { date: string; draftsScored: number; tweetsScored: number; avgHook: number; avgClarity: number; avgViral: number; avgOverall: number; above8Count: number; below5Count: number }[]
   categoryOverrides: Record<string, string>  // transactionId -> categoryKey
   calendarEvents: CalendarEvent[]
   lastDailyNotifDate: string
@@ -948,6 +950,18 @@ export function initDatabase(): Database {
   // Initialize contentDrafts if missing
   if (!(db as any).contentDrafts) {
     db.contentDrafts = []
+    saveDatabase()
+  }
+
+  // Initialize tweetPatterns if missing
+  if (!Array.isArray((db as any).tweetPatterns)) {
+    db.tweetPatterns = []
+    saveDatabase()
+  }
+
+  // Initialize scoreSnapshots if missing
+  if (!Array.isArray((db as any).scoreSnapshots)) {
+    db.scoreSnapshots = []
     saveDatabase()
   }
 
@@ -2580,7 +2594,7 @@ export function updateContentDraft(id: string, updates: Partial<ContentDraft>): 
   return draft
 }
 
-export function updateContentDraftScores(id: string, scores: { index: number; hook: number; clarity: number; viral: number }[]): ContentDraft | null {
+export function updateContentDraftScores(id: string, scores: { index: number; hook: number; clarity: number; viral: number; feedback?: string; strengths?: string[]; weaknesses?: string[] }[]): ContentDraft | null {
   const draft = db.contentDrafts.find(d => d.id === id)
   if (!draft) return null
   draft.scores = scores
@@ -2592,6 +2606,37 @@ export function updateContentDraftScores(id: string, scores: { index: number; ho
 export function deleteContentDraft(id: string): void {
   db.contentDrafts = db.contentDrafts.filter(d => d.id !== id)
   saveDatabase()
+}
+
+// Tweet Patterns
+export function getTweetPatterns(): { id: string; type: 'positive' | 'negative'; pattern: string; avgScore: number; occurrences: number; exampleTweet: string; extractedAt: string }[] {
+  return db.tweetPatterns || []
+}
+
+export function saveTweetPatterns(patterns: { id: string; type: 'positive' | 'negative'; pattern: string; avgScore: number; occurrences: number; exampleTweet: string; extractedAt: string }[]): void {
+  db.tweetPatterns = patterns
+  saveDatabase()
+}
+
+// Score Snapshots
+export function getScoreSnapshots(): { date: string; draftsScored: number; tweetsScored: number; avgHook: number; avgClarity: number; avgViral: number; avgOverall: number; above8Count: number; below5Count: number }[] {
+  return (db.scoreSnapshots || []).sort((a, b) => a.date.localeCompare(b.date))
+}
+
+export function addScoreSnapshot(snapshot: { date: string; draftsScored: number; tweetsScored: number; avgHook: number; avgClarity: number; avgViral: number; avgOverall: number; above8Count: number; below5Count: number }): void {
+  if (!db.scoreSnapshots) db.scoreSnapshots = []
+  const idx = db.scoreSnapshots.findIndex(s => s.date === snapshot.date)
+  if (idx >= 0) {
+    db.scoreSnapshots[idx] = snapshot
+  } else {
+    db.scoreSnapshots.push(snapshot)
+  }
+  saveDatabase()
+}
+
+// All scored drafts (for pattern extraction)
+export function getAllScoredDrafts(): ContentDraft[] {
+  return (db.contentDrafts || []).filter(d => d.scores && d.scores.length > 0 && d.content)
 }
 
 // Category Overrides

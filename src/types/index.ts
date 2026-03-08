@@ -711,6 +711,31 @@ export interface TweetScore {
   hook: number
   clarity: number
   viral: number
+  feedback?: string
+  strengths?: string[]
+  weaknesses?: string[]
+}
+
+export interface TweetPattern {
+  id: string
+  type: 'positive' | 'negative'
+  pattern: string
+  avgScore: number
+  occurrences: number
+  exampleTweet: string
+  extractedAt: string
+}
+
+export interface ScoreSnapshot {
+  date: string
+  draftsScored: number
+  tweetsScored: number
+  avgHook: number
+  avgClarity: number
+  avgViral: number
+  avgOverall: number
+  above8Count: number
+  below5Count: number
 }
 
 export interface ContentMessage {
@@ -1171,6 +1196,10 @@ export interface ElectronAPI {
   onContentStreamError: (callback: (data: { draftId: string; error: string }) => void) => () => void
   onContentScoresReady: (callback: (data: { draftId: string; scores: TweetScore[] }) => void) => () => void
   onContentScoresError: (callback: (data: { draftId: string; error: string }) => void) => () => void
+  getScoreSnapshots: () => Promise<ScoreSnapshot[]>
+  getTweetPatterns: () => Promise<TweetPattern[]>
+  extractTweetPatterns: () => Promise<TweetPattern[]>
+  onContentAutoRefineStart: (callback: (data: { draftId: string; weakCount: number; avgScore: number }) => void) => () => void
 
   // Bank Sync
   getBankConnections: () => Promise<BankConnection[]>

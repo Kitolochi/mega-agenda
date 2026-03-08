@@ -12,6 +12,7 @@ interface ContentState {
   streaming: boolean
   scoring: boolean
   tweetScores: TweetScore[] | null
+  autoRefining: boolean
   refineInput: string
 
   // Actions
@@ -23,6 +24,7 @@ interface ContentState {
   setStreaming: (v: boolean) => void
   setScoring: (v: boolean) => void
   setTweetScores: (scores: TweetScore[] | null) => void
+  setAutoRefining: (v: boolean) => void
   setRefineInput: (v: string) => void
   setActiveDraftId: (id: string | null) => void
 
@@ -51,6 +53,7 @@ export const useContentStore = create<ContentState>((set, get) => ({
   streaming: false,
   scoring: false,
   tweetScores: null,
+  autoRefining: false,
   refineInput: '',
 
   setContentType: (type) => set({ contentType: type }),
@@ -61,6 +64,7 @@ export const useContentStore = create<ContentState>((set, get) => ({
   setStreaming: (v) => set({ streaming: v }),
   setScoring: (v) => set({ scoring: v }),
   setTweetScores: (scores) => set({ tweetScores: scores }),
+  setAutoRefining: (v) => set({ autoRefining: v }),
   setRefineInput: (v) => set({ refineInput: v }),
   setActiveDraftId: (id) => set({ activeDraftId: id }),
 
@@ -81,6 +85,7 @@ export const useContentStore = create<ContentState>((set, get) => ({
       streaming: false,
       scoring: false,
       tweetScores: null,
+      autoRefining: false,
       refineInput: '',
     })
     await get().loadDrafts()
@@ -207,7 +212,7 @@ export const useContentStore = create<ContentState>((set, get) => ({
       researching: false,
       streaming: false,
       scoring: false,
-      tweetScores: null,
+      tweetScores: draft.scores || null,
       refineInput: '',
     })
   },

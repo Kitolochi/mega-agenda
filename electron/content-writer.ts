@@ -2,7 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import { BrowserWindow } from 'electron'
 import { callLLM, callLLMWithWebSearch, streamLLM } from './llm'
-import { getTwitterSettings, updateContentDraftScores } from './database'
+import { getTwitterSettings, updateContentDraftScores, addScoreSnapshot, getScoreSnapshots, getAllScoredDrafts, getTweetPatterns, saveTweetPatterns } from './database'
 import { fetchAllLists } from './twitter'
 
 // Load voice research at module init
@@ -132,23 +132,40 @@ RULES:
 - No hashtags on Twitter content
 - Be a confident realist: bold claims + honest caveats`
 
-function scoreTweets(mainWindow: BrowserWindow, draftId: string, tweetContent: string): void {
+function scoreTweets(mainWindow: BrowserWindow, draftId: string, tweetContent: string, isAutoRefinement = false): void {
   callLLM({
     messages: [
-      { role: 'user', content: `Score each tweet 1-10 on hook (scroll-stopping), clarity (instantly understandable), viral (would RT). Use full range, most are 4-6. Return compact JSON array only.\n\nTWEETS:\n${tweetContent}` },
+      { role: 'user', content: `Score each tweet 1-10 on hook (scroll-stopping), clarity (instantly understandable), viral (would RT).
+
+CALIBRATION ANCHORS — use these as reference points:
+- 2: Reads like a press release. Corporate language, no personality. "We are excited to announce..."
+- 4: Has an idea but buried in jargon or weak framing. Skippable.
+- 6: Decent but forgettable. You'd scroll past without pausing.
+- 8: Would genuinely retweet this. Strong hook, clear point, memorable.
+- 10: Bet money this goes viral. Perfect hook, devastating clarity, instant share impulse.
+
+Most tweets are 4-6. Be honest — 8+ is rare.
+
+For each tweet, also provide:
+- "feedback": one sentence explaining the score (what works, what doesn't)
+- "strengths": array of 1-3 specific structural strengths (e.g. "concrete dollar amount", "clean antithesis")
+- "weaknesses": array of 0-3 specific weaknesses (e.g. "generic opener", "assumes DeFi knowledge")
+
+Return a JSON array.
+
+TWEETS:
+${tweetContent}` },
       { role: 'assistant', content: '[{"index":1,' }
     ],
-    tier: 'fast',
-    maxTokens: 1024,
-    timeout: 45000,
+    tier: 'primary',
+    maxTokens: 2048,
+    timeout: 60000,
   }).then((rawResult) => {
-    // Prepend the prefill since the API returns only the completion after it
     const result = '[{"index":1,' + rawResult
     try {
       console.log('[content-writer] Score raw:', result.slice(0, 500))
-      let scores: { index: number; hook: number; clarity: number; viral: number }[] = []
+      let scores: { index: number; hook: number; clarity: number; viral: number; feedback?: string; strengths?: string[]; weaknesses?: string[] }[] = []
 
-      // Try JSON.parse first (most reliable)
       try {
         const jsonMatch = result.match(/\[[\s\S]*\]/)
         if (jsonMatch) {
@@ -159,12 +176,15 @@ function scoreTweets(mainWindow: BrowserWindow, draftId: string, tweetContent: s
               hook: Number(s.hook),
               clarity: Number(s.clarity),
               viral: Number(s.viral),
+              feedback: typeof s.feedback === 'string' ? s.feedback : undefined,
+              strengths: Array.isArray(s.strengths) ? s.strengths.map(String) : undefined,
+              weaknesses: Array.isArray(s.weaknesses) ? s.weaknesses.map(String) : undefined,
             }))
           }
         }
       } catch { /* fall through to regex */ }
 
-      // Fallback: regex extraction
+      // Fallback: regex extraction (no feedback fields — just numbers)
       if (scores.length === 0) {
         const scorePattern = /index['":\s]*(\d+)[^}]*hook['":\s]*(\d+)[^}]*clarity['":\s]*(\d+)[^}]*viral['":\s]*(\d+)/gi
         let match
@@ -184,6 +204,20 @@ function scoreTweets(mainWindow: BrowserWindow, draftId: string, tweetContent: s
         try { updateContentDraftScores(draftId, scores) } catch (e: any) {
           console.warn('[content-writer] Failed to persist scores:', e.message)
         }
+        recordScoreSnapshot(scores)
+
+        // Auto-refine weak tweets (one pass only)
+        if (!isAutoRefinement) {
+          const overallAvg = scores.reduce((sum, s) => sum + (s.hook + s.clarity + s.viral) / 3, 0) / scores.length
+          const weakTweets = scores.filter(s => (s.hook + s.clarity + s.viral) / 3 < 6)
+          if (overallAvg < 7 && weakTweets.length > 0) {
+            console.log(`[content-writer] Auto-refine: avg=${overallAvg.toFixed(1)}, ${weakTweets.length} weak tweets`)
+            mainWindow.webContents.send('content-auto-refine-start', { draftId, weakCount: weakTweets.length, avgScore: Math.round(overallAvg * 10) / 10 })
+            autoRefineTweets(mainWindow, draftId, tweetContent, scores)
+          }
+        }
+
+        scoringCallCount++
       } else {
         throw new Error('No scores found in response')
       }
@@ -195,6 +229,255 @@ function scoreTweets(mainWindow: BrowserWindow, draftId: string, tweetContent: s
     console.warn('[content-writer] Tweet scoring failed:', err.message)
     mainWindow.webContents.send('content-scores-error', { draftId, error: err.message || 'Scoring failed' })
   })
+}
+
+// Track scoring calls for periodic pattern extraction
+let scoringCallCount = 0
+
+function recordScoreSnapshot(scores: { index: number; hook: number; clarity: number; viral: number }[]): void {
+  try {
+    const today = new Date().toISOString().split('T')[0]
+    const existing = getScoreSnapshots()
+    const todaySnap = existing.find(s => s.date === today)
+
+    const avgHook = scores.reduce((s, x) => s + x.hook, 0) / scores.length
+    const avgClarity = scores.reduce((s, x) => s + x.clarity, 0) / scores.length
+    const avgViral = scores.reduce((s, x) => s + x.viral, 0) / scores.length
+    const avgOverall = (avgHook + avgClarity + avgViral) / 3
+    const above8 = scores.filter(s => (s.hook + s.clarity + s.viral) / 3 >= 8).length
+    const below5 = scores.filter(s => (s.hook + s.clarity + s.viral) / 3 < 5).length
+
+    if (todaySnap) {
+      // Running average for multiple generations in one day
+      const prevWeight = todaySnap.draftsScored
+      const newWeight = 1
+      const totalWeight = prevWeight + newWeight
+      addScoreSnapshot({
+        date: today,
+        draftsScored: todaySnap.draftsScored + 1,
+        tweetsScored: todaySnap.tweetsScored + scores.length,
+        avgHook: Math.round(((todaySnap.avgHook * prevWeight + avgHook * newWeight) / totalWeight) * 10) / 10,
+        avgClarity: Math.round(((todaySnap.avgClarity * prevWeight + avgClarity * newWeight) / totalWeight) * 10) / 10,
+        avgViral: Math.round(((todaySnap.avgViral * prevWeight + avgViral * newWeight) / totalWeight) * 10) / 10,
+        avgOverall: Math.round(((todaySnap.avgOverall * prevWeight + avgOverall * newWeight) / totalWeight) * 10) / 10,
+        above8Count: todaySnap.above8Count + above8,
+        below5Count: todaySnap.below5Count + below5,
+      })
+    } else {
+      addScoreSnapshot({
+        date: today,
+        draftsScored: 1,
+        tweetsScored: scores.length,
+        avgHook: Math.round(avgHook * 10) / 10,
+        avgClarity: Math.round(avgClarity * 10) / 10,
+        avgViral: Math.round(avgViral * 10) / 10,
+        avgOverall: Math.round(avgOverall * 10) / 10,
+        above8Count: above8,
+        below5Count: below5,
+      })
+    }
+    console.log(`[content-writer] Score snapshot recorded for ${today}`)
+  } catch (e: any) {
+    console.warn('[content-writer] Failed to record score snapshot:', e.message)
+  }
+}
+
+function parseTweetBlocksServer(content: string): { index: number; text: string }[] {
+  const blocks = content.split(/(?=\*\*\d+\.\s)/).filter(b => b.trim())
+  return blocks.map((block, i) => {
+    const lines = block.trim().split('\n').filter(l => l.trim())
+    const tweetLines = lines.filter(
+      l => !l.match(/^\*\*\d+\./) && !l.match(/^\d+\/280/) && !l.match(/^---/) && !l.match(/^_.*_$/)
+    )
+    return { index: i + 1, text: tweetLines.join('\n').trim() }
+  }).filter(b => b.text.length > 0)
+}
+
+function autoRefineTweets(
+  mainWindow: BrowserWindow,
+  draftId: string,
+  originalContent: string,
+  scores: { index: number; hook: number; clarity: number; viral: number; feedback?: string; strengths?: string[]; weaknesses?: string[] }[]
+): void {
+  const weakTweets = scores.filter(s => (s.hook + s.clarity + s.viral) / 3 < 6)
+  if (weakTweets.length === 0) return
+
+  const weakIndices = weakTweets.map(s => s.index)
+  const feedbackSection = weakTweets.map(s =>
+    `Tweet ${s.index}: Hook=${s.hook}, Clarity=${s.clarity}, Viral=${s.viral}${s.feedback ? ` — ${s.feedback}` : ''}${s.weaknesses?.length ? `\n  Weaknesses: ${s.weaknesses.join(', ')}` : ''}`
+  ).join('\n')
+
+  const messages = [
+    { role: 'user', content: `Here are 5 tweet variations I wrote:\n\n${originalContent}` },
+    { role: 'assistant', content: originalContent },
+    { role: 'user', content: `Tweets ${weakIndices.join(', ')} scored poorly. Here's the scoring feedback:\n\n${feedbackSection}\n\nRewrite ONLY the weak tweets (${weakIndices.join(', ')}). Keep the strong ones exactly as they are. Output all 5 in the same format.` },
+  ]
+
+  let refinedText = ''
+
+  streamLLM(
+    {
+      messages,
+      system: `${BASE_SYSTEM_PROMPT}\n\nFORMAT INSTRUCTIONS:\n${CONTENT_TYPE_INSTRUCTIONS.tweet}\n\nYou are refining specific weak tweets based on scorer feedback. Keep strong tweets identical.`,
+      maxTokens: 4096,
+      tier: 'primary',
+      timeout: 120000,
+    },
+    {
+      onData: (text) => {
+        refinedText += text
+        mainWindow.webContents.send('content-stream-chunk', { draftId, text })
+      },
+      onEnd: () => {
+        mainWindow.webContents.send('content-stream-end', { draftId })
+        // Re-score the refined version (isAutoRefinement=true prevents infinite loop)
+        scoreTweets(mainWindow, draftId, refinedText, true)
+      },
+      onError: (error) => {
+        mainWindow.webContents.send('content-stream-error', { draftId, error })
+      },
+    }
+  )
+}
+
+export async function extractPatterns(): Promise<any[]> {
+  const allDrafts = getAllScoredDrafts()
+  if (allDrafts.length < 3) {
+    console.log('[content-writer] Not enough scored drafts for pattern extraction:', allDrafts.length)
+    return []
+  }
+
+  // Separate high and low scoring tweets
+  const highTweets: { text: string; avgScore: number; feedback?: string }[] = []
+  const lowTweets: { text: string; avgScore: number; feedback?: string }[] = []
+
+  for (const draft of allDrafts) {
+    if (!draft.scores || !draft.content) continue
+    const blocks = parseTweetBlocksServer(draft.content)
+    for (const score of draft.scores) {
+      const avg = (score.hook + score.clarity + score.viral) / 3
+      const block = blocks.find(b => b.index === score.index)
+      if (!block) continue
+      const entry = { text: block.text.slice(0, 280), avgScore: Math.round(avg * 10) / 10, feedback: (score as any).feedback }
+      if (avg >= 7.5) highTweets.push(entry)
+      else if (avg < 5) lowTweets.push(entry)
+    }
+  }
+
+  if (highTweets.length === 0 && lowTweets.length === 0) {
+    console.log('[content-writer] No extreme-scored tweets for pattern extraction')
+    return []
+  }
+
+  const prompt = `Analyze these tweets and identify STRUCTURAL patterns (not topic-specific) that explain why some scored high and others low.
+
+HIGH-SCORING TWEETS (avg >= 7.5):
+${highTweets.slice(0, 10).map((t, i) => `${i + 1}. "${t.text}" (avg: ${t.avgScore}${t.feedback ? `, feedback: ${t.feedback}` : ''})`).join('\n')}
+
+LOW-SCORING TWEETS (avg < 5):
+${lowTweets.slice(0, 10).map((t, i) => `${i + 1}. "${t.text}" (avg: ${t.avgScore}${t.feedback ? `, feedback: ${t.feedback}` : ''})`).join('\n')}
+
+For each pattern, identify:
+- type: "positive" or "negative"
+- pattern: structural description (e.g. "X vs Y contrast with concrete numbers", "generic opener with no hook")
+- avgScore: typical score range
+- exampleTweet: one example from the list above
+
+Return a JSON array of pattern objects. Focus on structural/rhetorical patterns, NOT topic content.`
+
+  try {
+    const rawResult = await callLLM({
+      messages: [
+        { role: 'user', content: prompt },
+        { role: 'assistant', content: '[{"type":' }
+      ],
+      tier: 'primary',
+      maxTokens: 2048,
+      timeout: 60000,
+    })
+
+    const result = '[{"type":' + rawResult
+    const jsonMatch = result.match(/\[[\s\S]*\]/)
+    if (!jsonMatch) return []
+
+    const parsed = JSON.parse(jsonMatch[0])
+    if (!Array.isArray(parsed)) return []
+
+    const patterns = parsed.map((p: any) => ({
+      id: Math.random().toString(36).slice(2, 10),
+      type: p.type === 'positive' ? 'positive' : 'negative',
+      pattern: String(p.pattern || ''),
+      avgScore: Number(p.avgScore) || 0,
+      occurrences: 1,
+      exampleTweet: String(p.exampleTweet || '').slice(0, 280),
+      extractedAt: new Date().toISOString(),
+    }))
+
+    saveTweetPatterns(patterns)
+    console.log(`[content-writer] Extracted ${patterns.length} tweet patterns`)
+    return patterns
+  } catch (err: any) {
+    console.warn('[content-writer] Pattern extraction failed:', err.message)
+    return []
+  }
+}
+
+export async function buildIntuitionSection(): Promise<string> {
+  try {
+    const allDrafts = getAllScoredDrafts()
+    const patterns = getTweetPatterns()
+    if (allDrafts.length === 0 && patterns.length === 0) return ''
+
+    const sections: string[] = []
+    sections.push('\n\nLEARNING FROM YOUR OWN HISTORY:')
+
+    // Collect all scored tweets with their content
+    const allScoredTweets: { text: string; avg: number; feedback?: string }[] = []
+    for (const draft of allDrafts) {
+      if (!draft.scores || !draft.content) continue
+      const blocks = parseTweetBlocksServer(draft.content)
+      for (const score of draft.scores) {
+        const avg = (score.hook + score.clarity + score.viral) / 3
+        const block = blocks.find(b => b.index === score.index)
+        if (block) allScoredTweets.push({ text: block.text.slice(0, 280), avg, feedback: (score as any).feedback })
+      }
+    }
+
+    // Top 3 high-scoring
+    const highSorted = [...allScoredTweets].sort((a, b) => b.avg - a.avg).slice(0, 3)
+    if (highSorted.length > 0) {
+      sections.push('\nYour TOP-PERFORMING tweets (emulate these structures):')
+      highSorted.forEach((t, i) => {
+        sections.push(`${i + 1}. "${t.text}" — avg ${t.avg.toFixed(1)}${t.feedback ? ` (${t.feedback})` : ''}`)
+      })
+    }
+
+    // Bottom 3 low-scoring
+    const lowSorted = [...allScoredTweets].sort((a, b) => a.avg - b.avg).slice(0, 3)
+    if (lowSorted.length > 0) {
+      sections.push('\nYour WORST-PERFORMING tweets (avoid these patterns):')
+      lowSorted.forEach((t, i) => {
+        sections.push(`${i + 1}. "${t.text}" — avg ${t.avg.toFixed(1)}${t.feedback ? ` (${t.feedback})` : ''}`)
+      })
+    }
+
+    // Extracted patterns
+    const positivePatterns = patterns.filter(p => p.type === 'positive')
+    const negativePatterns = patterns.filter(p => p.type === 'negative')
+    if (positivePatterns.length > 0) {
+      sections.push('\nPATTERNS THAT WORK:')
+      positivePatterns.slice(0, 5).forEach(p => sections.push(`- ${p.pattern}`))
+    }
+    if (negativePatterns.length > 0) {
+      sections.push('\nPATTERNS TO AVOID:')
+      negativePatterns.slice(0, 5).forEach(p => sections.push(`- ${p.pattern}`))
+    }
+
+    return sections.join('\n')
+  } catch (e: any) {
+    console.warn('[content-writer] Failed to build intuition section:', e.message)
+    return ''
+  }
 }
 
 // Abort controllers
@@ -261,6 +544,9 @@ export async function streamContentDraft(
   // Fetch top-performing tweets for intelligence injection
   const topTweets = contentType === 'tweet' ? await getTopPerformingTweets() : ''
 
+  // Build intuition section from score history (only for tweets)
+  const intuitionSection = contentType === 'tweet' ? await buildIntuitionSection() : ''
+
   const tweetOverride = contentType === 'tweet' ? `
 
 CRITICAL OVERRIDE FOR TWEETS:
@@ -280,7 +566,7 @@ INSTEAD translate everything into plain English:
 Write like you're texting a smart friend who knows nothing about crypto. Every tweet should be instantly understandable by someone who has never heard of blockchain.
 
 ALSO BANNED — AI-isms and cliché phrases. NEVER use: "flips the script", "game-changer", "let that sink in", "here's the thing", "hot take", "unpopular opinion", "buckle up", "mind-blowing", "groundbreaking", "next-level", "seamless", "journey", "delve", "navigate", "landscape", "reimagine", "unlock", "empower", "supercharge", "deep dive", "ever-evolving", "it's worth noting", "in today's world". Write like a real person, not an AI.
-${topTweets ? `\nHIGH-ENGAGEMENT REFERENCE TWEETS (study their structure, not their topic):\n${topTweets}\nApply similar hooks, rhythm, and specificity to Superseed content. Do NOT copy topics — only learn from structure.\n` : ''}` : ''
+${topTweets ? `\nHIGH-ENGAGEMENT REFERENCE TWEETS (study their structure, not their topic):\n${topTweets}\nApply similar hooks, rhythm, and specificity to Superseed content. Do NOT copy topics — only learn from structure.\n` : ''}${intuitionSection}` : ''
 
   const system = `${BASE_SYSTEM_PROMPT}
 

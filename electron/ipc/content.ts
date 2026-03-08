@@ -5,12 +5,15 @@ import {
   createContentDraft,
   updateContentDraft,
   deleteContentDraft,
+  getScoreSnapshots,
+  getTweetPatterns,
 } from '../database'
 import {
   researchTopic,
   abortResearch,
   streamContentDraft,
   abortDraft,
+  extractPatterns,
 } from '../content-writer'
 
 export function registerContentHandlers(mainWindow: BrowserWindow) {
@@ -36,4 +39,9 @@ export function registerContentHandlers(mainWindow: BrowserWindow) {
   ipcMain.handle('content-abort', () => {
     abortDraft()
   })
+
+  // Score history & patterns
+  ipcMain.handle('get-score-snapshots', () => getScoreSnapshots())
+  ipcMain.handle('get-tweet-patterns', () => getTweetPatterns())
+  ipcMain.handle('extract-tweet-patterns', () => extractPatterns())
 }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useContentStore } from '../store/contentStore'
 import { useContentStreaming } from '../hooks/useContentStreaming'
-import { ContentType } from '../types'
+import { ContentType, ScoreSnapshot } from '../types'
 import { renderMarkdown } from '../utils/markdown'
 import Button from './ui/Button'
 
@@ -113,10 +113,15 @@ function TweetCards({ text }: { text: string }) {
               {block.tweetText}
             </div>
             {score && (
-              <div className="flex items-center gap-3 text-[10px]">
-                <span className="text-accent-amber">Hook {score.hook}</span>
-                <span className="text-accent-emerald">Clarity {score.clarity}</span>
-                <span className="text-accent-purple">Viral {score.viral}</span>
+              <div className="space-y-1">
+                <div className="flex items-center gap-3 text-[10px]">
+                  <span className="text-accent-amber">Hook {score.hook}</span>
+                  <span className="text-accent-emerald">Clarity {score.clarity}</span>
+                  <span className="text-accent-purple">Viral {score.viral}</span>
+                </div>
+                {score.feedback && (
+                  <div className="text-[10px] text-white/50 italic">{score.feedback}</div>
+                )}
               </div>
             )}
             {block.strategy && (
@@ -145,7 +150,7 @@ function TweetCards({ text }: { text: string }) {
 export default function ContentTab() {
   const {
     drafts, activeDraftId, contentType, topic, researchText, streamText,
-    researching, streaming, refineInput,
+    researching, streaming, refineInput, autoRefining,
     setContentType, setTopic, setRefineInput,
     loadDrafts, handleNewTopic, handleResearch, handleGenerate,
     handleQuickAction, handleAbortResearch, handleAbortDraft,
@@ -154,11 +159,22 @@ export default function ContentTab() {
 
   const [showHistory, setShowHistory] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [trendAvg, setTrendAvg] = useState<number | null>(null)
 
   useContentStreaming()
 
   useEffect(() => {
     loadDrafts()
+    // Load 7-day trend
+    window.electronAPI.getScoreSnapshots().then((snapshots: ScoreSnapshot[]) => {
+      const sevenDaysAgo = new Date()
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+      const recent = snapshots.filter(s => new Date(s.date) >= sevenDaysAgo)
+      if (recent.length > 0) {
+        const avg = recent.reduce((sum, s) => sum + s.avgOverall, 0) / recent.length
+        setTrendAvg(Math.round(avg * 10) / 10)
+      }
+    }).catch(() => {})
   }, [loadDrafts])
 
   const onCopy = () => {
@@ -213,11 +229,18 @@ export default function ContentTab() {
             </div>
           )}
         </div>
-        {activeDraftId && (
-          <span className="text-[10px] text-white/30 ml-auto">
-            Draft: {activeDraftId.slice(0, 8)}
-          </span>
-        )}
+        <div className="flex items-center gap-2 ml-auto">
+          {trendAvg !== null && (
+            <span className={`text-[10px] font-medium ${trendAvg >= 7 ? 'text-accent-emerald' : trendAvg >= 5 ? 'text-accent-amber' : 'text-accent-red'}`}>
+              7d avg: {trendAvg}
+            </span>
+          )}
+          {activeDraftId && (
+            <span className="text-[10px] text-white/30">
+              Draft: {activeDraftId.slice(0, 8)}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Main content — side by side */}
@@ -313,6 +336,12 @@ export default function ContentTab() {
               <div className="flex items-center gap-2 text-[11px] text-white/40 mt-2">
                 <div className="w-3 h-3 border-2 border-accent-blue/30 border-t-accent-blue rounded-full animate-spin" />
                 Generating {contentType.replace('_', ' ')}...
+              </div>
+            )}
+            {autoRefining && (
+              <div className="flex items-center gap-2 text-[11px] text-accent-amber mb-2">
+                <div className="w-3 h-3 border-2 border-accent-amber/30 border-t-accent-amber rounded-full animate-spin" />
+                Auto-refining weak tweets...
               </div>
             )}
             {streamText ? (
