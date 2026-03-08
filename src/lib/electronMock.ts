@@ -453,7 +453,11 @@ export function installElectronMock() {
     avGetSessions: async () => ({ count: 0, length_distribution: [], duration_distribution: [], autonomy_distribution: [] }),
     avGetTopSessions: async () => ({ metric: 'messages', sessions: [] }),
     avGetSessionList: async () => ({ sessions: [], next_cursor: null, total: 0 }),
+    avGetSessionDetail: async () => ({ id: '', project: '', machine: '', agent: '', first_message: '', started_at: '', ended_at: '', message_count: 0, user_message_count: 0, parent_session_id: null, relationship_type: null, created_at: '' }),
+    avGetSessionMessages: async () => ({ count: 0, messages: [] }),
     avGetInsights: async () => ({ insights: [] }),
     avGetSyncStatus: async () => ({ last_sync: '', stats: { total_sessions: 0, synced: 0, skipped: 0, failed: 0 } }),
+    avSync: async () => ({ events: [] }),
+    avGenerateInsights: async () => ({ events: [] }),
   } as any
 }

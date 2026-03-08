@@ -674,6 +674,34 @@ export interface AVSyncStatus {
   }
 }
 
+export interface AVSessionDetail {
+  id: string
+  project: string
+  machine: string
+  agent: string
+  first_message: string
+  started_at: string
+  ended_at: string
+  message_count: number
+  user_message_count: number
+  parent_session_id: string | null
+  relationship_type: string | null
+  created_at: string
+}
+
+export interface AVMessage {
+  id: number
+  session_id: string
+  ordinal: number
+  role: string
+  content: string
+}
+
+export interface AVSessionMessages {
+  count: number
+  messages: AVMessage[]
+}
+
 // Network CRM Types
 export type InteractionType = 'call' | 'email' | 'meeting' | 'message' | 'note'
 
@@ -1464,16 +1492,20 @@ export interface ElectronAPI {
   // AgentsView Analytics
   avPing: () => Promise<boolean>
   avGetStats: () => Promise<AVStats>
-  avGetSummary: () => Promise<AVSummary>
-  avGetTools: () => Promise<AVTools>
-  avGetVelocity: () => Promise<AVVelocity>
+  avGetSummary: (days?: number) => Promise<AVSummary>
+  avGetTools: (days?: number) => Promise<AVTools>
+  avGetVelocity: (days?: number) => Promise<AVVelocity>
   avGetHeatmap: () => Promise<AVHeatmap>
   avGetProjects: () => Promise<AVProjects>
   avGetSessions: () => Promise<AVSessions>
   avGetTopSessions: () => Promise<AVTopSessions>
-  avGetSessionList: (limit?: number) => Promise<AVSessionList>
+  avGetSessionList: (opts?: { limit?: number; project?: string; search?: string }) => Promise<AVSessionList>
+  avGetSessionDetail: (id: string) => Promise<AVSessionDetail>
+  avGetSessionMessages: (id: string, limit?: number) => Promise<AVSessionMessages>
   avGetInsights: () => Promise<AVInsights>
   avGetSyncStatus: () => Promise<AVSyncStatus>
+  avSync: (full?: boolean) => Promise<{ events: any[] }>
+  avGenerateInsights: (type: string, dateFrom: string, dateTo: string) => Promise<{ events: any[] }>
 
   // Guide Chat
   guideChatSend: (messages: { role: string; content: string }[]) => Promise<void>
