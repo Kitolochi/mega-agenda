@@ -99,13 +99,15 @@ export default function AgentForm({ agent, onClose }: AgentFormProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-surface-1 border border-white/10 rounded-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto p-6 shadow-2xl">
-        <h2 className="text-lg font-bold text-white mb-4 font-display">
-          {agent ? 'Edit Agent' : 'New Agent'}
-        </h2>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="bg-surface-1 border border-white/10 rounded-2xl w-full max-w-lg max-h-[85vh] flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="px-6 pt-6 pb-2">
+          <h2 className="text-lg font-bold text-white font-display">
+            {agent ? 'Edit Agent' : 'New Agent'}
+          </h2>
+        </div>
 
-        <div className="space-y-4">
+        <div className="flex-1 overflow-y-auto px-6 space-y-4">
           {/* Name */}
           <div>
             <label className="text-xs text-white/50 mb-1 block">Name</label>
@@ -259,7 +261,7 @@ export default function AgentForm({ agent, onClose }: AgentFormProps) {
         </div>
 
         {/* Footer buttons */}
-        <div className="flex items-center justify-between mt-6 pt-4 border-t border-white/5">
+        <div className="flex items-center justify-between px-6 py-4 border-t border-white/5">
           <div>
             {agent && (
               <button
