@@ -525,6 +525,155 @@ export interface FolderCompressionResult {
   durationMs: number
 }
 
+// AgentsView Analytics Types
+export interface AVStats {
+  session_count: number
+  message_count: number
+  project_count: number
+  machine_count: number
+  earliest_session: string
+}
+
+export interface AVSummary {
+  total_sessions: number
+  total_messages: number
+  active_projects: number
+  active_days: number
+  avg_messages: number
+  median_messages: number
+  p90_messages: number
+  most_active_project: string
+  concentration: number
+  agents: Record<string, { sessions: number; messages: number }>
+}
+
+export interface AVToolCategory {
+  category: string
+  count: number
+  pct: number
+}
+
+export interface AVTools {
+  total_calls: number
+  by_category: AVToolCategory[]
+  by_agent: { agent: string; total: number; categories: AVToolCategory[] }[]
+  trend: { date: string; by_category: Record<string, number> }[]
+}
+
+export interface AVVelocityMetrics {
+  turn_cycle_sec: { p50: number; p90: number }
+  first_response_sec: { p50: number; p90: number }
+  msgs_per_active_min: number
+  chars_per_active_min: number
+  tool_calls_per_active_min: number
+}
+
+export interface AVVelocity {
+  overall: AVVelocityMetrics
+  by_agent: { label: string; sessions: number; overview: AVVelocityMetrics }[]
+  by_complexity: { label: string; sessions: number; overview: AVVelocityMetrics }[]
+}
+
+export interface AVHeatmapEntry {
+  date: string
+  value: number
+  level: number
+}
+
+export interface AVHeatmap {
+  metric: string
+  entries: AVHeatmapEntry[]
+}
+
+export interface AVProject {
+  name: string
+  sessions: number
+  messages: number
+  first_session: string
+  last_session: string
+  avg_messages: number
+  median_messages: number
+  agents: Record<string, number>
+  daily_trend: number
+}
+
+export interface AVProjects {
+  projects: AVProject[]
+}
+
+export interface AVSessionDistribution {
+  label: string
+  count: number
+}
+
+export interface AVSessions {
+  count: number
+  length_distribution: AVSessionDistribution[]
+  duration_distribution: AVSessionDistribution[]
+  autonomy_distribution: AVSessionDistribution[]
+}
+
+export interface AVTopSession {
+  id: string
+  project: string
+  first_message: string
+  message_count: number
+  duration_min: number
+}
+
+export interface AVTopSessions {
+  metric: string
+  sessions: AVTopSession[]
+}
+
+export interface AVSessionListItem {
+  id: string
+  project: string
+  machine: string
+  agent: string
+  first_message: string
+  started_at: string
+  ended_at: string
+  message_count: number
+  user_message_count: number
+  parent_session_id: string | null
+  relationship_type: string | null
+  created_at: string
+}
+
+export interface AVSessionList {
+  sessions: AVSessionListItem[]
+  next_cursor: string | null
+  total: number
+}
+
+export interface AVInsight {
+  id: number
+  type: string
+  date_from: string
+  date_to: string
+  project: string | null
+  agent: string
+  model: string | null
+  prompt: string | null
+  content: string
+  created_at: string
+}
+
+export interface AVInsights {
+  insights: AVInsight[]
+}
+
+export interface AVSyncStatus {
+  last_sync: string
+  stats: {
+    total_sessions: number
+    synced: number
+    skipped: number
+    failed: number
+  }
+}
+
 // Network CRM Types
 export type InteractionType = 'call' | 'email' | 'meeting' | 'message' | 'note'
 
@@ -1311,6 +1460,20 @@ export interface ElectronAPI {
   getAgentCostSummary: (agentId: string) => Promise<{ totalCents: number; monthCents: number; eventCount: number }>
   pollAgentSessions: () => Promise<HeartbeatRun[]>
   onAgentsUpdated: (callback: () => void) => () => void
+
+  // AgentsView Analytics
+  avPing: () => Promise<boolean>
+  avGetStats: () => Promise<AVStats>
+  avGetSummary: () => Promise<AVSummary>
+  avGetTools: () => Promise<AVTools>
+  avGetVelocity: () => Promise<AVVelocity>
+  avGetHeatmap: () => Promise<AVHeatmap>
+  avGetProjects: () => Promise<AVProjects>
+  avGetSessions: () => Promise<AVSessions>
+  avGetTopSessions: () => Promise<AVTopSessions>
+  avGetSessionList: (limit?: number) => Promise<AVSessionList>
+  avGetInsights: () => Promise<AVInsights>
+  avGetSyncStatus: () => Promise<AVSyncStatus>
 
   // Guide Chat
   guideChatSend: (messages: { role: string; content: string }[]) => Promise<void>

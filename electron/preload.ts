@@ -546,6 +546,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('agents-updated', callback)
   },
 
+  // AgentsView Analytics
+  avPing: () => ipcRenderer.invoke('av-ping'),
+  avGetStats: () => ipcRenderer.invoke('av-get-stats'),
+  avGetSummary: () => ipcRenderer.invoke('av-get-summary'),
+  avGetTools: () => ipcRenderer.invoke('av-get-tools'),
+  avGetVelocity: () => ipcRenderer.invoke('av-get-velocity'),
+  avGetHeatmap: () => ipcRenderer.invoke('av-get-heatmap'),
+  avGetProjects: () => ipcRenderer.invoke('av-get-projects'),
+  avGetSessions: () => ipcRenderer.invoke('av-get-sessions'),
+  avGetTopSessions: () => ipcRenderer.invoke('av-get-top-sessions'),
+  avGetSessionList: (limit?: number) => ipcRenderer.invoke('av-get-session-list', limit),
+  avGetInsights: () => ipcRenderer.invoke('av-get-insights'),
+  avGetSyncStatus: () => ipcRenderer.invoke('av-get-sync-status'),
+
   // Guide Chat
   guideChatSend: (messages: { role: string; content: string }[]) => ipcRenderer.invoke('guide-chat-send', messages),
   guideChatAbort: () => ipcRenderer.invoke('guide-chat-abort'),
