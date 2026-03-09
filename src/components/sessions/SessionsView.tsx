@@ -6,13 +6,22 @@ import SessionDetailPanel from './SessionDetailPanel'
 export default function SessionsView() {
   const {
     sessions, sessionList, loading, searchQuery, setSearchQuery,
-    selectedSessionId, selectSession,
+    selectedSessionId, selectSession, searchResults, searchMessages,
   } = useSessionsStore()
   const [localSearch, setLocalSearch] = useState(searchQuery)
 
   const handleSearchSubmit = useCallback(() => {
     setSearchQuery(localSearch)
-  }, [localSearch, setSearchQuery])
+    if (localSearch.trim()) {
+      searchMessages(localSearch)
+    }
+  }, [localSearch, setSearchQuery, searchMessages])
+
+  const handleClearSearch = useCallback(() => {
+    setLocalSearch('')
+    setSearchQuery('')
+    useSessionsStore.setState({ searchResults: null })
+  }, [setSearchQuery])
 
   if (loading && !sessions) {
     return <div className="flex justify-center py-12"><div className="w-5 h-5 border-2 border-accent-blue/30 border-t-accent-blue rounded-full animate-spin" /></div>
@@ -52,7 +61,7 @@ export default function SessionsView() {
             value={localSearch}
             onChange={e => setLocalSearch(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') handleSearchSubmit() }}
-            placeholder="Search sessions..."
+            placeholder="Search message content..."
             className="w-full bg-white/[0.04] border border-white/[0.06] rounded-lg pl-9 pr-3 py-2 text-xs text-white/80 placeholder-white/30 outline-none focus:border-accent-blue/40"
           />
         </div>
@@ -66,7 +75,7 @@ export default function SessionsView() {
         )}
         {searchQuery && (
           <button
-            onClick={() => { setLocalSearch(''); setSearchQuery('') }}
+            onClick={handleClearSearch}
             className="px-2 py-2 text-xs text-muted hover:text-white rounded-lg hover:bg-white/[0.06] transition-colors"
           >
             Clear
@@ -74,11 +83,52 @@ export default function SessionsView() {
         )}
       </div>
 
+      {/* Full-text search results with snippets */}
+      {searchResults && searchResults.results.length > 0 && (
+        <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-5">
+          <h3 className="text-sm font-medium text-white/80 mb-4">
+            Message Search Results{' '}
+            <span className="text-muted font-normal">({searchResults.results.length} matches)</span>
+          </h3>
+          <div className="space-y-2 max-h-[400px] overflow-y-auto">
+            {searchResults.results.map((r, i) => (
+              <div
+                key={`${r.session_id}-${r.ordinal}-${i}`}
+                onClick={() => selectSession(r.session_id)}
+                className="flex items-start gap-3 py-2.5 px-3 rounded-lg cursor-pointer hover:bg-white/[0.04] transition-colors border-b border-white/[0.03] last:border-0"
+              >
+                <span className={`text-[10px] font-medium uppercase tracking-wider mt-0.5 shrink-0 ${
+                  r.role === 'user' ? 'text-accent-blue' : 'text-accent-purple'
+                }`}>
+                  {r.role}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div
+                    className="text-xs text-white/70 line-clamp-2 [&_mark]:bg-accent-blue/30 [&_mark]:text-white [&_mark]:px-0.5 [&_mark]:rounded"
+                    dangerouslySetInnerHTML={{ __html: r.snippet }}
+                  />
+                  <div className="flex gap-3 mt-1 text-[10px] text-muted">
+                    <span className="text-accent-blue">{r.project}</span>
+                    <span>{new Date(r.timestamp).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {searchResults && searchResults.results.length === 0 && searchQuery && (
+        <div className="text-center py-8 text-xs text-muted">
+          No message matches for "{searchQuery}"
+        </div>
+      )}
+
       {/* Recent sessions list */}
       {sessionList?.sessions && sessionList.sessions.length > 0 && (
         <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-5">
           <h3 className="text-sm font-medium text-white/80 mb-4">
-            {searchQuery ? `Results for "${searchQuery}"` : 'Recent Sessions'}{' '}
+            {searchQuery && !searchResults ? `Results for "${searchQuery}"` : 'Recent Sessions'}{' '}
             <span className="text-muted font-normal">({sessionList.total} total)</span>
           </h3>
           <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
