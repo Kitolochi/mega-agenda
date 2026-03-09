@@ -1,8 +1,10 @@
 import { useSessionsStore } from '../../store'
 import SessionHeatmap from './SessionHeatmap'
+import ActivityChart from './ActivityChart'
+import HourOfWeekGrid from './HourOfWeekGrid'
 
 export default function OverviewView() {
-  const { summary, heatmap, projects, topSessions, loading } = useSessionsStore()
+  const { summary, heatmap, projects, topSessions, activity, hourOfWeek, loading } = useSessionsStore()
 
   if (loading && !summary) {
     return <div className="flex justify-center py-12"><div className="w-5 h-5 border-2 border-accent-blue/30 border-t-accent-blue rounded-full animate-spin" /></div>
@@ -30,6 +32,14 @@ export default function OverviewView() {
         </div>
       )}
 
+      {/* Activity Timeline */}
+      {activity?.series && activity.series.length > 0 && (
+        <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-5">
+          <h3 className="text-sm font-medium text-white/80 mb-4">Activity Timeline</h3>
+          <ActivityChart series={activity.series} />
+        </div>
+      )}
+
       {/* Activity Heatmap */}
       {heatmap?.entries && (
         <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-5">
@@ -37,6 +47,14 @@ export default function OverviewView() {
           <div className="overflow-x-auto">
             <SessionHeatmap entries={heatmap.entries} />
           </div>
+        </div>
+      )}
+
+      {/* Hour-of-Week Heatmap */}
+      {hourOfWeek?.cells && hourOfWeek.cells.length > 0 && (
+        <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-5">
+          <h3 className="text-sm font-medium text-white/80 mb-4">When You Code</h3>
+          <HourOfWeekGrid cells={hourOfWeek.cells} />
         </div>
       )}
 

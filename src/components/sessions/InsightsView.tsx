@@ -37,7 +37,7 @@ export default function InsightsView() {
           </div>
         )}
         <button
-          onClick={generateInsights}
+          onClick={() => generateInsights()}
           disabled={generatingInsights}
           className="flex items-center gap-1.5 px-4 py-3 text-xs font-medium bg-accent-purple/20 text-accent-purple rounded-xl hover:bg-accent-purple/30 transition-colors disabled:opacity-50 shrink-0"
         >
