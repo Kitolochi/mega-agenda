@@ -20,12 +20,16 @@ Built with Electron + React + TypeScript + Tailwind CSS + Claude AI.
 - Weekly stats and streak tracking
 - Category grid for quick navigation
 
-### Daily Journal
+### Daily Journal & Calendar
 - Date-based note editor with auto-save
 - Calendar picker with visual indicators for days with notes
 - Navigate between days or jump to today
 - AI-powered weekly reviews with task counts, focus time, and category breakdowns
 - Historical review archive
+- **Routines engine** — scheduled automations that run on cadences (app launch, daily, weekly, interval)
+  - 5 routine types: morning briefing, PR monitor, email digest, weekly review, custom command
+  - Results surface as cards in calendar day panel with expandable markdown content
+  - Native OS notifications on routine completion
 
 ### Bank Accounts (Live Sync)
 - **SimpleFIN Bridge** integration — 16,000+ banks via MX aggregator ($15/year, read-only)
@@ -44,6 +48,20 @@ Built with Electron + React + TypeScript + Tailwind CSS + Claude AI.
 - Twitter/X list integration via bearer token
 - AI-powered article summarization per section
 - Cached summaries with refresh
+
+### Content Writer & Tweet Scoring
+- Multi-format content creation: tweets, threads, blog posts, articles, Discord posts, newsletters
+- AI-powered research → draft → refine pipeline with streaming output
+- Draft management with status tracking (researching → drafting → refining → ready)
+- Quick actions: Provocative, Flip It, ELI5, Pain Point, Mic Drop, Story (tweets) or Shorter, Punchier, Hook, Technical, Simpler, Contrarian (other formats)
+- **Tweet Scoring Framework** — Hook/Clarity/Viral scoring (1-10) with calibration anchors
+  - Qualitative feedback per tweet: strengths, weaknesses, improvement suggestions
+  - Score history with daily snapshots and 7-day running averages
+  - LLM-powered pattern extraction from scored tweets (positive/negative patterns)
+  - Intuition builder: injects top/bottom performing tweets into generation prompts
+  - Auto-refinement: weak tweets (avg < 6) get automatic refinement pass using score feedback
+- **Import from Sessions** — pull AI-generated tweet insights from AgentsView and import as content drafts for scoring
+- Copy-to-clipboard per tweet with character counter
 
 ### Twitter / Social Media Manager
 - Compose single tweets or threaded posts
@@ -79,6 +97,27 @@ Built with Electron + React + TypeScript + Tailwind CSS + Claude AI.
 - GitHub repo search for context injection
 - Opens in external terminal windows
 - Inline editing with expandable detail view
+
+### AI Agent Orchestration
+- Named agents with roles (Engineer, Researcher, Reviewer, PM), task types, and working directories
+- **Heartbeat scheduling** — interval or daily triggers that auto-launch Claude Code sessions
+- **Issue tracking Kanban** — Backlog → Todo → In Progress → Review → Done, assigned to agents
+- **Auto-complete** — detects finished Claude Code sessions via JSONL mtime, no manual "Mark Done"
+- **Budget management** — monthly budgets per agent, auto-pause at 80% threshold with desktop notification
+- **Retry with backoff** — failed terminal launches retry 3x (30s/60s/120s) before marking failed
+- **Cost dashboard** — total runs, success rate, total spend, avg duration across agents
+- **Export** — CSV/JSON export of agents, issues, runs, and cost events
+- **Run auto-tagging** — generates tags from agent role, task type, status, priority on completion
+- Dashboard stats with 4 summary cards in Overview
+
+### Sessions (AgentsView Analytics)
+- Full analytics dashboard for Claude Code session history, powered by AgentsView
+- **Overview** — summary cards (sessions, messages, projects, active days), CSS-grid activity heatmap, project breakdown, top sessions
+- **Tools** — horizontal bar charts showing tool usage by category with weekly trend bars
+- **Velocity** — p50/p90 metrics for turn cycle time, first response, messages/min, chars/min, tool calls/min; complexity breakdown
+- **Sessions** — SVG histograms for session length, duration, and autonomy distributions; recent sessions table
+- **Insights** — sync status card, daily AI-generated insight cards from AgentsView
+- Online/offline detection with graceful degradation
 
 ### Roadmap / Goal Planning
 - Create goals with category, priority, status, target quarter/year
@@ -118,6 +157,12 @@ Built with Electron + React + TypeScript + Tailwind CSS + Claude AI.
 - Memory injection into chat context
 - Knowledge pack compression — cluster and summarize memories into dense packs
 - Memory health monitoring with auto-pruning
+
+### In-App Guide Agent
+- Floating help widget (bottom-right FAB) available on every tab
+- Chat panel powered by fast-tier LLM with comprehensive system prompt
+- Covers all 20 tabs, key workflows, keyboard shortcuts, setup steps, and architecture
+- Conversation resets on close for lightweight context
 
 ### Lab (Experimental Tools)
 - Single-file compression testing
@@ -176,6 +221,7 @@ Built with Electron + React + TypeScript + Tailwind CSS + Claude AI.
 | H | Chat |
 | C | Code terminal |
 | A | AI Tasks |
+| G | Agents |
 | Y | Context files |
 | R | Roadmap |
 | S | Settings |
@@ -189,8 +235,8 @@ Built with Electron + React + TypeScript + Tailwind CSS + Claude AI.
 ### Tech Stack
 - **Frontend:** React 18, TypeScript, Tailwind CSS, Vite
 - **Backend:** Electron 28 (main + preload + renderer)
-- **State:** Zustand stores (app, task, chat, social)
-- **Database:** JSON file (`mega-agenda.json`) persisted to `%APPDATA%/mega-agenda/`
+- **State:** Zustand stores (app, task, chat, social, content, agent, sessions)
+- **Database:** JSON file (`mega-agenda.json`) persisted to `%APPDATA%/mega-agenda/`; reads AgentsView SQLite for session analytics
 - **AI:** Multi-provider LLM support — Claude API (Sonnet 4.5 / Haiku 4.5 / Opus 4.6), Gemini, Groq, OpenRouter
 - **Embeddings:** @xenova/transformers with MiniLM-L6-v2 (384-dim, ~22MB, cached locally)
 - **Search:** Hybrid — LanceDB vector + MiniSearch BM25, merged via Reciprocal Rank Fusion (RRF, k=60)
@@ -198,9 +244,10 @@ Built with Electron + React + TypeScript + Tailwind CSS + Claude AI.
 - **Speech:** Local Whisper via @xenova/transformers (migrating from Web Speech API, which is unsupported in Electron 28)
 - **Twitter:** Twitter API v2 (OAuth 1.0a for posting, bearer token for reading)
 - **Bank Sync:** SimpleFIN Bridge (16K+ banks via MX) + Teller (direct connections)
+- **AgentsView:** Session analytics via HTTP proxy to AgentsView (localhost:8090) + direct SQLite reads for insights
 
 ### Data Storage
-- **JSON DB:** `%APPDATA%/mega-agenda/mega-agenda.json` — tasks, categories, notes, stats, settings, conversations, drafts, goals, memories, bank connections, bank accounts, transactions
+- **JSON DB:** `%APPDATA%/mega-agenda/mega-agenda.json` — tasks, categories, notes, stats, settings, conversations, drafts, goals, memories, bank connections, bank accounts, transactions, agents, issues, heartbeat runs, cost events, routines, tweet patterns, score snapshots
 - **Context files:** `~/.claude/memory/` — markdown knowledge base with domain folders and goal research
 - **Master plans:** `~/.claude/master-plans/` — dated plan files
 - **Vector DB:** `%APPDATA%/mega-agenda/vector-db/` — LanceDB vector index for semantic search
@@ -224,30 +271,36 @@ electron/                  # Main process
   knowledge-pack.ts        # Knowledge compression and clustering
   memory.ts                # Memory extraction from sources
   smart-query.ts           # RAG-powered Q&A streaming (hybrid search)
+  content-writer.ts        # Content draft generation, scoring, pattern extraction
+  agents.ts                # Agent orchestration: heartbeat scheduler, session polling, cost aggregation
   bank-sync/               # Bank account sync
     simplefin.ts           # SimpleFIN API client
     teller.ts              # Teller API client
     sync.ts                # Sync orchestrator with deduplication
-  ipc/                     # IPC handler modules
+  ipc/                     # IPC handler modules (19 modules)
     index.ts               # Handler registration barrel
-    tasks.ts, notes.ts, chat.ts, twitter.ts, rss.ts,
-    ai.ts, memory.ts, system.ts, knowledge-pack.ts, bank-sync.ts
+    tasks.ts, notes.ts, chat.ts, twitter.ts, rss.ts, ai.ts,
+    memory.ts, system.ts, knowledge-pack.ts, bank-sync.ts,
+    content.ts, agents.ts, calendar.ts, routines.ts,
+    network.ts, social.ts, outreach.ts, guide-chat.ts
 
 src/                       # Renderer (React)
   App.tsx                  # Root component
   types/index.ts           # Shared types + ElectronAPI interface
-  store/                   # Zustand stores (app, task, chat, social)
+  store/                   # Zustand stores (app, task, chat, social, content, agent, sessions)
   hooks/                   # Custom hooks (9 files)
   utils/                   # Utilities (cn, formatting, markdown, sounds, tts)
   components/
     layout/                # AppShell, TitleBar, TabNavigation, ContentArea
+    agents/                # AgentsTab, AgentCard, AgentForm, IssueBoard, CostDashboard, HeartbeatHistory
     bank-sync/             # AccountsTab, ConnectBankDialog, DebtSummary, ConnectionStatus
     chat/                  # ChatView, ChatSidebar, ChatMessages, ChatInput, SmartQuery
     roadmap/               # GoalForm, GoalDetail, Timeline, TopicList, Execution, MasterPlan
+    sessions/              # SessionsTab, Overview, Tools, Velocity, Sessions, Insights sub-views
     social/                # TweetEditor, ThreadEditor, DraftSelector, PersonaSelector, AIAssist
     settings/              # Settings, AIProvider, Categories, Feeds, Twitter
     ui/                    # Primitives (Button, Input, Card, Badge, Dialog, etc.)
-    ...                    # Dashboard, Tasks, Feed, Terminal, Memories, Lab, etc.
+    ...                    # Dashboard, Tasks, Feed, Terminal, Memories, ContentTab, GuideAgent, Lab, etc.
 ```
 
 ### Window Management
@@ -285,3 +338,13 @@ The executable will be in `release/`.
 - **Twitter Credentials** — Required for tweet posting. Set bearer token for reading, OAuth for posting in Settings.
 - **Claude Code CLI** — Install globally for CLI-first research and task launching: `npm install -g @anthropic-ai/claude-code`
 - **SimpleFIN Bridge** — $15/year for live bank sync. Sign up at [simplefin.org](https://beta-bridge.simplefin.org), connect banks, paste setup token in Accounts tab.
+- **AgentsView** — Optional. Install for session analytics in the Sessions tab. Runs at localhost:8090.
+
+## Security
+
+- Content Security Policy (CSP) headers — strict in production, relaxed for Vite HMR in dev
+- Shell command injection protection — CMD metacharacter escaping in terminal launchers, validated URLs for `shell.openExternal` (http/https/mailto only)
+- HTML entity escaping in markdown renderer (XSS prevention)
+- Path traversal checks on context file IPC handlers
+- ASAR packaging enabled for production builds
+- No hardcoded PII — all personal references genericized
