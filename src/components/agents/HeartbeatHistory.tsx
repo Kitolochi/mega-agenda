@@ -137,6 +137,47 @@ export default function HeartbeatHistory() {
                         </div>
                       )}
 
+                      {/* Structured result display */}
+                      {run.structuredResult && (
+                        <div className="space-y-2">
+                          {run.structuredResult.filesChanged && run.structuredResult.filesChanged.length > 0 && (
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-[10px] text-white/30">Files:</span>
+                              {run.structuredResult.filesChanged.map((f, i) => (
+                                <span key={i} className="px-1.5 py-0.5 rounded text-[10px] bg-accent-blue/10 text-accent-blue/70 font-mono">
+                                  {f.split(/[/\\]/).pop()}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {run.structuredResult.toolCalls && run.structuredResult.toolCalls.length > 0 && (
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-[10px] text-white/30">Tools:</span>
+                              {run.structuredResult.toolCalls.map((t, i) => (
+                                <span key={i} className="px-1.5 py-0.5 rounded text-[10px] bg-accent-purple/10 text-accent-purple/70">
+                                  {t.tool} &times;{t.count}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {run.structuredResult.gitCommits && run.structuredResult.gitCommits.length > 0 && (
+                            <div className="space-y-0.5">
+                              <span className="text-[10px] text-white/30">Commits:</span>
+                              {run.structuredResult.gitCommits.map((c, i) => (
+                                <div key={i} className="text-[10px] text-accent-emerald/60 pl-2">{c}</div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Parent run link */}
+                      {run.parentRunId && (
+                        <div className="text-[10px] text-white/30">
+                          Parent run: <span className="font-mono text-white/40">{run.parentRunId.slice(0, 12)}...</span>
+                        </div>
+                      )}
+
                       {run.tags && run.tags.length > 0 && (
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="text-[10px] text-white/30">Tags:</span>

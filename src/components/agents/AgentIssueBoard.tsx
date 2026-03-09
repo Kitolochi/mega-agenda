@@ -10,6 +10,7 @@ const COLUMNS: { key: Column; label: string; color: string }[] = [
   { key: 'todo', label: 'Todo', color: 'text-accent-amber' },
   { key: 'in_progress', label: 'In Progress', color: 'text-accent-purple' },
   { key: 'in_review', label: 'In Review', color: 'text-accent-blue' },
+  { key: 'blocked', label: 'Blocked', color: 'text-accent-red' },
   { key: 'done', label: 'Done', color: 'text-accent-emerald' },
 ]
 
@@ -26,7 +27,7 @@ const COMPLEXITY_COLORS: Record<string, string> = {
   L: 'bg-accent-red/20 text-accent-red',
 }
 
-const COLUMN_ORDER: Column[] = ['backlog', 'todo', 'in_progress', 'in_review', 'done']
+const COLUMN_ORDER: Column[] = ['backlog', 'todo', 'in_progress', 'in_review', 'blocked', 'done']
 
 export default function AgentIssueBoard() {
   const { issues, agents, createIssue, updateIssue, deleteIssue, showIssueForm, setShowIssueForm } = useAgentStore()
@@ -156,7 +157,7 @@ export default function AgentIssueBoard() {
       )}
 
       {/* Kanban columns */}
-      <div className="grid grid-cols-5 gap-3">
+      <div className="grid grid-cols-6 gap-3">
         {COLUMNS.map(col => {
           const colIssues = filteredIssues.filter(i => i.status === col.key)
           return (
@@ -188,6 +189,11 @@ export default function AgentIssueBoard() {
                         <span>&#128274;</span>
                         <span>Blocked by {issue.blockedBy.length} issue{issue.blockedBy.length !== 1 ? 's' : ''}</span>
                       </div>
+                    )}
+                    {(issue.escalationLevel || 0) >= 2 && (
+                      <span className="inline-block mt-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-accent-red/20 text-accent-red">
+                        ESC {issue.escalationLevel}
+                      </span>
                     )}
                     <div className="flex items-center justify-between mt-2">
                       <span className="text-[10px] text-white/30">{getAgentName(issue.assignedAgentId)}</span>
