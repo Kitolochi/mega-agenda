@@ -1,3 +1,5 @@
+import fs from 'fs'
+import path from 'path'
 import { Notification } from 'electron'
 import {
   getAgents,
@@ -123,9 +125,36 @@ export function completeRun(runId: string, updates: { status: HeartbeatRun['stat
         if (failures >= 3) {
           appendAgentEvent({ agentId: agent.id, runId: run.id, type: 'cooldown', detail: `Cooldown ${cooldownMinutes}m after ${failures} consecutive failures` })
         }
+
+        // Escalation logic
+        if (run.issueId) {
+          const iss = getAgentIssue(run.issueId)
+          if (iss) {
+            const newLevel = (iss.escalationLevel || 0) + 1
+            updateAgentIssue(run.issueId, { escalationLevel: newLevel, escalatedAt: new Date().toISOString() })
+            if (newLevel >= 3) {
+              updateAgentIssue(run.issueId, { status: 'blocked' })
+              new Notification({
+                title: `Issue Escalated: ${iss.title}`,
+                body: `Escalation level ${newLevel} — issue blocked after repeated failures`,
+              }).show()
+              appendAgentEvent({ agentId: agent.id, runId: run.id, issueId: run.issueId, type: 'escalation', detail: `Level ${newLevel} — issue blocked` })
+            } else if (newLevel === 2) {
+              new Notification({
+                title: `Issue Escalation Warning: ${iss.title}`,
+                body: `Escalation level ${newLevel} — one more failure will block this issue`,
+              }).show()
+              appendAgentEvent({ agentId: agent.id, runId: run.id, issueId: run.issueId, type: 'escalation', detail: `Level ${newLevel} — warning` })
+            }
+          }
+        }
       } else if (updates.status === 'succeeded') {
         updateAgent(agent.id, { consecutiveFailures: 0, cooldownUntil: undefined })
         appendAgentEvent({ agentId: agent.id, runId: run.id, issueId: run.issueId, type: 'complete', detail: updates.summary?.slice(0, 200) || 'Run completed successfully' })
+        // Reset escalation on success
+        if (run.issueId) {
+          updateAgentIssue(run.issueId, { escalationLevel: 0, escalatedAt: undefined })
+        }
       }
     }
   }
@@ -137,6 +166,8 @@ export function completeRun(runId: string, updates: { status: HeartbeatRun['stat
 export function requeueIssue(issueId: string): void {
   const issue = getAgentIssue(issueId)
   if (!issue) return
+  // Skip requeue if escalated to level 3+ (blocked)
+  if ((issue.escalationLevel || 0) >= 3) return
   updateAgentIssue(issueId, {
     status: 'todo',
     checkedOutAt: undefined,
@@ -228,20 +259,58 @@ function buildAgentPrompt(agent: Agent, issue?: AgentIssue | null): string {
   const config = agent.adapterConfig
   const agentConfig = getAgentConfig(config.taskType)
   const preamble = config.preamble || agentConfig.preamble
+  const cwd = config.cwd || process.cwd()
 
   const parts: string[] = [preamble, '']
 
   parts.push(`[Agent: ${agent.name} | Role: ${agent.role}]`)
   parts.push('')
 
+  // Inject shared context file if it exists
+  const contextPath = path.join(cwd, '.agent-context.md')
+  try {
+    if (fs.existsSync(contextPath)) {
+      const ctx = fs.readFileSync(contextPath, 'utf-8').slice(0, 4000)
+      parts.push('SHARED CONTEXT (from .agent-context.md):')
+      parts.push(ctx)
+      parts.push('')
+    }
+  } catch {}
+
   if (issue) {
     parts.push(`ASSIGNED ISSUE: ${issue.title}`)
     if (issue.description) parts.push(`DESCRIPTION: ${issue.description}`)
     parts.push(`PRIORITY: ${issue.priority}`)
+    if (issue.estimatedComplexity) parts.push(`COMPLEXITY: ${issue.estimatedComplexity}`)
     if (issue.tags.length > 0) parts.push(`TAGS: ${issue.tags.join(', ')}`)
+
+    // Handoff: inject prior run context if available
+    const priorRuns = getHeartbeatRuns({ issueId: issue.id })
+    const priorSucceeded = priorRuns.find(r => r.status === 'succeeded' && r.id !== issue.checkedOutRunId)
+    const priorFailed = priorRuns.find(r => (r.status === 'failed' || r.status === 'timed_out') && r.checkpoint)
+    if (priorSucceeded) {
+      parts.push('')
+      parts.push('PRIOR RUN CONTEXT (succeeded):')
+      if (priorSucceeded.summary) parts.push(`Summary: ${priorSucceeded.summary.slice(0, 500)}`)
+      if (priorSucceeded.structuredResult?.filesChanged?.length) {
+        parts.push(`Files changed: ${priorSucceeded.structuredResult.filesChanged.join(', ')}`)
+      }
+      if (priorSucceeded.structuredResult?.gitCommits?.length) {
+        parts.push(`Commits: ${priorSucceeded.structuredResult.gitCommits.join('; ')}`)
+      }
+    } else if (priorFailed?.checkpoint) {
+      parts.push('')
+      parts.push('PRIOR RUN CONTEXT (failed — continue from where it left off):')
+      if (priorFailed.checkpoint.partialSummary) parts.push(`Partial progress: ${priorFailed.checkpoint.partialSummary}`)
+      if (priorFailed.checkpoint.filesChanged?.length) {
+        parts.push(`Files touched: ${priorFailed.checkpoint.filesChanged.join(', ')}`)
+      }
+    }
+
     parts.push('')
     parts.push('Please work on this issue autonomously. Read relevant files, implement changes, and verify your work.')
     parts.push('When done, provide a brief summary of what you accomplished.')
+    parts.push('Update `.agent-context.md` with key findings for the next agent run.')
   } else {
     parts.push('No specific issue assigned. Check your working directory for any pending work or improvements to make.')
   }
@@ -263,6 +332,14 @@ export function executeAgentHeartbeat(
   const cwd = config.cwd || process.cwd()
   const now = new Date().toISOString()
 
+  // Find prior run for the same issue to set parentRunId (handoff chain)
+  let parentRunId: string | undefined
+  if (issue) {
+    const priorRuns = getHeartbeatRuns({ issueId: issue.id })
+    const priorSucceeded = priorRuns.find(r => r.status === 'succeeded')
+    if (priorSucceeded) parentRunId = priorSucceeded.id
+  }
+
   // Create the heartbeat run record
   const run = createHeartbeatRun({
     agentId: agent.id,
@@ -271,6 +348,7 @@ export function executeAgentHeartbeat(
     status: 'running',
     prompt,
     startedAt: now,
+    parentRunId,
   })
 
   // Update issue with run reference
@@ -332,11 +410,29 @@ export function executeAgentHeartbeat(
 export function runDueAgentHeartbeats(
   launchFn?: (opts: { prompt: string; cwd: string; env: NodeJS.ProcessEnv; title?: string; allowedTools?: string }) => void
 ): HeartbeatRun[] {
-  const agents = getAgents()
+  const MAX_CONCURRENT_RUNS = 2
+  const allAgents = getAgents()
+  const runningCount = allAgents.filter(a => a.status === 'running').length
+  let availableSlots = MAX_CONCURRENT_RUNS - runningCount
+  if (availableSlots <= 0) return []
+
+  // Filter to due agents
+  const dueAgents = allAgents.filter(a => isAgentHeartbeatDue(a))
+
+  // Sort by highest-priority todo issue (critical=0, high=1, medium=2, low=3)
+  const priorityOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 }
+  dueAgents.sort((a, b) => {
+    const aIssues = getAgentIssues({ agentId: a.id, status: 'todo' })
+    const bIssues = getAgentIssues({ agentId: b.id, status: 'todo' })
+    const aPrio = aIssues.length > 0 ? (priorityOrder[aIssues[0].priority] ?? 2) : 4
+    const bPrio = bIssues.length > 0 ? (priorityOrder[bIssues[0].priority] ?? 2) : 4
+    return aPrio - bPrio
+  })
+
   const results: HeartbeatRun[] = []
 
-  for (const agent of agents) {
-    if (!isAgentHeartbeatDue(agent)) continue
+  for (const agent of dueAgents) {
+    if (availableSlots <= 0) break
 
     // Check budget — pause at 80% threshold with desktop notification
     if (agent.budgetMonthlyCents > 0) {
@@ -355,6 +451,7 @@ export function runDueAgentHeartbeats(
     const issue = checkoutNextIssue(agent.id)
     const run = executeAgentHeartbeat(agent, issue, 'timer', launchFn)
     results.push(run)
+    availableSlots--
   }
 
   return results
@@ -436,6 +533,15 @@ export async function pollAgentSessions(): Promise<boolean> {
               costCents,
             })
 
+            // Apply structured result
+            updateHeartbeatRun(run.id, {
+              structuredResult: {
+                filesChanged: result.filesChanged,
+                toolCalls: result.toolCalls,
+                gitCommits: result.gitCommits,
+              },
+            })
+
             // Create cost event
             createCostEvent({
               agentId: run.agentId,
@@ -461,7 +567,14 @@ export async function pollAgentSessions(): Promise<boolean> {
               }
             }
           } else {
-            // Session complete but no output — mark failed and requeue
+            // Session complete but no output — save checkpoint and mark failed
+            updateHeartbeatRun(run.id, {
+              checkpoint: {
+                partialSummary: result.summary?.slice(0, 500) || undefined,
+                filesChanged: result.filesChanged,
+                toolCallCount: result.toolCalls?.reduce((s, t) => s + t.count, 0),
+              },
+            })
             completeRun(run.id, { status: 'failed', durationMs: elapsed, error: 'Session completed with no output' })
             if (run.issueId) requeueIssue(run.issueId)
           }
@@ -472,10 +585,26 @@ export async function pollAgentSessions(): Promise<boolean> {
 
       // Part C: Timeout requeue — complexity-based limit (S=1h, M=2h, L=4h)
       const elapsed = Date.now() - new Date(run.startedAt).getTime()
-      const issue = run.issueId ? getAgentIssue(run.issueId) : null
+      const timeoutIssue = run.issueId ? getAgentIssue(run.issueId) : null
       const complexityTimeouts: Record<string, number> = { S: 1, M: 2, L: 4 }
-      const timeoutHours = complexityTimeouts[issue?.estimatedComplexity || 'M'] || 2
+      const timeoutHours = complexityTimeouts[timeoutIssue?.estimatedComplexity || 'M'] || 2
       if (elapsed > timeoutHours * 60 * 60 * 1000) {
+        // Save checkpoint from partial session data
+        if (run.sessionId) {
+          const filePath = getSessionFilePath(run.sessionId)
+          if (filePath) {
+            try {
+              const partialResult = await extractSessionResult(filePath)
+              updateHeartbeatRun(run.id, {
+                checkpoint: {
+                  partialSummary: partialResult.summary?.slice(0, 500),
+                  filesChanged: partialResult.filesChanged,
+                  toolCallCount: partialResult.toolCalls?.reduce((s, t) => s + t.count, 0),
+                },
+              })
+            } catch {}
+          }
+        }
         completeRun(run.id, {
           status: 'timed_out',
           durationMs: elapsed,
