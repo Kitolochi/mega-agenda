@@ -316,6 +316,9 @@ export interface SessionResult {
   totalInputTokens: number
   totalOutputTokens: number
   model: string
+  toolCalls?: { tool: string; count: number }[]
+  filesChanged?: string[]
+  gitCommits?: string[]
 }
 
 /** Find the JSONL file path for a given session ID */
@@ -346,13 +349,16 @@ export function isSessionComplete(filePath: string): boolean {
   }
 }
 
-/** Extract token usage and summary from a completed session JSONL */
+/** Extract token usage, summary, tool calls, files changed, and git commits from a completed session JSONL */
 export async function extractSessionResult(filePath: string): Promise<SessionResult> {
   return new Promise((resolve) => {
     let totalInputTokens = 0
     let totalOutputTokens = 0
     let model = ''
     let lastTextContent = ''
+    const toolCounts = new Map<string, number>()
+    const filesChanged = new Set<string>()
+    const gitCommits: string[] = []
 
     const stream = fs.createReadStream(filePath, { encoding: 'utf-8' })
     const rl = readline.createInterface({ input: stream, crlfDelay: Infinity })
@@ -360,6 +366,12 @@ export async function extractSessionResult(filePath: string): Promise<SessionRes
     rl.on('line', (line) => {
       try {
         const parsed = JSON.parse(line)
+
+        // Track file-history-snapshot entries for files changed
+        if (parsed.type === 'file-history-snapshot' && parsed.filePath) {
+          filesChanged.add(parsed.filePath)
+        }
+
         if (parsed.type === 'assistant') {
           if (parsed.message?.usage) {
             totalInputTokens += parsed.message.usage.input_tokens || 0
@@ -370,16 +382,38 @@ export async function extractSessionResult(filePath: string): Promise<SessionRes
           }
           const text = extractTextContent(parsed)
           if (text) lastTextContent = text
+
+          // Parse tool_use blocks for tool counts and file/commit tracking
+          if (Array.isArray(parsed.message?.content)) {
+            for (const block of parsed.message.content) {
+              if (block.type === 'tool_use' && block.name) {
+                toolCounts.set(block.name, (toolCounts.get(block.name) || 0) + 1)
+                // Track file paths from Write/Edit tool inputs
+                if ((block.name === 'Write' || block.name === 'Edit') && block.input?.file_path) {
+                  filesChanged.add(block.input.file_path)
+                }
+                // Detect git commit messages from Bash tool inputs
+                if (block.name === 'Bash' && typeof block.input?.command === 'string') {
+                  const commitMatch = block.input.command.match(/git commit\s+-m\s+["']([^"']+)["']/)
+                  if (commitMatch) gitCommits.push(commitMatch[1])
+                }
+              }
+            }
+          }
         }
       } catch {}
     })
 
     rl.on('close', () => {
+      const toolCallsArr = Array.from(toolCounts.entries()).map(([tool, count]) => ({ tool, count }))
       resolve({
         summary: lastTextContent.slice(0, 2000),
         totalInputTokens,
         totalOutputTokens,
         model,
+        toolCalls: toolCallsArr.length > 0 ? toolCallsArr : undefined,
+        filesChanged: filesChanged.size > 0 ? Array.from(filesChanged) : undefined,
+        gitCommits: gitCommits.length > 0 ? gitCommits : undefined,
       })
     })
 
