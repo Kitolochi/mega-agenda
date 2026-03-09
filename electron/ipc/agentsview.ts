@@ -4,6 +4,20 @@ import http from 'http'
 const AV_BASE = 'http://127.0.0.1:8090/api/v1'
 const AV_ORIGIN = 'http://127.0.0.1:8090'
 
+/** GET that returns raw text (not JSON-parsed) — for HTML export etc. */
+function avFetchRaw(path: string, timeout = 10000): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const url = new URL(`${AV_BASE}/${path}`)
+    const req = http.get(url, { timeout }, (res) => {
+      let data = ''
+      res.on('data', (chunk) => { data += chunk })
+      res.on('end', () => resolve(data))
+    })
+    req.on('error', reject)
+    req.on('timeout', () => { req.destroy(); reject(new Error('AgentsView request timed out')) })
+  })
+}
+
 function avFetch(path: string, timeout = 5000): Promise<any> {
   return new Promise((resolve, reject) => {
     const url = new URL(`${AV_BASE}/${path}`)
@@ -98,6 +112,17 @@ export function registerAgentsViewHandlers() {
     avFetch(`sessions/${id}/messages?limit=${limit ?? 100}`))
   ipcMain.handle('av-get-insights', () => avFetch('insights'))
   ipcMain.handle('av-get-sync-status', () => avFetch('sync/status'))
+
+  // Search & analytics
+  ipcMain.handle('av-search', (_, q: string, limit?: number) =>
+    avFetch(`search?q=${encodeURIComponent(q)}&limit=${limit ?? 20}`))
+  ipcMain.handle('av-get-activity', (_, days?: number) =>
+    avFetch(days ? `analytics/activity?days=${days}` : 'analytics/activity'))
+  ipcMain.handle('av-get-hour-of-week', () => avFetch('analytics/hour-of-week'))
+  ipcMain.handle('av-get-session-children', (_, id: string) =>
+    avFetch(`sessions/${id}/children`))
+  ipcMain.handle('av-export-session', (_, id: string) =>
+    avFetchRaw(`sessions/${id}/export`))
 
   // Write operations
   ipcMain.handle('av-sync', (_, full?: boolean) =>

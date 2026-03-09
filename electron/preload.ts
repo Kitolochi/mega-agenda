@@ -563,6 +563,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   avGetSyncStatus: () => ipcRenderer.invoke('av-get-sync-status'),
   avSync: (full?: boolean) => ipcRenderer.invoke('av-sync', full),
   avGenerateInsights: (type: string, dateFrom: string, dateTo: string) => ipcRenderer.invoke('av-generate-insights', type, dateFrom, dateTo),
+  avSearch: (q: string, limit?: number) => ipcRenderer.invoke('av-search', q, limit),
+  avGetActivity: (days?: number) => ipcRenderer.invoke('av-get-activity', days),
+  avGetHourOfWeek: () => ipcRenderer.invoke('av-get-hour-of-week'),
+  avGetSessionChildren: (id: string) => ipcRenderer.invoke('av-get-session-children', id),
+  avExportSession: (id: string) => ipcRenderer.invoke('av-export-session', id),
 
   // Guide Chat
   guideChatSend: (messages: { role: string; content: string }[]) => ipcRenderer.invoke('guide-chat-send', messages),

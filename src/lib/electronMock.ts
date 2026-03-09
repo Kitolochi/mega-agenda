@@ -459,5 +459,10 @@ export function installElectronMock() {
     avGetSyncStatus: async () => ({ last_sync: '', stats: { total_sessions: 0, synced: 0, skipped: 0, failed: 0 } }),
     avSync: async () => ({ events: [] }),
     avGenerateInsights: async () => ({ events: [] }),
+    avSearch: async () => ({ query: '', results: [] }),
+    avGetActivity: async () => ({ granularity: 'day', series: [] }),
+    avGetHourOfWeek: async () => ({ cells: [] }),
+    avGetSessionChildren: async () => [],
+    avExportSession: async () => '<html><body>No data</body></html>',
   } as any
 }

@@ -702,6 +702,50 @@ export interface AVSessionMessages {
   messages: AVMessage[]
 }
 
+// AgentsView Search Types
+export interface AVSearchResult {
+  session_id: string
+  project: string
+  ordinal: number
+  role: string
+  timestamp: string
+  snippet: string
+  rank: number
+}
+
+export interface AVSearchResults {
+  query: string
+  results: AVSearchResult[]
+}
+
+// AgentsView Activity Analytics
+export interface AVActivitySeries {
+  date: string
+  sessions: number
+  messages: number
+  user_messages: number
+  assistant_messages: number
+  tool_calls: number
+  thinking_messages: number
+  by_agent: Record<string, number>
+}
+
+export interface AVActivity {
+  granularity: string
+  series: AVActivitySeries[]
+}
+
+// AgentsView Hour-of-Week Heatmap
+export interface AVHourOfWeekCell {
+  day_of_week: number
+  hour: number
+  messages: number
+}
+
+export interface AVHourOfWeek {
+  cells: AVHourOfWeekCell[]
+}
+
 // Network CRM Types
 export type InteractionType = 'call' | 'email' | 'meeting' | 'message' | 'note'
 
@@ -1506,6 +1550,11 @@ export interface ElectronAPI {
   avGetSyncStatus: () => Promise<AVSyncStatus>
   avSync: (full?: boolean) => Promise<{ events: any[] }>
   avGenerateInsights: (type: string, dateFrom: string, dateTo: string) => Promise<{ events: any[] }>
+  avSearch: (q: string, limit?: number) => Promise<AVSearchResults>
+  avGetActivity: (days?: number) => Promise<AVActivity>
+  avGetHourOfWeek: () => Promise<AVHourOfWeek>
+  avGetSessionChildren: (id: string) => Promise<AVSessionListItem[]>
+  avExportSession: (id: string) => Promise<string>
 
   // Guide Chat
   guideChatSend: (messages: { role: string; content: string }[]) => Promise<void>
