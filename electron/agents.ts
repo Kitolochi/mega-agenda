@@ -12,6 +12,7 @@ import {
   getHeartbeatRuns,
   createCostEvent,
   getCostEvents,
+  appendAgentEvent,
   type Agent,
   type AgentIssue,
   type HeartbeatRun,
@@ -110,6 +111,23 @@ export function completeRun(runId: string, updates: { status: HeartbeatRun['stat
     if (run.issueId && updates.status === 'succeeded') {
       updateAgentIssue(run.issueId, { status: 'in_review', result: updates.summary })
     }
+
+    // Cooldown tracking
+    if (agent) {
+      if (updates.status === 'failed' || updates.status === 'timed_out') {
+        const failures = (agent.consecutiveFailures || 0) + 1
+        const cooldownMinutes = Math.min(240, failures * failures * 15)
+        const cooldownUntil = new Date(Date.now() + cooldownMinutes * 60000).toISOString()
+        updateAgent(agent.id, { consecutiveFailures: failures, cooldownUntil: failures >= 3 ? cooldownUntil : undefined })
+        appendAgentEvent({ agentId: agent.id, runId: run.id, issueId: run.issueId, type: 'fail', detail: updates.error || `Run ${updates.status}` })
+        if (failures >= 3) {
+          appendAgentEvent({ agentId: agent.id, runId: run.id, type: 'cooldown', detail: `Cooldown ${cooldownMinutes}m after ${failures} consecutive failures` })
+        }
+      } else if (updates.status === 'succeeded') {
+        updateAgent(agent.id, { consecutiveFailures: 0, cooldownUntil: undefined })
+        appendAgentEvent({ agentId: agent.id, runId: run.id, issueId: run.issueId, type: 'complete', detail: updates.summary?.slice(0, 200) || 'Run completed successfully' })
+      }
+    }
   }
 
   return run
@@ -117,11 +135,16 @@ export function completeRun(runId: string, updates: { status: HeartbeatRun['stat
 
 /** Requeue an issue back to todo so it can be picked up again */
 export function requeueIssue(issueId: string): void {
+  const issue = getAgentIssue(issueId)
+  if (!issue) return
   updateAgentIssue(issueId, {
     status: 'todo',
     checkedOutAt: undefined,
     checkedOutRunId: undefined,
   })
+  if (issue.assignedAgentId) {
+    appendAgentEvent({ agentId: issue.assignedAgentId, issueId, type: 'requeue', detail: `Issue "${issue.title}" requeued to todo` })
+  }
 }
 
 /** Show a desktop notification when an agent hits its budget threshold */
@@ -131,6 +154,7 @@ export function emitBudgetAlert(agent: Agent, ratio: number): void {
     title: `Agent Budget Alert: ${agent.name}`,
     body: `${pct}% of monthly budget used ($${(agent.spentMonthlyCents / 100).toFixed(2)} / $${(agent.budgetMonthlyCents / 100).toFixed(2)}). Agent paused.`,
   }).show()
+  appendAgentEvent({ agentId: agent.id, type: 'budget_alert', detail: `${pct}% budget used — agent paused` })
 }
 
 /** Check if an agent's heartbeat is due (mirrors isRoutineDue logic from routines.ts) */
@@ -138,6 +162,7 @@ export function isAgentHeartbeatDue(agent: Agent): boolean {
   if (agent.status === 'paused') return false
   if (!agent.heartbeat?.enabled) return false
   if (agent.status === 'running') return false
+  if (agent.cooldownUntil && new Date(agent.cooldownUntil) > new Date()) return false
 
   const now = new Date()
   const { schedule, lastRun } = agent.heartbeat
@@ -178,7 +203,15 @@ export function isAgentHeartbeatDue(agent: Agent): boolean {
 
 /** Find the next todo issue assigned to an agent and check it out */
 export function checkoutNextIssue(agentId: string): AgentIssue | null {
-  const issues = getAgentIssues({ agentId, status: 'todo' })
+  const allIssues = getAgentIssues({ agentId, status: 'todo' })
+  // Filter out issues with unresolved blockedBy dependencies
+  const issues = allIssues.filter(issue => {
+    if (!issue.blockedBy?.length) return true
+    return issue.blockedBy.every(depId => {
+      const dep = getAgentIssue(depId)
+      return dep?.status === 'done'
+    })
+  })
   if (issues.length === 0) return null
   // issues already sorted by priority from getAgentIssues
   const issue = issues[0]
@@ -254,6 +287,9 @@ export function executeAgentHeartbeat(
     },
   })
 
+  // Emit launch event
+  appendAgentEvent({ agentId: agent.id, runId: run.id, issueId: issue?.id, type: 'launch', detail: issue ? `Working on: ${issue.title}` : 'Heartbeat run (no issue)' })
+
   // Launch in external terminal
   if (launchFn) {
     try {
@@ -285,6 +321,7 @@ export function executeAgentHeartbeat(
         updateAgent(agent.id, { status: 'error', lastError: err.message })
         if (issue) requeueIssue(issue.id)
       }
+      appendAgentEvent({ agentId: agent.id, runId: run.id, type: 'fail', detail: `Launch failed: ${err.message}` })
     }
   }
 
@@ -433,9 +470,12 @@ export async function pollAgentSessions(): Promise<boolean> {
         }
       }
 
-      // Part C: Timeout requeue — 2 hour limit
+      // Part C: Timeout requeue — complexity-based limit (S=1h, M=2h, L=4h)
       const elapsed = Date.now() - new Date(run.startedAt).getTime()
-      if (elapsed > 2 * 60 * 60 * 1000) {
+      const issue = run.issueId ? getAgentIssue(run.issueId) : null
+      const complexityTimeouts: Record<string, number> = { S: 1, M: 2, L: 4 }
+      const timeoutHours = complexityTimeouts[issue?.estimatedComplexity || 'M'] || 2
+      if (elapsed > timeoutHours * 60 * 60 * 1000) {
         completeRun(run.id, {
           status: 'timed_out',
           durationMs: elapsed,
