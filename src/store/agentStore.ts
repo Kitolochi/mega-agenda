@@ -1,13 +1,14 @@
 import { create } from 'zustand'
-import { Agent, AgentIssue, HeartbeatRun, CostEvent } from '../types'
+import { Agent, AgentIssue, HeartbeatRun, CostEvent, AgentEvent } from '../types'
 
-type SubView = 'overview' | 'issues' | 'costs' | 'history'
+type SubView = 'overview' | 'issues' | 'costs' | 'history' | 'activity'
 
 interface AgentState {
   agents: Agent[]
   issues: AgentIssue[]
   runs: HeartbeatRun[]
   costEvents: CostEvent[]
+  events: AgentEvent[]
   selectedAgentId: string | null
   subView: SubView
   showForm: boolean
@@ -25,6 +26,7 @@ interface AgentState {
   loadIssues: () => Promise<void>
   loadRuns: () => Promise<void>
   loadCosts: () => Promise<void>
+  loadEvents: () => Promise<void>
   createAgent: (data: Omit<Agent, 'id' | 'createdAt' | 'updatedAt' | 'spentMonthlyCents' | 'budgetResetDate' | 'status'>) => Promise<Agent>
   updateAgent: (id: string, updates: Partial<Agent>) => Promise<void>
   deleteAgent: (id: string) => Promise<void>
@@ -41,6 +43,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   issues: [],
   runs: [],
   costEvents: [],
+  events: [],
   selectedAgentId: null,
   subView: 'overview',
   showForm: false,
@@ -54,8 +57,8 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   setShowIssueForm: (show) => set({ showIssueForm: show }),
 
   loadAll: async () => {
-    const { loadAgents, loadIssues, loadRuns, loadCosts } = get()
-    await Promise.all([loadAgents(), loadIssues(), loadRuns(), loadCosts()])
+    const { loadAgents, loadIssues, loadRuns, loadCosts, loadEvents } = get()
+    await Promise.all([loadAgents(), loadIssues(), loadRuns(), loadCosts(), loadEvents()])
   },
 
   loadAgents: async () => {
@@ -76,6 +79,11 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   loadCosts: async () => {
     const costEvents = await window.electronAPI.getCostEvents({ limit: 200 })
     set({ costEvents })
+  },
+
+  loadEvents: async () => {
+    const events = await window.electronAPI.getAgentEvents({ limit: 200 })
+    set({ events })
   },
 
   createAgent: async (data) => {

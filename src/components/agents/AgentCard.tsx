@@ -98,6 +98,13 @@ export default function AgentCard({ agent }: AgentCardProps) {
         </div>
       )}
 
+      {/* Cooldown indicator */}
+      {agent.cooldownUntil && new Date(agent.cooldownUntil) > new Date() && (
+        <div className="text-xs text-accent-amber/80 bg-accent-amber/10 rounded-lg px-2 py-1 mb-3">
+          Cooldown until {new Date(agent.cooldownUntil).toLocaleTimeString()} ({agent.consecutiveFailures} consecutive failures)
+        </div>
+      )}
+
       {/* Actions */}
       <div className="flex gap-2">
         <button

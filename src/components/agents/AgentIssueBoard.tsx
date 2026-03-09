@@ -20,6 +20,12 @@ const PRIORITY_DOTS: Record<Priority, string> = {
   low: 'bg-white/20',
 }
 
+const COMPLEXITY_COLORS: Record<string, string> = {
+  S: 'bg-accent-emerald/20 text-accent-emerald',
+  M: 'bg-accent-blue/20 text-accent-blue',
+  L: 'bg-accent-red/20 text-accent-red',
+}
+
 const COLUMN_ORDER: Column[] = ['backlog', 'todo', 'in_progress', 'in_review', 'done']
 
 export default function AgentIssueBoard() {
@@ -170,8 +176,19 @@ export default function AgentIssueBoard() {
                   >
                     <div className="flex items-start gap-2 mb-1">
                       <div className={`w-2 h-2 rounded-full mt-1 flex-shrink-0 ${PRIORITY_DOTS[issue.priority]}`} />
+                      {issue.estimatedComplexity && (
+                        <span className={`px-1 py-0 rounded text-[9px] font-bold shrink-0 ${COMPLEXITY_COLORS[issue.estimatedComplexity] || ''}`}>
+                          {issue.estimatedComplexity}
+                        </span>
+                      )}
                       <span className="text-xs text-white font-medium line-clamp-2">{issue.title}</span>
                     </div>
+                    {issue.blockedBy && issue.blockedBy.length > 0 && (
+                      <div className="flex items-center gap-1 mt-1 text-[10px] text-accent-amber/70">
+                        <span>&#128274;</span>
+                        <span>Blocked by {issue.blockedBy.length} issue{issue.blockedBy.length !== 1 ? 's' : ''}</span>
+                      </div>
+                    )}
                     <div className="flex items-center justify-between mt-2">
                       <span className="text-[10px] text-white/30">{getAgentName(issue.assignedAgentId)}</span>
                       {issue.tags.length > 0 && (
@@ -190,6 +207,49 @@ export default function AgentIssueBoard() {
                             {issue.result.slice(0, 200)}
                           </div>
                         )}
+
+                        {/* Blocked-by dependencies */}
+                        {issue.blockedBy && issue.blockedBy.length > 0 && (
+                          <div className="space-y-1">
+                            <span className="text-[10px] text-white/30">Blocked by:</span>
+                            <div className="flex gap-1 flex-wrap">
+                              {issue.blockedBy.map(depId => {
+                                const dep = issues.find(i => i.id === depId)
+                                return (
+                                  <span key={depId} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-surface-3/60 text-[10px] text-white/50">
+                                    {dep?.title?.slice(0, 30) || depId.slice(0, 8)}
+                                    {dep?.status === 'done' && <span className="text-accent-emerald">&#10003;</span>}
+                                    <button
+                                      onClick={() => updateIssue(issue.id, { blockedBy: issue.blockedBy!.filter(id => id !== depId) })}
+                                      className="text-accent-red/50 hover:text-accent-red ml-0.5"
+                                    >
+                                      &times;
+                                    </button>
+                                  </span>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Add dependency dropdown */}
+                        <select
+                          value=""
+                          onChange={e => {
+                            if (!e.target.value) return
+                            const current = issue.blockedBy || []
+                            if (!current.includes(e.target.value)) {
+                              updateIssue(issue.id, { blockedBy: [...current, e.target.value] })
+                            }
+                          }}
+                          className="px-2 py-1 bg-surface-3/50 border border-white/5 rounded text-[10px] text-white/40 focus:outline-none"
+                        >
+                          <option value="">Block by...</option>
+                          {issues.filter(i => i.id !== issue.id && !issue.blockedBy?.includes(i.id)).map(i => (
+                            <option key={i.id} value={i.id}>{i.title.slice(0, 40)}</option>
+                          ))}
+                        </select>
+
                         <div className="flex gap-1 flex-wrap">
                           {COLUMN_ORDER.filter(c => c !== col.key).map(c => (
                             <button

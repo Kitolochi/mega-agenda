@@ -6,12 +6,14 @@ import AgentForm from './AgentForm'
 import AgentIssueBoard from './AgentIssueBoard'
 import CostDashboard from './CostDashboard'
 import HeartbeatHistory from './HeartbeatHistory'
+import ActivityLog from './ActivityLog'
 
 const SUB_VIEWS = [
   { id: 'overview' as const, label: 'Overview' },
   { id: 'issues' as const, label: 'Issues' },
   { id: 'costs' as const, label: 'Costs' },
   { id: 'history' as const, label: 'History' },
+  { id: 'activity' as const, label: 'Activity' },
 ]
 
 const GUIDE_FLOWS = [
@@ -330,6 +332,7 @@ export default function AgentsTab() {
       {subView === 'issues' && <AgentIssueBoard />}
       {subView === 'costs' && <CostDashboard />}
       {subView === 'history' && <HeartbeatHistory />}
+      {subView === 'activity' && <ActivityLog />}
 
       {/* Agent Form Dialog — portal to body to escape backdrop-filter containing block */}
       {showForm && createPortal(

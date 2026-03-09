@@ -14,6 +14,7 @@ import {
   getHeartbeatRuns,
   getCostEvents,
   getAgentCostSummary,
+  getAgentEvents,
 } from '../database'
 import {
   executeAgentHeartbeat,
@@ -119,6 +120,11 @@ export function registerAgentHandlers(mainWindow: BrowserWindow) {
 
   ipcMain.handle('get-agent-cost-summary', (_, agentId: string) => {
     return getAgentCostSummary(agentId)
+  })
+
+  // --- Agent Events ---
+  ipcMain.handle('get-agent-events', (_, filters?: any) => {
+    return getAgentEvents(filters)
   })
 
   // --- Session Polling ---

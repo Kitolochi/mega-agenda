@@ -541,6 +541,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getCostEvents: (filters?: any) => ipcRenderer.invoke('get-cost-events', filters),
   getAgentCostSummary: (agentId: string) => ipcRenderer.invoke('get-agent-cost-summary', agentId),
   pollAgentSessions: () => ipcRenderer.invoke('poll-agent-sessions'),
+  getAgentEvents: (filters?: any) => ipcRenderer.invoke('get-agent-events', filters),
   onAgentsUpdated: (callback: () => void) => {
     ipcRenderer.on('agents-updated', callback)
     return () => ipcRenderer.removeListener('agents-updated', callback)
