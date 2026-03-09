@@ -1048,6 +1048,8 @@ export interface Agent {
   budgetResetDate: string
   status: 'active' | 'paused' | 'idle' | 'running' | 'error'
   lastError?: string
+  consecutiveFailures?: number
+  cooldownUntil?: string
   heartbeat?: {
     enabled: boolean
     schedule: { trigger: 'interval' | 'daily' | 'weekly'; time?: string; intervalMinutes?: number; dayOfWeek?: number }
@@ -1076,6 +1078,10 @@ export interface AgentIssue {
   checkedOutRunId?: string
   result?: string
   deliverables?: string[]
+  blockedBy?: string[]
+  estimatedComplexity?: 'S' | 'M' | 'L'
+  escalationLevel?: number
+  escalatedAt?: string
   createdAt: string
   updatedAt: string
 }
@@ -1099,7 +1105,20 @@ export interface HeartbeatRun {
   tags?: string[]
   retryCount?: number
   nextRetryAt?: string
+  structuredResult?: { filesChanged?: string[]; toolCalls?: { tool: string; count: number }[]; gitCommits?: string[] }
+  parentRunId?: string
+  checkpoint?: { filesChanged?: string[]; partialSummary?: string; toolCallCount?: number }
   createdAt: string
+}
+
+export interface AgentEvent {
+  id: string
+  timestamp: string
+  agentId: string
+  runId?: string
+  issueId?: string
+  type: 'launch' | 'complete' | 'fail' | 'retry' | 'requeue' | 'budget_alert' | 'escalation' | 'cooldown' | 'pause' | 'resume'
+  detail: string
 }
 
 export interface CostEvent {
@@ -1531,6 +1550,7 @@ export interface ElectronAPI {
   getCostEvents: (filters?: { agentId?: string; limit?: number }) => Promise<CostEvent[]>
   getAgentCostSummary: (agentId: string) => Promise<{ totalCents: number; monthCents: number; eventCount: number }>
   pollAgentSessions: () => Promise<HeartbeatRun[]>
+  getAgentEvents: (filters?: { agentId?: string; type?: AgentEvent['type']; limit?: number }) => Promise<AgentEvent[]>
   onAgentsUpdated: (callback: () => void) => () => void
 
   // AgentsView Analytics

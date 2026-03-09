@@ -456,6 +456,8 @@ export interface Agent {
   budgetResetDate: string
   status: 'active' | 'paused' | 'idle' | 'running' | 'error'
   lastError?: string
+  consecutiveFailures?: number
+  cooldownUntil?: string
   heartbeat?: {
     enabled: boolean
     schedule: { trigger: 'interval' | 'daily' | 'weekly'; time?: string; intervalMinutes?: number; dayOfWeek?: number }
@@ -484,6 +486,10 @@ export interface AgentIssue {
   checkedOutRunId?: string
   result?: string
   deliverables?: string[]
+  blockedBy?: string[]
+  estimatedComplexity?: 'S' | 'M' | 'L'
+  escalationLevel?: number
+  escalatedAt?: string
   createdAt: string
   updatedAt: string
 }
@@ -507,7 +513,20 @@ export interface HeartbeatRun {
   tags?: string[]
   retryCount?: number
   nextRetryAt?: string
+  structuredResult?: { filesChanged?: string[]; toolCalls?: { tool: string; count: number }[]; gitCommits?: string[] }
+  parentRunId?: string
+  checkpoint?: { filesChanged?: string[]; partialSummary?: string; toolCallCount?: number }
   createdAt: string
+}
+
+export interface AgentEvent {
+  id: string
+  timestamp: string
+  agentId: string
+  runId?: string
+  issueId?: string
+  type: 'launch' | 'complete' | 'fail' | 'retry' | 'requeue' | 'budget_alert' | 'escalation' | 'cooldown' | 'pause' | 'resume'
+  detail: string
 }
 
 export interface CostEvent {
@@ -573,6 +592,7 @@ interface Database {
   agentIssues: AgentIssue[]
   heartbeatRuns: HeartbeatRun[]
   costEvents: CostEvent[]
+  agentEvents: AgentEvent[]
 }
 
 let db: Database
@@ -1012,6 +1032,10 @@ export function initDatabase(): Database {
   }
   if (!Array.isArray((db as any).costEvents)) {
     db.costEvents = []
+    saveDatabase()
+  }
+  if (!Array.isArray((db as any).agentEvents)) {
+    db.agentEvents = []
     saveDatabase()
   }
 
@@ -2916,6 +2940,7 @@ export function deleteAgent(id: string): void {
   db.agentIssues = db.agentIssues.filter(i => i.assignedAgentId !== id)
   db.heartbeatRuns = db.heartbeatRuns.filter(r => r.agentId !== id)
   db.costEvents = db.costEvents.filter(e => e.agentId !== id)
+  db.agentEvents = db.agentEvents.filter(e => e.agentId !== id)
   saveDatabase()
 }
 
@@ -2947,8 +2972,21 @@ export function getAgentIssue(id: string): AgentIssue | null {
 
 export function createAgentIssue(data: Omit<AgentIssue, 'id' | 'createdAt' | 'updatedAt'>): AgentIssue {
   const now = new Date().toISOString()
+  // Auto-estimate complexity if not provided
+  let estimatedComplexity = data.estimatedComplexity
+  if (!estimatedComplexity) {
+    const desc = data.description || ''
+    if (desc.length > 500 || data.priority === 'critical' || (data.blockedBy && data.blockedBy.length > 0)) {
+      estimatedComplexity = 'L'
+    } else if (desc.length < 100 && data.tags.length === 0) {
+      estimatedComplexity = 'S'
+    } else {
+      estimatedComplexity = 'M'
+    }
+  }
   const issue: AgentIssue = {
     ...data,
+    estimatedComplexity,
     id: generateId(),
     createdAt: now,
     updatedAt: now,
@@ -3048,4 +3086,32 @@ export function getAgentCostSummary(agentId: string): { totalCents: number; mont
   const monthEvents = events.filter(e => e.timestamp >= firstOfMonth)
   const monthCents = monthEvents.reduce((sum, e) => sum + e.costCents, 0)
   return { totalCents, monthCents, eventCount: events.length }
+}
+
+// Agent Events
+
+export function appendAgentEvent(data: Omit<AgentEvent, 'id' | 'timestamp'>): AgentEvent {
+  const event: AgentEvent = {
+    ...data,
+    id: generateId(),
+    timestamp: new Date().toISOString(),
+  }
+  db.agentEvents.push(event)
+  // Cap at 5000 entries (evict oldest)
+  if (db.agentEvents.length > 5000) {
+    db.agentEvents = db.agentEvents
+      .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+      .slice(0, 5000)
+  }
+  saveDatabase()
+  return event
+}
+
+export function getAgentEvents(filters?: { agentId?: string; type?: AgentEvent['type']; limit?: number }): AgentEvent[] {
+  let events = db.agentEvents || []
+  if (filters?.agentId) events = events.filter(e => e.agentId === filters.agentId)
+  if (filters?.type) events = events.filter(e => e.type === filters.type)
+  events = events.sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+  if (filters?.limit) events = events.slice(0, filters.limit)
+  return events
 }
