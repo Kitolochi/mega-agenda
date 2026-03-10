@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron'
 import http from 'http'
+import { startAVProcess, stopAVProcess, getAVProcessStatus } from '../agentsview-process'
 
 const AV_BASE = 'http://127.0.0.1:8090/api/v1'
 const AV_ORIGIN = 'http://127.0.0.1:8090'
@@ -129,4 +130,27 @@ export function registerAgentsViewHandlers() {
     avPost('sync', full ? { full: true } : undefined, 120000))
   ipcMain.handle('av-generate-insights', (_, type: string, dateFrom: string, dateTo: string) =>
     avPost('insights/generate', { type, date_from: dateFrom, date_to: dateTo }, 60000))
+
+  // Process management
+  ipcMain.handle('av-process-start', async () => {
+    startAVProcess()
+    // Poll until the server responds or 5s elapses
+    for (let i = 0; i < 10; i++) {
+      await new Promise(r => setTimeout(r, 500))
+      try {
+        await avFetch('stats', 2000)
+        return true
+      } catch {}
+    }
+    return false
+  })
+
+  ipcMain.handle('av-process-stop', () => {
+    stopAVProcess()
+    return true
+  })
+
+  ipcMain.handle('av-process-status', () => {
+    return getAVProcessStatus()
+  })
 }

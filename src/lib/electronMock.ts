@@ -464,5 +464,10 @@ export function installElectronMock() {
     avGetHourOfWeek: async () => ({ cells: [] }),
     avGetSessionChildren: async () => [],
     avExportSession: async () => '<html><body>No data</body></html>',
+
+    // AgentsView Process Management
+    avProcessStart: async () => false,
+    avProcessStop: async () => true,
+    avProcessStatus: async () => 'not-installed' as const,
   } as any
 }

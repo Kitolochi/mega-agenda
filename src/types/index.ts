@@ -1576,6 +1576,11 @@ export interface ElectronAPI {
   avGetSessionChildren: (id: string) => Promise<AVSessionListItem[]>
   avExportSession: (id: string) => Promise<string>
 
+  // AgentsView Process Management
+  avProcessStart: () => Promise<boolean>
+  avProcessStop: () => Promise<boolean>
+  avProcessStatus: () => Promise<'running' | 'stopped' | 'not-installed'>
+
   // Guide Chat
   guideChatSend: (messages: { role: string; content: string }[]) => Promise<void>
   guideChatAbort: () => Promise<void>

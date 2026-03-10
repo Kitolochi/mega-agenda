@@ -570,6 +570,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   avGetSessionChildren: (id: string) => ipcRenderer.invoke('av-get-session-children', id),
   avExportSession: (id: string) => ipcRenderer.invoke('av-export-session', id),
 
+  // AgentsView Process Management
+  avProcessStart: () => ipcRenderer.invoke('av-process-start'),
+  avProcessStop: () => ipcRenderer.invoke('av-process-stop'),
+  avProcessStatus: () => ipcRenderer.invoke('av-process-status'),
+
   // Guide Chat
   guideChatSend: (messages: { role: string; content: string }[]) => ipcRenderer.invoke('guide-chat-send', messages),
   guideChatAbort: () => ipcRenderer.invoke('guide-chat-abort'),
