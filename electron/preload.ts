@@ -233,6 +233,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getGoalRepoInfo: (goalId: string) => ipcRenderer.invoke('get-goal-repo-info', goalId),
   extractGoalLearnings: (goalId: string) => ipcRenderer.invoke('extract-goal-learnings', goalId),
 
+  // Orchestrator control
+  stopOrchestrator: (id: string) => ipcRenderer.invoke('stop-orchestrator', id),
+  isOrchestratorRunning: (id: string) => ipcRenderer.invoke('is-orchestrator-running', id),
+  onOrchestratorOutput: (callback: (data: { id: string; line: string }) => void) => {
+    const handler = (_: any, data: { id: string; line: string }) => callback(data)
+    ipcRenderer.on('orchestrator-output', handler)
+    return () => { ipcRenderer.removeListener('orchestrator-output', handler) }
+  },
+
   // Smart Query
   smartQuery: (query: string) => ipcRenderer.invoke('smart-query', query),
   onSmartQueryChunk: (callback: (data: { queryId: string; text: string }) => void) => {

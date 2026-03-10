@@ -1331,6 +1331,11 @@ export interface ElectronAPI {
   getGoalRepoInfo: (goalId: string) => Promise<{ path: string; commitCount: number; fileCount: number; sizeBytes: number } | null>
   extractGoalLearnings: (goalId: string) => Promise<{ memoriesCreated: number; memories: Memory[] }>
 
+  // Orchestrator control
+  stopOrchestrator: (id: string) => Promise<void>
+  isOrchestratorRunning: (id: string) => Promise<boolean>
+  onOrchestratorOutput: (callback: (data: { id: string; line: string }) => void) => () => void
+
   // Smart Query
   smartQuery: (query: string) => Promise<{ queryId: string }>
   onSmartQueryChunk: (callback: (data: { queryId: string; text: string }) => void) => () => void

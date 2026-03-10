@@ -214,6 +214,11 @@ export function installElectronMock() {
     getGoalRepoInfo: async () => null,
     extractGoalLearnings: async () => ({ memoriesCreated: 0, memories: [] }),
 
+    // Orchestrator
+    stopOrchestrator: noop as any,
+    isOrchestratorRunning: async () => false,
+    onOrchestratorOutput: noopUnsub as any,
+
     // Smart Query
     smartQuery: async () => ({ queryId: '' }),
     onSmartQueryChunk: noopUnsub as any,
