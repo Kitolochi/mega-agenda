@@ -12,6 +12,7 @@ import { scaffoldDomainFolders } from './ipc/system'
 import { runDueRoutines, runAppLaunchRoutines } from './routines'
 import { runDueAgentHeartbeats, pollAgentSessions, setLaunchFn } from './agents'
 import { setAgentLaunchFn } from './ipc/agents'
+import { killAllOrchestrators } from './orchestrator'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -294,6 +295,7 @@ app.whenReady().then(() => {
 })
 
 app.on('before-quit', () => {
+  killAllOrchestrators()
   if (tray) {
     tray.destroy()
     tray = null
