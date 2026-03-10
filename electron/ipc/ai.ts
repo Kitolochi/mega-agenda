@@ -1,15 +1,14 @@
 import { ipcMain, BrowserWindow } from 'electron'
 import path from 'path'
 import fs from 'fs'
-import { spawn, execSync } from 'child_process'
-import { app } from 'electron'
+import { execSync } from 'child_process'
 import { getClaudeApiKey, saveClaudeApiKey, getLLMSettings, saveLLMSettings, getRoadmapGoals, updateRoadmapGoal, getMasterPlan, saveMasterPlan, clearMasterPlan, getMasterPlanTasks, createMasterPlanTask, updateMasterPlanTask, clearMasterPlanTasks, getCategories, getWeeklyReviewData, addGoalActivity } from '../database'
 import { summarizeAI, summarizeGeo, verifyClaudeKey, parseVoiceCommand } from '../summarize'
 import { verifyLLMKey, PROVIDER_MODELS, PROVIDER_CHAT_MODELS, getCurrentModelInfo, isLLMConfigured } from '../llm'
 import { researchTopicSmart, generateActionPlan, generateTopics, categorizeTopics, generateMasterPlan, findClaudeCli, generateContextQuestions, extractTasksFromPlan, extractTasksFromActionPlan, saveMasterPlanFile } from '../research'
-import { findSessionByPromptFragment } from '../cli-logs'
 import { extractMemoriesFromAgentResult } from '../memory'
 import { streamSmartQuery } from '../smart-query'
+import { buildOrchestratorPrompt, buildDailyPlanPrompt, launchOrchestrator, stopOrchestrator, isOrchestratorRunning, OrchestratorTask } from '../orchestrator'
 
 let researchAborted = false
 
@@ -580,46 +579,47 @@ export function registerAIHandlers(mainWindow: BrowserWindow) {
       ? allTasks.filter(t => taskIds.includes(t.id) && t.status === 'pending')
       : allTasks.filter(t => t.status === 'pending').slice(0, 10)
 
-    const launched: string[] = []
+    if (tolaunch.length === 0) return { launched: 0, taskIds: [] }
+
     const workingDir = process.env.USERPROFILE || '.'
-    const env = { ...process.env }
-    delete env.CLAUDECODE
+    const prompt = buildDailyPlanPrompt(
+      tolaunch.map(t => ({ title: t.title, description: t.description }))
+    )
 
-    const tmpDir = path.join(app.getPath('temp'), 'mega-agenda')
-    fs.mkdirSync(tmpDir, { recursive: true })
-
-    for (const task of tolaunch.slice(0, 10)) {
-      const safePrompt = `[Master Plan Task] ${task.title}: ${task.description}`.replace(/%/g, '%%').replace(/"/g, "'").replace(/[&|<>^]/g, '^$&')
-      const batFile = path.join(tmpDir, `plan-${task.id}-${Date.now()}.bat`)
-      fs.writeFileSync(batFile, [
-        '@echo off',
-        `cd /d "${workingDir}"`,
-        `npx --yes @anthropic-ai/claude-code --dangerously-skip-permissions --allowedTools "Bash(*)" "Edit(*)" "Write(*)" "Read(*)" "Glob(*)" "Grep(*)" "WebFetch(*)" "WebSearch(*)" -- "${safePrompt}"`,
-      ].join('\r\n'))
-      const child = spawn('cmd.exe', ['/c', 'start', `"${task.title.slice(0, 40)}"`, 'cmd', '/k', batFile], {
-        detached: true,
-        stdio: 'ignore',
-        env,
-      })
-      child.unref()
-
+    const launched: string[] = []
+    for (const task of tolaunch) {
       updateMasterPlanTask(task.id, { status: 'launched', launchedAt: new Date().toISOString() })
       launched.push(task.id)
     }
+
+    launchOrchestrator(
+      'daily-plan',
+      prompt,
+      workingDir,
+      (line) => mainWindow?.webContents.send('orchestrator-output', { id: 'daily-plan', line }),
+      (_code) => {
+        // On exit, mark any still-launched tasks as failed
+        const freshTasks = getMasterPlanTasks()
+        for (const t of freshTasks) {
+          if (t.status === 'launched' || t.status === 'running') {
+            updateMasterPlanTask(t.id, { status: 'failed', completedAt: new Date().toISOString() })
+          }
+        }
+      },
+    )
 
     return { launched: launched.length, taskIds: launched }
   })
 
   ipcMain.handle('poll-task-sessions', async () => {
     const tasks = getMasterPlanTasks()
-    const needsMatch = tasks.filter(t => (t.status === 'launched' || t.status === 'running') && !t.sessionId)
 
-    for (const task of needsMatch) {
-      if (!task.launchedAt) continue
-      const fragment = task.title.slice(0, 40)
-      const sessionId = await findSessionByPromptFragment(fragment, task.launchedAt)
-      if (sessionId) {
-        updateMasterPlanTask(task.id, { sessionId, status: 'running' })
+    // Update launched tasks to running if orchestrator is active
+    if (isOrchestratorRunning('daily-plan')) {
+      for (const task of tasks) {
+        if (task.status === 'launched') {
+          updateMasterPlanTask(task.id, { status: 'running' })
+        }
       }
     }
 
@@ -720,64 +720,62 @@ export function registerAIHandlers(mainWindow: BrowserWindow) {
 
     fs.writeFileSync(workspaceFile, workspaceContent, 'utf-8')
 
-    const launched: string[] = []
-    const env = { ...process.env }
-    delete env.CLAUDECODE
-
-    const tmpDir = path.join(app.getPath('temp'), 'mega-agenda')
-    fs.mkdirSync(tmpDir, { recursive: true })
-
-    for (const task of tolaunch.slice(0, 10)) {
+    // Build orchestrator task list
+    const orchTasks: OrchestratorTask[] = tolaunch.slice(0, 10).map(task => {
       const taskSlug = slugify(task.title).slice(0, 50)
-      const agentResultFile = path.join(agentResultsDir, `${taskSlug}.md`)
-      const agentConfig = getAgentConfig((task as any).taskType)
-      const promptLines = [
-        agentConfig.preamble,
-        '',
-        `[Goal Task: ${task.goalTitle}]`,
-        '',
-        `YOUR TASK: ${task.title}`,
-        task.description,
-        '',
-        'BEFORE YOU START:',
-        `1. Run "git log --oneline -10" to see what previous agents have already committed`,
-        `2. Run "ls" or "dir" to see what files already exist in the repo`,
-        '3. Read any existing files relevant to your task so you BUILD ON prior work, not duplicate it',
-        '',
-        'WORKSPACE COORDINATION:',
-        `4. Read the shared workspace for context: ${workspaceFile}`,
-        `5. Check other agents' results in: ${agentResultsDir}`,
-        `6. Save files you create to: ${deliverablesDir}`,
-        `7. When done, write your result summary to: ${agentResultFile}`,
-        '   Use this format:',
-        `   # Task: ${task.title}`,
-        '   **Status:** completed',
-        '   **Files created:** (list each file path)',
-        '   **Summary:** (what you accomplished)',
-        '8. Create real, usable files - code, templates, scripts, plans',
-        '',
-        'GIT WORKFLOW:',
-        `Your working directory is a git repo at: ${repoDir}`,
-        'Commit your work with a descriptive commit message when done.',
-        `Use: git add -A && git commit -m "your message"`,
-      ].join('\n')
-      const safePrompt = promptLines.replace(/%/g, '%%').replace(/"/g, "'").replace(/[&|<>^]/g, '^$&')
-      const batFile = path.join(tmpDir, `goal-${task.id}-${Date.now()}.bat`)
-      fs.writeFileSync(batFile, [
-        '@echo off',
-        `cd /d "${repoDir}"`,
-        `npx --yes @anthropic-ai/claude-code --dangerously-skip-permissions --allowedTools ${agentConfig.allowedTools} -- "${safePrompt}"`,
-      ].join('\r\n'))
-      const child = spawn('cmd.exe', ['/c', 'start', '""', 'cmd', '/k', batFile], {
-        detached: true,
-        stdio: 'ignore',
-        env,
-      })
-      child.unref()
+      return {
+        title: task.title,
+        description: task.description,
+        priority: task.priority,
+        taskType: (task as any).taskType,
+        resultFile: path.join(agentResultsDir, `${taskSlug}.md`),
+      }
+    })
 
+    const orchPrompt = buildOrchestratorPrompt({
+      id: `goal-${goalId}`,
+      goalTitle: goal?.title || goalId,
+      tasks: orchTasks,
+      workspaceFile,
+      repoDir,
+      deliverablesDir,
+      agentResultsDir,
+    })
+
+    // Mark all tasks as launched
+    const launched: string[] = []
+    for (const task of tolaunch.slice(0, 10)) {
       updateMasterPlanTask(task.id, { status: 'launched', launchedAt: new Date().toISOString() })
       launched.push(task.id)
     }
+
+    // Launch single headless orchestrator
+    launchOrchestrator(
+      `goal-${goalId}`,
+      orchPrompt,
+      repoDir,
+      (line) => mainWindow?.webContents.send('orchestrator-output', { id: `goal-${goalId}`, line }),
+      (_code) => {
+        // On exit, check result files and mark remaining active tasks as failed
+        const freshTasks = getMasterPlanTasks(planDate)
+        for (const task of freshTasks) {
+          if (task.status === 'launched' || task.status === 'running') {
+            const taskSlug = slugify(task.title).slice(0, 50)
+            const resultFile = path.join(agentResultsDir, `${taskSlug}.md`)
+            try {
+              if (fs.existsSync(resultFile)) {
+                const content = fs.readFileSync(resultFile, 'utf-8')
+                if (content.includes('**Status:** completed')) {
+                  updateMasterPlanTask(task.id, { status: 'completed', completedAt: new Date().toISOString() })
+                  continue
+                }
+              }
+            } catch {}
+            updateMasterPlanTask(task.id, { status: 'failed', completedAt: new Date().toISOString() })
+          }
+        }
+      },
+    )
 
     if (launched.length > 0) {
       addGoalActivity(goalId, 'tasks_launched', `Launched ${launched.length} task${launched.length !== 1 ? 's' : ''}`)
@@ -787,19 +785,18 @@ export function registerAIHandlers(mainWindow: BrowserWindow) {
 
   ipcMain.handle('poll-goal-task-sessions', async (_, goalId: string) => {
     const planDate = `goal-${goalId}`
-    const tasks = getMasterPlanTasks(planDate)
-    const needsMatch = tasks.filter(t => (t.status === 'launched' || t.status === 'running') && !t.sessionId)
 
-    for (const task of needsMatch) {
-      if (!task.launchedAt) continue
-      const fragment = task.title.slice(0, 40)
-      const sessionId = await findSessionByPromptFragment(fragment, task.launchedAt)
-      if (sessionId) {
-        updateMasterPlanTask(task.id, { sessionId, status: 'running' })
+    // Update launched tasks to running if orchestrator is active
+    if (isOrchestratorRunning(`goal-${goalId}`)) {
+      const tasks = getMasterPlanTasks(planDate)
+      for (const task of tasks) {
+        if (task.status === 'launched') {
+          updateMasterPlanTask(task.id, { status: 'running' })
+        }
       }
     }
 
-    // Auto-completion detection
+    // Auto-completion detection via result files
     const goals = getRoadmapGoals()
     const goal = goals.find((g: any) => g.id === goalId)
     if (goal) {
@@ -823,6 +820,15 @@ export function registerAIHandlers(mainWindow: BrowserWindow) {
   })
 
   // Goal git log
+  // Orchestrator control
+  ipcMain.handle('stop-orchestrator', async (_, id: string) => {
+    stopOrchestrator(id)
+  })
+
+  ipcMain.handle('is-orchestrator-running', async (_, id: string) => {
+    return isOrchestratorRunning(id)
+  })
+
   ipcMain.handle('get-goal-git-log', async (_, goalId: string) => {
     const goals = getRoadmapGoals()
     const goal = goals.find((g: any) => g.id === goalId)
