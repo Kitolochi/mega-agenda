@@ -8,6 +8,7 @@ import type {
 
 type SubView = 'overview' | 'tools' | 'velocity' | 'sessions' | 'insights'
 type DateRange = 7 | 30 | 90 | null // null = all time
+type AVProcessStatus = 'running' | 'stopped' | 'not-installed'
 
 interface SessionsState {
   subView: SubView
@@ -18,6 +19,8 @@ interface SessionsState {
   dateRange: DateRange
   syncing: boolean
   generatingInsights: boolean
+  processStatus: AVProcessStatus
+  startingProcess: boolean
 
   // Filters
   projectFilter: string | null
@@ -67,6 +70,9 @@ interface SessionsState {
   searchMessages: (q: string) => Promise<void>
   loadSessionChildren: (id: string) => Promise<void>
   exportSession: (id: string) => Promise<string>
+  checkProcessStatus: () => Promise<void>
+  startProcess: () => Promise<void>
+  stopProcess: () => Promise<void>
 }
 
 export const useSessionsStore = create<SessionsState>((set, get) => ({
@@ -78,6 +84,8 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
   dateRange: null,
   syncing: false,
   generatingInsights: false,
+  processStatus: 'stopped',
+  startingProcess: false,
 
   projectFilter: null,
   searchQuery: '',
@@ -146,6 +154,7 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
 
   loadAll: async () => {
     set({ loading: true, error: null })
+    await get().checkProcessStatus()
     const ok = await get().checkOnline()
     if (!ok) {
       set({ loading: false })
@@ -331,5 +340,35 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
 
   exportSession: async (id) => {
     return window.electronAPI.avExportSession(id)
+  },
+
+  checkProcessStatus: async () => {
+    try {
+      const processStatus = await window.electronAPI.avProcessStatus()
+      set({ processStatus })
+    } catch {
+      set({ processStatus: 'stopped' })
+    }
+  },
+
+  startProcess: async () => {
+    set({ startingProcess: true, error: null })
+    try {
+      const ok = await window.electronAPI.avProcessStart()
+      set({ startingProcess: false, processStatus: ok ? 'running' : 'stopped' })
+      if (ok) {
+        await get().checkOnline()
+        get().loadAll()
+      }
+    } catch (e: any) {
+      set({ startingProcess: false, error: e.message || 'Failed to start AgentsView' })
+    }
+  },
+
+  stopProcess: async () => {
+    try {
+      await window.electronAPI.avProcessStop()
+      set({ online: false, processStatus: 'stopped' })
+    } catch {}
   },
 }))
