@@ -795,7 +795,7 @@ export interface PipelineCard {
 }
 
 // Social Connector Types
-export type SocialProvider = 'telegram' | 'discord' | 'twitter' | 'sms'
+export type SocialProvider = 'telegram' | 'discord' | 'twitter' | 'sms' | 'chatgpt'
 export type SocialConnectionStatus = 'connected' | 'disconnected' | 'syncing' | 'error'
 
 export interface SocialConnection {
@@ -1433,6 +1433,12 @@ export interface ElectronAPI {
   smsDetectDb: () => Promise<{ found: boolean; path: string | null }>
   getSocialSyncStatus: (connectionId: string) => Promise<{ status: SocialConnectionStatus; lastSyncAt: string | null }>
   twitterSyncContacts: () => Promise<{ newContacts: number; newInteractions: number }>
+
+  // ChatGPT OAuth
+  chatgptOAuthStart: () => Promise<{ connected: boolean; profile: { sub: string; name: string; email: string } }>
+  chatgptOAuthDisconnect: () => Promise<void>
+  chatgptOAuthStatus: () => Promise<{ connected: boolean; profile?: { sub: string; name: string; email: string }; expiresAt?: string }>
+  chatgptOAuthRefresh: () => Promise<{ refreshed: boolean }>
 
   // Content Writer
   getContentDrafts: () => Promise<ContentDraft[]>

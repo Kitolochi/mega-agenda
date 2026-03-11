@@ -376,6 +376,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getSocialSyncStatus: (connectionId: string) => ipcRenderer.invoke('social-get-sync-status', connectionId),
   twitterSyncContacts: () => ipcRenderer.invoke('social-twitter-sync-contacts'),
 
+  // ChatGPT OAuth
+  chatgptOAuthStart: () => ipcRenderer.invoke('chatgpt-oauth-start'),
+  chatgptOAuthDisconnect: () => ipcRenderer.invoke('chatgpt-oauth-disconnect'),
+  chatgptOAuthStatus: () => ipcRenderer.invoke('chatgpt-oauth-status'),
+  chatgptOAuthRefresh: () => ipcRenderer.invoke('chatgpt-oauth-refresh'),
+
   // Content Writer
   getContentDrafts: () => ipcRenderer.invoke('get-content-drafts'),
   getContentDraft: (id: string) => ipcRenderer.invoke('get-content-draft', id),

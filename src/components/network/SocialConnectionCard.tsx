@@ -9,6 +9,7 @@ const PROVIDER_META: Record<SocialProvider, { name: string; icon: string; color:
   discord: { name: 'Discord', icon: '🎮', color: '#5865F2', badgeVariant: 'purple' },
   twitter: { name: 'Twitter', icon: '𝕏', color: '#1DA1F2', badgeVariant: 'blue' },
   sms: { name: 'SMS', icon: '💬', color: '#22C55E', badgeVariant: 'emerald' },
+  chatgpt: { name: 'ChatGPT', icon: '🤖', color: '#10a37f', badgeVariant: 'emerald' },
 }
 
 const PROVIDER_SETUP_INFO: Record<SocialProvider, { title: string; steps: string[]; note?: string }> = {
@@ -52,6 +53,13 @@ const PROVIDER_SETUP_INFO: Record<SocialProvider, { title: string; steps: string
       'Telegram sends a verification code to your Telegram app — enter it to connect.',
     ],
     note: 'Your session is saved locally so you only need to verify once. Sync pulls your contacts and recent DMs.',
+  },
+  chatgpt: {
+    title: 'ChatGPT Account',
+    steps: [
+      'Use the Settings → ChatGPT Account section to sign in.',
+      'This connection is managed automatically via OAuth.',
+    ],
   },
 }
 

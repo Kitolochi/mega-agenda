@@ -306,7 +306,7 @@ export interface BankTransaction {
   importedAt: string
 }
 
-type SocialProvider = 'telegram' | 'discord' | 'twitter' | 'sms'
+type SocialProvider = 'telegram' | 'discord' | 'twitter' | 'sms' | 'chatgpt'
 type SocialConnectionStatus = 'connected' | 'disconnected' | 'syncing' | 'error'
 
 interface SocialConnection {

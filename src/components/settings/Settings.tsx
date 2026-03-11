@@ -1,4 +1,5 @@
 import AIProviderSettings from './AIProviderSettings'
+import ChatGPTSettings from './ChatGPTSettings'
 import CategoryManager from './CategoryManager'
 import TwitterSettings from './TwitterSettings'
 import FeedSettings from './FeedSettings'
@@ -29,6 +30,9 @@ export default function Settings() {
 
       {/* AI Provider */}
       <AIProviderSettings />
+
+      {/* ChatGPT Account */}
+      <ChatGPTSettings />
 
       {/* Keyboard Shortcuts */}
       <div className="mb-6 animate-stagger-in" style={{ animationDelay: '120ms' }}>
