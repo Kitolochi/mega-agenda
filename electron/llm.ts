@@ -1,6 +1,7 @@
 import https from 'https'
 import http from 'http'
 import { getLLMSettings, getClaudeApiKey, LLMSettings } from './database'
+import { searchAndGather } from './web-search'
 
 // --- Provider Model Registry ---
 
@@ -444,8 +445,14 @@ export async function callLLMWithWebSearch(options: LLMWebSearchOptions): Promis
     return callAnthropic(apiKey, body, timeout)
   }
 
-  // Non-Claude providers: fall back to regular callLLM (no web search)
-  return callLLM(options)
+  // Non-Claude providers: search with DuckDuckGo, inject results as context
+  const messages = buildMessages(options)
+  const userMsg = messages.find(m => m.role === 'user')
+  if (userMsg) {
+    const searchContext = await searchAndGather(userMsg.content, options.maxSearches || 3)
+    userMsg.content = `${searchContext}\n\n---\n\nBased on the search results above, answer: ${userMsg.content}`
+  }
+  return callLLM({ ...options, messages })
 }
 
 // --- Streaming ---
