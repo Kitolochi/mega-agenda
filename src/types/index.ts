@@ -170,7 +170,7 @@ export interface ChatSettings {
   customSystemPrompt?: string
 }
 
-export type LLMProvider = 'claude' | 'gemini' | 'groq' | 'openrouter'
+export type LLMProvider = 'claude' | 'gemini' | 'groq' | 'openrouter' | 'chatgpt' | 'claudeProxy'
 
 export interface LLMSettings {
   provider: LLMProvider

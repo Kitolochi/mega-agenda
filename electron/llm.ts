@@ -1,4 +1,5 @@
 import https from 'https'
+import http from 'http'
 import { getLLMSettings, getClaudeApiKey, LLMSettings } from './database'
 
 // --- Provider Model Registry ---
@@ -40,6 +41,25 @@ export const PROVIDER_MODELS: Record<string, { primary: { id: string; name: stri
       { id: 'meta-llama/llama-3.1-8b-instruct', name: 'Llama 3.1 8B' },
     ],
   },
+  chatgpt: {
+    primary: [
+      { id: 'gpt-5.3-codex', name: 'GPT 5.3' },
+      { id: 'gpt-5.2-codex', name: 'GPT 5.2' },
+    ],
+    fast: [
+      { id: 'gpt-5.2-codex', name: 'GPT 5.2' },
+    ],
+  },
+  claudeProxy: {
+    primary: [
+      { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' },
+      { id: 'claude-opus-4-6', name: 'Claude Opus 4.6' },
+    ],
+    fast: [
+      { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5' },
+      { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' },
+    ],
+  },
 }
 
 // All models available for the chat dropdown per provider
@@ -61,6 +81,15 @@ export const PROVIDER_CHAT_MODELS: Record<string, { id: string; name: string }[]
     { id: 'meta-llama/llama-3.3-70b-instruct', name: 'Llama 3.3 70B' },
     { id: 'google/gemini-2.5-flash-preview', name: 'Gemini 2.5 Flash' },
     { id: 'meta-llama/llama-3.1-8b-instruct', name: 'Llama 3.1 8B' },
+  ],
+  chatgpt: [
+    { id: 'gpt-5.3-codex', name: 'GPT 5.3' },
+    { id: 'gpt-5.2-codex', name: 'GPT 5.2' },
+  ],
+  claudeProxy: [
+    { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' },
+    { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5' },
+    { id: 'claude-opus-4-6', name: 'Claude Opus 4.6' },
   ],
 }
 
@@ -104,6 +133,8 @@ function getApiKeyForProvider(settings: LLMSettings): string {
     case 'gemini': return settings.geminiApiKey
     case 'groq': return settings.groqApiKey
     case 'openrouter': return settings.openrouterApiKey
+    case 'chatgpt': return 'proxy'
+    case 'claudeProxy': return 'proxy'
   }
 }
 
@@ -229,6 +260,106 @@ function callOpenAICompat(hostname: string, path: string, apiKey: string, body: 
   })
 }
 
+// --- Local Proxy Adapter (ccproxy on localhost:8741) ---
+
+function callLocalProxy(path: string, body: object, timeout: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const payload = JSON.stringify(body)
+    const req = http.request({
+      hostname: '127.0.0.1',
+      port: 8741,
+      path,
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'content-length': Buffer.byteLength(payload)
+      }
+    }, (res) => {
+      let data = ''
+      res.on('data', (chunk: string) => { data += chunk })
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data)
+          if (res.statusCode && res.statusCode >= 400) {
+            reject(new Error(parsed.error?.message || `Proxy error ${res.statusCode}`))
+          } else {
+            const text = parsed.choices?.[0]?.message?.content || ''
+            resolve(text.replace(/<thinking>[\s\S]*?<\/thinking>/g, '').trim())
+          }
+        } catch { reject(new Error('Failed to parse proxy response')) }
+      })
+    })
+    req.on('error', (err: NodeJS.ErrnoException) => {
+      if (err.code === 'ECONNREFUSED') reject(new Error('LLM proxy not running. Start with: ccproxy serve'))
+      else reject(err)
+    })
+    req.setTimeout(timeout, () => { req.destroy(); reject(new Error('Proxy timeout')) })
+    req.write(payload)
+    req.end()
+  })
+}
+
+function streamLocalProxy(path: string, body: object, timeout: number, cb: StreamCallbacks): { abort: () => void } {
+  const payload = JSON.stringify({ ...body as any, stream: true })
+  const req = http.request({
+    hostname: '127.0.0.1',
+    port: 8741,
+    path,
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'content-length': Buffer.byteLength(payload)
+    }
+  }, (res) => {
+    if (res.statusCode && res.statusCode >= 400) {
+      let errorData = ''
+      res.on('data', (chunk: Buffer) => { errorData += chunk.toString() })
+      res.on('end', () => {
+        let errorMsg = `Proxy error ${res.statusCode}`
+        try { const parsed = JSON.parse(errorData); errorMsg = parsed.error?.message || errorMsg } catch {}
+        cb.onError(errorMsg)
+      })
+      return
+    }
+
+    let buffer = ''
+    let model = ''
+
+    res.on('data', (chunk: Buffer) => {
+      buffer += chunk.toString()
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const jsonStr = line.slice(6).trim()
+          if (!jsonStr || jsonStr === '[DONE]') continue
+          try {
+            const event = JSON.parse(jsonStr)
+            if (!model && event.model) model = event.model
+            const text = event.choices?.[0]?.delta?.content
+            if (text) cb.onData(text)
+          } catch { /* skip */ }
+        }
+      }
+    })
+
+    res.on('end', () => {
+      cb.onEnd({ model: model || 'unknown', usage: { input: 0, output: 0 } })
+    })
+  })
+
+  req.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'ECONNREFUSED') cb.onError('LLM proxy not running. Start with: ccproxy serve')
+    else cb.onError(err.message || 'Network error')
+  })
+  req.setTimeout(timeout, () => { req.destroy(); cb.onError('Proxy timeout') })
+  req.write(payload)
+  req.end()
+
+  return { abort: () => req.destroy() }
+}
+
 // --- Main callLLM ---
 
 export async function callLLM(options: LLMCallOptions): Promise<string> {
@@ -274,6 +405,20 @@ export async function callLLM(options: LLMCallOptions): Promise<string> {
         : messages
       const body = { model, max_tokens: maxTokens, messages: msgs }
       return callOpenAICompat('openrouter.ai', '/api/v1/chat/completions', apiKey, body, timeout)
+    }
+    case 'chatgpt': {
+      const msgs = options.system
+        ? [{ role: 'system', content: options.system }, ...messages]
+        : messages
+      const body = { model, max_tokens: maxTokens, messages: msgs }
+      return callLocalProxy('/codex/v1/chat/completions', body, timeout)
+    }
+    case 'claudeProxy': {
+      const msgs = options.system
+        ? [{ role: 'system', content: options.system }, ...messages]
+        : messages
+      const body = { model, max_tokens: maxTokens, messages: msgs }
+      return callLocalProxy('/claude/v1/chat/completions', body, timeout)
     }
   }
 }
@@ -536,6 +681,20 @@ export function streamLLM(options: LLMCallOptions, callbacks: StreamCallbacks): 
       const body = { model, max_tokens: maxTokens, messages: msgs }
       return streamOpenAICompat('openrouter.ai', '/api/v1/chat/completions', apiKey, body, timeout, callbacks)
     }
+    case 'chatgpt': {
+      const msgs = options.system
+        ? [{ role: 'system', content: options.system }, ...messages]
+        : messages
+      const body = { model, max_tokens: maxTokens, messages: msgs }
+      return streamLocalProxy('/codex/v1/chat/completions', body, timeout, callbacks)
+    }
+    case 'claudeProxy': {
+      const msgs = options.system
+        ? [{ role: 'system', content: options.system }, ...messages]
+        : messages
+      const body = { model, max_tokens: maxTokens, messages: msgs }
+      return streamLocalProxy('/claude/v1/chat/completions', body, timeout, callbacks)
+    }
   }
 }
 
@@ -562,6 +721,16 @@ export async function verifyLLMKey(provider: string, key: string): Promise<{ val
       case 'openrouter': {
         const body = { model: 'meta-llama/llama-3.1-8b-instruct', max_tokens: 10, messages: [{ role: 'user', content: 'Say ok' }] }
         await callOpenAICompat('openrouter.ai', '/api/v1/chat/completions', key, body, 15000)
+        return { valid: true }
+      }
+      case 'chatgpt': {
+        const body = { model: 'gpt-5.3-codex', max_tokens: 10, messages: [{ role: 'user', content: 'Say ok' }] }
+        await callLocalProxy('/codex/v1/chat/completions', body, 15000)
+        return { valid: true }
+      }
+      case 'claudeProxy': {
+        const body = { model: 'claude-sonnet-4-6', max_tokens: 10, messages: [{ role: 'user', content: 'Say ok' }] }
+        await callLocalProxy('/claude/v1/chat/completions', body, 15000)
         return { valid: true }
       }
       default:

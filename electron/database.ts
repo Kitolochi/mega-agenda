@@ -260,7 +260,7 @@ interface MemorySettings {
 }
 
 export interface LLMSettings {
-  provider: 'claude' | 'gemini' | 'groq' | 'openrouter'
+  provider: 'claude' | 'gemini' | 'groq' | 'openrouter' | 'chatgpt' | 'claudeProxy'
   geminiApiKey: string
   groqApiKey: string
   openrouterApiKey: string

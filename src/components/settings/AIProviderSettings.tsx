@@ -6,6 +6,8 @@ const PROVIDER_INFO: Record<string, { label: string; color: string; helpUrl: str
   gemini: { label: 'Gemini', color: '#4285f4', helpUrl: 'ai.google.dev', helpText: 'Free tier with generous limits' },
   groq: { label: 'Groq', color: '#f55036', helpUrl: 'console.groq.com', helpText: 'Free tier, very fast inference' },
   openrouter: { label: 'OpenRouter', color: '#8b5cf6', helpUrl: 'openrouter.ai', helpText: 'Access many models, some free' },
+  chatgpt: { label: 'ChatGPT', color: '#10a37f', helpUrl: '', helpText: 'Uses ChatGPT Plus via local proxy' },
+  claudeProxy: { label: 'Claude Pro', color: '#d97706', helpUrl: '', helpText: 'Uses Claude Pro via local proxy' },
 }
 
 const inputClass = "w-full bg-surface-2 border border-white/[0.06] rounded-lg px-3 py-2 text-sm text-white/90 focus:outline-none focus:border-accent-blue/40 focus:bg-surface-3 transition-all placeholder-muted/50"
@@ -57,6 +59,7 @@ export default function AIProviderSettings() {
   }
 
   const isProviderReady = (provider: string): boolean => {
+    if (provider === 'chatgpt' || provider === 'claudeProxy') return true
     if (provider === 'claude') return !!apiKey
     if (!llmSettings) return false
     if (provider === 'gemini') return !!llmSettings.geminiApiKey
@@ -92,7 +95,7 @@ export default function AIProviderSettings() {
 
         {/* Provider tabs */}
         <div className="flex border-b border-white/[0.06]">
-          {(['claude', 'gemini', 'groq', 'openrouter'] as LLMProvider[]).map(p => {
+          {(['claude', 'gemini', 'groq', 'openrouter', 'chatgpt', 'claudeProxy'] as LLMProvider[]).map(p => {
             const info = PROVIDER_INFO[p]
             const isActive = llmSettings.provider === p
             const hasKey = isProviderReady(p)
@@ -135,7 +138,16 @@ export default function AIProviderSettings() {
         {/* Provider config area */}
         <div className="p-4 space-y-3">
           {/* API Key section */}
-          {activeProvider === 'claude' ? (
+          {(activeProvider === 'chatgpt' || activeProvider === 'claudeProxy') ? (
+            <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-surface-2/60">
+              <svg className="w-3.5 h-3.5 text-accent-emerald shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+              <span className="text-[11px] text-white/60 flex-1">
+                {activeProvider === 'chatgpt' ? 'Uses ChatGPT Plus subscription via local proxy (port 8741)' : 'Uses Claude Pro subscription via local proxy (port 8741)'}
+              </span>
+            </div>
+          ) : activeProvider === 'claude' ? (
             <div>
               {apiKey ? (
                 <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-surface-2/60">
