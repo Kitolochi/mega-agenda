@@ -1,5 +1,7 @@
 import { ipcMain } from 'electron'
 import http from 'http'
+import path from 'path'
+import fs from 'fs'
 import { startAVProcess, stopAVProcess, getAVProcessStatus } from '../agentsview-process'
 
 const AV_BASE = 'http://127.0.0.1:8090/api/v1'
@@ -128,8 +130,28 @@ export function registerAgentsViewHandlers() {
   // Write operations
   ipcMain.handle('av-sync', (_, full?: boolean) =>
     avPost('sync', full ? { full: true } : undefined, 120000))
-  ipcMain.handle('av-generate-insights', (_, type: string, dateFrom: string, dateTo: string) =>
-    avPost('insights/generate', { type, date_from: dateFrom, date_to: dateTo }, 60000))
+  ipcMain.handle('av-generate-insights', async (_, type: string, dateFrom: string, dateTo: string) => {
+    const result = await avPost('insights/generate', { type, date_from: dateFrom, date_to: dateTo }, 60000)
+
+    // Save to context library so knowledge pack can index it
+    try {
+      const insights = await avFetch('insights') as any[]
+      if (insights && insights.length > 0) {
+        const latest = insights[insights.length - 1]
+        if (latest?.content) {
+          const homeDir = process.env.USERPROFILE || process.env.HOME || ''
+          const insightsDir = path.join(homeDir, '.claude', 'memory', 'insights')
+          if (!fs.existsSync(insightsDir)) fs.mkdirSync(insightsDir, { recursive: true })
+          const dateSlug = `${dateFrom}${dateTo !== dateFrom ? '_to_' + dateTo : ''}`
+          const filename = `${type}-${dateSlug}.md`
+          const header = `# ${type === 'daily_activity' ? 'Activity Summary' : 'Agent Analysis'} — ${dateFrom}${dateTo !== dateFrom ? ' to ' + dateTo : ''}\n\n`
+          fs.writeFileSync(path.join(insightsDir, filename), header + latest.content, 'utf-8')
+        }
+      }
+    } catch { /* don't fail the main operation if context save fails */ }
+
+    return result
+  })
 
   // Process management
   ipcMain.handle('av-process-start', async () => {
