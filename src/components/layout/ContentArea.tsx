@@ -24,6 +24,7 @@ import OutreachTab from '../OutreachTab'
 import CalendarTab from '../CalendarTab'
 import AgentsTab from '../agents/AgentsTab'
 import SessionsTab from '../sessions/SessionsTab'
+import CommandCenter from '../command-center/CommandCenter'
 
 export default function ContentArea() {
   const { activeTab, selectedCategory, navigateToTab, setSelectedCategory, openAddFromCategory } = useAppStore()
@@ -48,6 +49,7 @@ export default function ContentArea() {
     if (activeTab === 'calendar') return <CalendarTab />
     if (activeTab === 'agents') return <AgentsTab />
     if (activeTab === 'sessions') return <SessionsTab />
+    if (activeTab === 'command-center') return <CommandCenter />
     if (activeTab === 'ai-tasks') return <AITasksBoard onTerminalCommand={handleTerminalCommand} />
     if (activeTab === 'social') return <SocialTab />
     if (activeTab === 'chat') return <ChatTab />

@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { Category } from '../types'
 
-type Tab = 'dashboard' | 'tasks' | 'list' | 'notes' | 'feed' | 'social' | 'chat' | 'code' | 'ai-tasks' | 'memory' | 'memories' | 'roadmap' | 'lab' | 'settings' | 'accounts' | 'network' | 'content' | 'outreach' | 'calendar' | 'agents' | 'sessions'
+type Tab = 'dashboard' | 'tasks' | 'list' | 'notes' | 'feed' | 'social' | 'chat' | 'code' | 'ai-tasks' | 'memory' | 'memories' | 'roadmap' | 'lab' | 'settings' | 'accounts' | 'network' | 'content' | 'outreach' | 'calendar' | 'agents' | 'sessions' | 'command-center'
 
 interface AppState {
   activeTab: Tab
@@ -61,6 +61,7 @@ export const TAB_GROUPS: { id: string; label: string; tabs: { id: Tab; label: st
       { id: 'content', label: 'Content' },
       { id: 'agents', label: 'Agents' },
       { id: 'sessions', label: 'Sessions' },
+      { id: 'command-center', label: 'Command', shortcut: 'x' },
       { id: 'lab', label: 'Lab' },
     ]
   },
