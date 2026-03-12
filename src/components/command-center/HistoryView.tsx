@@ -109,6 +109,7 @@ export default function HistoryView() {
   const [activeTab, setActiveTab] = useState<'cli' | 'cc'>('cc')
   const [dateFilter, setDateFilter] = useState<'all' | 'today' | '7d' | '30d'>('all')
   const [projectDescriptions, setProjectDescriptions] = useState<Record<string, string>>({})
+  const [resumeError, setResumeError] = useState<string | null>(null)
 
   useEffect(() => {
     loadHistory()
@@ -151,19 +152,17 @@ export default function HistoryView() {
   }
 
   const handleResumeSession = async (session: CLISession) => {
-    // Decode project path from encoded format: "C--Users-chris-mega-agenda" → "C:\Users\chris\mega-agenda"
-    const encoded = session.project
-    const dashDash = encoded.indexOf('--')
-    let projectPath = ''
-    if (dashDash >= 0) {
-      const drive = encoded.slice(0, dashDash)
-      const rest = encoded.slice(dashDash + 2).replace(/-/g, '\\')
-      projectPath = `${drive}:\\${rest}`
-    } else {
-      projectPath = encoded
+    // Match encoded project name against known projects
+    // Can't naively decode because hyphens in dir names (e.g. "mega-agenda") are ambiguous
+    const matchedProject = projects.find(p => pathToEncoded(p.path) === session.project)
+    if (!matchedProject) return
+    try {
+      await launch(matchedProject.path, session.firstPrompt || 'Continue where we left off.', { resumeSessionId: session.sessionId })
+      setActiveView('queue')
+    } catch (err: any) {
+      setResumeError(err.message || 'Failed to resume session')
+      setTimeout(() => setResumeError(null), 4000)
     }
-    await launch(projectPath, session.firstPrompt || 'Continue where we left off.', { resumeSessionId: session.sessionId })
-    setActiveView('queue')
   }
 
   const dateCutoff = dateFilter === 'today' ? Date.now() - 86400000
@@ -180,6 +179,11 @@ export default function HistoryView() {
 
   return (
     <div>
+      {resumeError && (
+        <div className="bg-accent-red/10 border border-accent-red/20 rounded-lg px-3 py-2 mb-3 text-[11px] text-accent-red">
+          {resumeError}
+        </div>
+      )}
       {/* Filter + Tab toggle */}
       <div className="flex items-center gap-3 mb-3">
         <select
@@ -307,10 +311,15 @@ export default function HistoryView() {
                     </span>
                     {entry.sessionId && entry.status !== 'running' && (
                       <button
-                        onClick={e => {
+                        onClick={async e => {
                           e.stopPropagation()
-                          launch(entry.projectPath, entry.prompt || 'Continue where we left off.', { resumeSessionId: entry.sessionId })
-                          setActiveView('queue')
+                          try {
+                            await launch(entry.projectPath, entry.prompt || 'Continue where we left off.', { resumeSessionId: entry.sessionId })
+                            setActiveView('queue')
+                          } catch (err: any) {
+                            setResumeError(err.message || 'Failed to resume session')
+                            setTimeout(() => setResumeError(null), 4000)
+                          }
                         }}
                         title="Resume this session"
                         className="p-1 rounded text-white/20 hover:text-accent-green hover:bg-white/[0.04] transition-colors"

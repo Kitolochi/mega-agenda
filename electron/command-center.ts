@@ -88,6 +88,15 @@ export function launchProcess(opts: {
     throw new Error('Max concurrent tasks reached (10)')
   }
 
+  // Prevent resuming a session that's already running
+  if (opts.resumeSessionId) {
+    for (const [, m] of processes) {
+      if (m.item.sessionId === opts.resumeSessionId) {
+        throw new Error('This session is already running')
+      }
+    }
+  }
+
   const processId = crypto.randomUUID()
   const projectName = path.basename(opts.projectPath)
   const projectColor = hashColor(opts.projectPath)
