@@ -18,6 +18,7 @@ import { registerRoutineHandlers } from './routines'
 import { registerAgentHandlers } from './agents'
 import { registerGuideChatHandlers } from './guide-chat'
 import { registerAgentsViewHandlers } from './agentsview'
+import { registerCommandCenterHandlers } from './command-center'
 
 export function registerAllHandlers(mainWindow: BrowserWindow) {
   registerTaskHandlers(mainWindow)
@@ -39,4 +40,5 @@ export function registerAllHandlers(mainWindow: BrowserWindow) {
   registerAgentHandlers(mainWindow)
   registerGuideChatHandlers(mainWindow)
   registerAgentsViewHandlers()
+  registerCommandCenterHandlers(mainWindow)
 }

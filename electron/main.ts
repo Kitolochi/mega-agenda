@@ -13,6 +13,7 @@ import { runDueRoutines, runAppLaunchRoutines } from './routines'
 import { runDueAgentHeartbeats, pollAgentSessions, setLaunchFn } from './agents'
 import { setAgentLaunchFn } from './ipc/agents'
 import { killAllOrchestrators } from './orchestrator'
+import { shutdownAllProcesses } from './command-center'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -295,6 +296,7 @@ app.whenReady().then(() => {
 })
 
 app.on('before-quit', () => {
+  shutdownAllProcesses()
   killAllOrchestrators()
   if (tray) {
     tray.destroy()

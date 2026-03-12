@@ -609,6 +609,26 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => { ipcRenderer.removeListener('guide-chat-error', handler) }
   },
 
+  // Command Center
+  ccLaunch: (opts: { projectPath: string; prompt: string; model?: string; maxBudget?: number }) =>
+    ipcRenderer.invoke('cc:launch', opts),
+  ccRespond: (opts: { processId: string; response: string }) =>
+    ipcRenderer.invoke('cc:respond', opts),
+  ccDismiss: (opts: { processId: string }) =>
+    ipcRenderer.invoke('cc:dismiss', opts),
+  ccKill: (opts: { processId: string }) =>
+    ipcRenderer.invoke('cc:kill', opts),
+  ccGetQueue: () => ipcRenderer.invoke('cc:get-queue'),
+  ccGetHistory: (opts?: { filter?: string; limit?: number }) =>
+    ipcRenderer.invoke('cc:get-history', opts),
+  ccGetProjects: () => ipcRenderer.invoke('cc:get-projects'),
+  ccBrowseProject: () => ipcRenderer.invoke('cc:browse-project'),
+  onCCQueueUpdate: (callback: (queue: any[]) => void) => {
+    const handler = (_: any, queue: any[]) => callback(queue)
+    ipcRenderer.on('cc:queue-update', handler)
+    return () => { ipcRenderer.removeListener('cc:queue-update', handler) }
+  },
+
   // Clipboard
   readClipboard: () => ipcRenderer.sendSync('read-clipboard'),
   writeClipboard: (text: string) => ipcRenderer.send('write-clipboard', text),
