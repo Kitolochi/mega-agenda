@@ -657,7 +657,37 @@ export function initDatabase(): Database {
   dbPath = path.join(app.getPath('userData'), 'mega-agenda.json')
 
   if (fs.existsSync(dbPath)) {
-    const data = fs.readFileSync(dbPath, 'utf-8')
+    let data = fs.readFileSync(dbPath, 'utf-8')
+
+    // Crash recovery: if file is empty/corrupt, restore from latest backup
+    if (!data || data.trim().length < 10) {
+      console.warn('[db] Database file is empty or corrupt, attempting backup recovery...')
+      const backupDir = path.join(path.dirname(dbPath), 'backups')
+      if (fs.existsSync(backupDir)) {
+        const backups = fs.readdirSync(backupDir)
+          .filter(f => f.startsWith('mega-agenda-') && f.endsWith('.json'))
+          .sort()
+          .reverse()
+        for (const backup of backups) {
+          try {
+            const backupData = fs.readFileSync(path.join(backupDir, backup), 'utf-8')
+            if (backupData.length > 100) {
+              JSON.parse(backupData) // validate it's valid JSON
+              data = backupData
+              fs.writeFileSync(dbPath, data, 'utf-8')
+              console.log(`[db] Restored from backup: ${backup}`)
+              break
+            }
+          } catch {}
+        }
+      }
+      if (!data || data.trim().length < 10) {
+        console.error('[db] No valid backup found, creating fresh database')
+        fs.unlinkSync(dbPath) // remove corrupt file, fall through to fresh creation
+      }
+    }
+
+    if (data && data.trim().length >= 10) {
     db = JSON.parse(data)
     if (!db.dailyNotes) {
       db.dailyNotes = []
@@ -691,6 +721,7 @@ export function initDatabase(): Database {
       if (dupsRemoved > 0) console.log(`[db] Removed ${dupsRemoved} duplicate bank transactions`)
     }
     saveDatabase()
+    } // end: if data valid
   } else {
     db = {
       categories: defaultCategories,
@@ -1086,8 +1117,39 @@ export function initDatabase(): Database {
   return db
 }
 
+const MAX_BACKUPS = 5
+
 function saveDatabase() {
-  fs.writeFileSync(dbPath, JSON.stringify(db, null, 2), 'utf-8')
+  const data = JSON.stringify(db, null, 2)
+  // Safety: never write empty or tiny data (corrupt state)
+  if (data.length < 50) return
+
+  // Rotate backups before writing
+  try {
+    if (fs.existsSync(dbPath)) {
+      const backupDir = path.join(path.dirname(dbPath), 'backups')
+      if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true })
+
+      // Rotate: remove oldest if at limit
+      const existing = fs.readdirSync(backupDir)
+        .filter(f => f.startsWith('mega-agenda-') && f.endsWith('.json'))
+        .sort()
+      while (existing.length >= MAX_BACKUPS) {
+        fs.unlinkSync(path.join(backupDir, existing.shift()!))
+      }
+
+      // Copy current file as timestamped backup
+      const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+      fs.copyFileSync(dbPath, path.join(backupDir, `mega-agenda-${ts}.json`))
+    }
+  } catch (err) {
+    console.error('[db] Backup failed:', err)
+  }
+
+  // Write atomically: write to temp file, then rename
+  const tmpPath = dbPath + '.tmp'
+  fs.writeFileSync(tmpPath, data, 'utf-8')
+  fs.renameSync(tmpPath, dbPath)
 }
 
 /** Get the current date string in EST/EDT (America/New_York) */
