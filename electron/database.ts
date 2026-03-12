@@ -3186,18 +3186,20 @@ export function upsertKnownProject(projectPath: string): KnownProject {
 }
 
 export function discoverProjects(): KnownProject[] {
-  const claudeProjectsDir = path.join(process.env.HOME || process.env.USERPROFILE || '', '.claude', 'projects')
+  const claudeProjectsDir = path.join(process.env.USERPROFILE || process.env.HOME || '', '.claude', 'projects')
   if (!fs.existsSync(claudeProjectsDir)) return db.knownProjects
-  const dirs = fs.readdirSync(claudeProjectsDir)
-  for (const dir of dirs) {
-    const claudeMd = path.join(claudeProjectsDir, dir, 'CLAUDE.md')
-    if (fs.existsSync(claudeMd)) {
-      const projectPath = dir.split('--').join(path.sep)
-      if (!db.knownProjects.find(p => p.path === projectPath)) {
-        db.knownProjects.push({ path: projectPath, name: path.basename(projectPath), lastUsed: 0 })
+  try {
+    const dirs = fs.readdirSync(claudeProjectsDir)
+    for (const dir of dirs) {
+      const claudeMd = path.join(claudeProjectsDir, dir, 'CLAUDE.md')
+      if (fs.existsSync(claudeMd)) {
+        const projectPath = dir.split('--').join(path.sep)
+        if (!db.knownProjects.find(p => p.path === projectPath)) {
+          db.knownProjects.push({ path: projectPath, name: path.basename(projectPath), lastUsed: 0 })
+        }
       }
     }
-  }
-  saveDatabase()
+    saveDatabase()
+  } catch {}
   return db.knownProjects
 }
