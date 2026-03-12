@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
-import { useCommandCenterStore, CCHistoryEntry } from '../../store/commandCenterStore'
+import { useCommandCenterStore } from '../../store/commandCenterStore'
 import { Badge } from '../ui'
-import { ChevronRight, Clock, DollarSign, FileEdit } from 'lucide-react'
+import { ChevronRight, DollarSign, FileEdit } from 'lucide-react'
 
 export default function HistoryView() {
-  const { history, historyFilter, projects, loadHistory, setHistoryFilter } = useCommandCenterStore()
+  const { history, historyFilter, loadHistory, setHistoryFilter } = useCommandCenterStore()
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
   useEffect(() => { loadHistory() }, [])

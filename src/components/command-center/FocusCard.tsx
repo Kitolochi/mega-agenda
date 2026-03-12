@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useCommandCenterStore, CCQueueItem } from '../../store/commandCenterStore'
 import { Button, Badge } from '../ui'
-import { ChevronRight, Send, Check, X, Loader2, FileEdit, FilePlus, Terminal } from 'lucide-react'
+import { ChevronRight, Send, Check, Loader2, FileEdit, Terminal } from 'lucide-react'
 import ConfettiOverlay from './ConfettiOverlay'
 
 export default function FocusCard({ item }: { item: CCQueueItem }) {
