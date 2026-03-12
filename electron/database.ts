@@ -548,6 +548,26 @@ export interface CostEvent {
   timestamp: string
 }
 
+export interface CCHistoryEntry {
+  id: string
+  projectPath: string
+  projectName: string
+  projectColor: string
+  prompt: string
+  summary: string
+  filesChanged: string[]
+  costUsd: number
+  turnCount: number
+  startedAt: number
+  completedAt: number
+}
+
+export interface KnownProject {
+  path: string
+  name: string
+  lastUsed: number
+}
+
 interface Database {
   categories: Category[]
   tasks: Task[]
@@ -598,6 +618,9 @@ interface Database {
   heartbeatRuns: HeartbeatRun[]
   costEvents: CostEvent[]
   agentEvents: AgentEvent[]
+  // Command Center
+  commandCenterHistory: CCHistoryEntry[]
+  knownProjects: KnownProject[]
 }
 
 let db: Database
@@ -1041,6 +1064,16 @@ export function initDatabase(): Database {
   }
   if (!Array.isArray((db as any).agentEvents)) {
     db.agentEvents = []
+    saveDatabase()
+  }
+
+  // Initialize Command Center arrays if missing
+  if (!Array.isArray((db as any).commandCenterHistory)) {
+    db.commandCenterHistory = []
+    saveDatabase()
+  }
+  if (!Array.isArray((db as any).knownProjects)) {
+    db.knownProjects = []
     saveDatabase()
   }
 
@@ -3119,4 +3152,52 @@ export function getAgentEvents(filters?: { agentId?: string; type?: AgentEvent['
   events = events.sort((a, b) => b.timestamp.localeCompare(a.timestamp))
   if (filters?.limit) events = events.slice(0, filters.limit)
   return events
+}
+
+// Command Center History
+export function addCCHistoryEntry(entry: CCHistoryEntry): CCHistoryEntry {
+  db.commandCenterHistory.push(entry)
+  saveDatabase()
+  return entry
+}
+
+export function getCCHistory(filter?: string, limit = 100): CCHistoryEntry[] {
+  let entries = db.commandCenterHistory
+  if (filter) entries = entries.filter(e => e.projectPath === filter)
+  return entries.sort((a, b) => b.completedAt - a.completedAt).slice(0, limit)
+}
+
+// Known Projects
+export function getKnownProjects(): KnownProject[] {
+  return db.knownProjects.sort((a, b) => b.lastUsed - a.lastUsed)
+}
+
+export function upsertKnownProject(projectPath: string): KnownProject {
+  const name = path.basename(projectPath)
+  const existing = db.knownProjects.find(p => p.path === projectPath)
+  if (existing) {
+    existing.lastUsed = Date.now()
+    existing.name = name
+  } else {
+    db.knownProjects.push({ path: projectPath, name, lastUsed: Date.now() })
+  }
+  saveDatabase()
+  return db.knownProjects.find(p => p.path === projectPath)!
+}
+
+export function discoverProjects(): KnownProject[] {
+  const claudeProjectsDir = path.join(process.env.HOME || process.env.USERPROFILE || '', '.claude', 'projects')
+  if (!fs.existsSync(claudeProjectsDir)) return db.knownProjects
+  const dirs = fs.readdirSync(claudeProjectsDir)
+  for (const dir of dirs) {
+    const claudeMd = path.join(claudeProjectsDir, dir, 'CLAUDE.md')
+    if (fs.existsSync(claudeMd)) {
+      const projectPath = dir.split('--').join(path.sep)
+      if (!db.knownProjects.find(p => p.path === projectPath)) {
+        db.knownProjects.push({ path: projectPath, name: path.basename(projectPath), lastUsed: 0 })
+      }
+    }
+  }
+  saveDatabase()
+  return db.knownProjects
 }
