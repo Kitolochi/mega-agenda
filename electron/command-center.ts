@@ -37,6 +37,7 @@ interface ManagedProcess {
   proc: ChildProcess
   item: CCQueueItem
   buffer: string
+  pendingPrompt?: string
 }
 
 // --- Constants ---
@@ -139,13 +140,10 @@ export function launchProcess(opts: {
   const managed: ManagedProcess = { proc, item, buffer: '' }
   processes.set(processId, managed)
 
-  // Send initial prompt (skip for resumed sessions — send follow-up instead)
+  // For resumed sessions, store the prompt and send it after the system init message
+  // For new sessions, send immediately
   if (opts.resumeSessionId) {
-    const msg = JSON.stringify({
-      type: 'user',
-      message: { role: 'user', content: opts.prompt || 'Continue where we left off.' }
-    }) + '\n'
-    proc.stdin?.write(msg)
+    managed.pendingPrompt = opts.prompt || 'Continue where we left off.'
   } else {
     const msg = JSON.stringify({
       type: 'user',
@@ -239,7 +237,7 @@ function handleMessage(processId: string, msg: any) {
 
     if (msg.subtype === 'error' || msg.is_error) {
       item.status = 'errored'
-      item.errorMessage = msg.result || 'Unknown error'
+      item.errorMessage = msg.result || msg.error || msg.message || JSON.stringify(msg).slice(0, 500)
     } else {
       item.status = 'awaiting_input'
     }
@@ -251,6 +249,16 @@ function handleMessage(processId: string, msg: any) {
     item.sessionId = msg.session_id
     updateCCHistoryEntry(item.processId, { sessionId: msg.session_id })
     notifyRenderer()
+
+    // Send pending prompt for resumed sessions (after session is loaded)
+    if (m.pendingPrompt) {
+      const userMsg = JSON.stringify({
+        type: 'user',
+        message: { role: 'user', content: m.pendingPrompt }
+      }) + '\n'
+      m.proc.stdin?.write(userMsg)
+      m.pendingPrompt = undefined
+    }
   }
 }
 
