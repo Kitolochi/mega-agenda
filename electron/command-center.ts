@@ -168,6 +168,17 @@ export function launchProcess(opts: {
     }
   })
 
+  // Flush buffer when stdout closes (ensures last message is processed)
+  proc.stdout?.on('end', () => {
+    if (managed.buffer.trim()) {
+      try {
+        const parsed = JSON.parse(managed.buffer)
+        handleMessage(processId, parsed)
+      } catch {}
+      managed.buffer = ''
+    }
+  })
+
   // Handle stderr
   let stderrBuf = ''
   proc.stderr?.on('data', (data: Buffer) => {
@@ -176,10 +187,20 @@ export function launchProcess(opts: {
     if (stderrBuf.length > 2000) stderrBuf = stderrBuf.slice(-2000)
   })
 
-  // Handle exit
+  // Handle exit — flush remaining buffer first
   proc.on('close', (code) => {
     const m = processes.get(processId)
     if (!m) return
+
+    // Flush any remaining data in the stdout buffer
+    if (m.buffer.trim()) {
+      try {
+        const parsed = JSON.parse(m.buffer)
+        handleMessage(processId, parsed)
+      } catch {}
+      m.buffer = ''
+    }
+
     if (m.item.status === 'working') {
       // Unexpected exit
       m.item.status = 'errored'
