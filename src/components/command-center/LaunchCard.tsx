@@ -36,7 +36,7 @@ export default function LaunchCard() {
   const canLaunch = projectPath && prompt.trim()
 
   return (
-    <Dialog open onClose={() => setLaunchOpen(false)}>
+    <Dialog open onClose={() => setLaunchOpen(false)} className="mt-16">
       <div className="bg-surface-1 border border-white/[0.08] rounded-xl w-[480px] p-5">
         <h2 className="text-sm font-semibold text-white/90 mb-4">New Task</h2>
 

@@ -4,12 +4,10 @@ import { Badge } from '../ui'
 import { ChevronRight, DollarSign, FileEdit } from 'lucide-react'
 
 export default function HistoryView() {
-  const { history, historyFilter, loadHistory, setHistoryFilter } = useCommandCenterStore()
+  const { history, historyFilter, projects, loadHistory, loadProjects, setHistoryFilter } = useCommandCenterStore()
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
-  useEffect(() => { loadHistory() }, [])
-
-  const uniqueProjects = [...new Set(history.map(h => h.projectName))]
+  useEffect(() => { loadHistory(); loadProjects() }, [])
 
   return (
     <div>
@@ -21,9 +19,9 @@ export default function HistoryView() {
           className="bg-surface-2 border border-white/[0.06] rounded-lg px-3 py-1.5 text-[10px] text-white/70 focus:outline-none"
         >
           <option value="">All Projects</option>
-          {uniqueProjects.map(name => (
-            <option key={name} value={history.find(h => h.projectName === name)?.projectPath || ''}>
-              {name}
+          {projects.map(p => (
+            <option key={p.path} value={p.path}>
+              {p.name}
             </option>
           ))}
         </select>

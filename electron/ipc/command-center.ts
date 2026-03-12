@@ -69,9 +69,7 @@ export function registerCommandCenterHandlers(mainWindow: BrowserWindow) {
   })
 
   ipcMain.handle('cc:get-projects', () => {
-    const projects = discoverProjects()
-    console.log('[CC] discoverProjects returned:', projects.length, 'projects', projects.map(p => p.name))
-    return projects
+    return discoverProjects()
   })
 
   ipcMain.handle('cc:browse-project', async () => {
