@@ -39,6 +39,8 @@ claude -p \
 
 The `cwd` is set to the selected project directory.
 
+**Permission note**: `--dangerously-skip-permissions` bypasses all Claude safety checks (file edits, bash commands, etc.). This is intentional — the Command Center itself is the user's approval layer. Each task is explicitly launched by the user with a specific prompt and project scope.
+
 ### Stream JSON Protocol (Verified)
 
 The CLI emits newline-delimited JSON on stdout. Tested message types:
@@ -82,7 +84,7 @@ Parsed from `message.content[]` array where items have `type: "tool_use"` and `n
 
 Each `result` message includes `total_cost_usd` and `usage` breakdown (`input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`). Per-model usage is in `modelUsage`.
 
-Store cost data on the QueueItem and persist to HistoryEntry on completion. Reuse the existing `costEvents` table pattern from `agents.ts` — create a `CostEvent` per completed turn with provider, tokens, and cost.
+Store cost data on the QueueItem and persist to HistoryEntry on completion. Cost is stored directly on `HistoryEntry.costUsd` — no separate cost events table. The Command Center does **not** share the `costEvents` table from `agents.ts`. Each system tracks cost independently.
 
 ### Summary Generation
 
@@ -139,7 +141,7 @@ interface QueueItem {
   processId: string
   projectPath: string
   projectName: string        // derived from path (last segment)
-  projectColor: string       // consistent accent color per project (hash-based from existing 8 accent colors)
+  projectColor: string       // accent color per project: simple string hash mod 8 into existing accent array
   prompt: string             // original launch prompt
   status: 'working' | 'awaiting_input' | 'completed' | 'errored'
   resultText?: string        // Claude's latest output text
@@ -204,7 +206,7 @@ Migration: `initDatabase()` adds empty arrays for both fields if missing (same p
 ### Known Projects Discovery
 
 1. **User-managed list** — stored in `knownProjects` in the database. Added via the Launch Card's "Browse" button or automatically when a task is launched for a new path.
-2. **Auto-populated on first use** — scan `~/.claude/projects/` for subdirectories that contain a `CLAUDE.md` (Claude Code creates project-specific settings dirs here). Extract the original path from the directory name.
+2. **Auto-populated on first use** — scan `~/.claude/projects/` for subdirectories that contain a `CLAUDE.md`. Directory names encode the original path with `--` replacing path separators (e.g., `C--Users-chris-mega-agenda` → `C:\Users\chris\mega-agenda`). Parse by splitting on `--` and joining with `\`.
 3. **Browse fallback** — Electron `dialog.showOpenDialog` for selecting any directory.
 
 Projects are sorted by `lastUsed` in the dropdown.
@@ -323,7 +325,8 @@ if (activeTab === 'command-center') return <CommandCenter />
 - **Process crash (non-zero exit)**: Mark as `errored`, show error card with exit code and last stderr output. User can dismiss.
 - **stdin write to dead process (EPIPE)**: Catch in IPC handler, mark as errored, surface to user.
 - **JSON parse failure on stdout**: Log the raw line, skip it, continue processing. Don't crash the queue.
-- **Concurrent process limit**: No hard limit, but warn in the UI if > 5 processes running (API cost / rate limit concern).
+- **Concurrent process limit**: Hard limit of 10 simultaneous processes. Warn in UI at > 5. Launch Card disables at 10 with message "Max concurrent tasks reached."
+- **App quit / graceful shutdown**: On `app.before-quit`, SIGTERM all running Command Center processes. Wait up to 3s, then SIGKILL any survivors. Do not block quit indefinitely.
 
 ## Edge Cases
 
