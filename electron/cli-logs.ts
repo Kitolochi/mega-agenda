@@ -190,43 +190,53 @@ export async function getCliSessions(): Promise<CLISession[]> {
       const projPath = path.join(projectsDir, projDir.name)
       const isHomeBucket = projDir.name === homeDirEncoded
 
-      // Check for sessions-index.json first (pre-computed metadata)
+      // Load index as a cache, but always scan for JSONL files not in the index
       const indexPath = path.join(projPath, 'sessions-index.json')
+      const indexedSessions = new Map<string, any>()
       if (fs.existsSync(indexPath)) {
         try {
           const indexRaw = JSON.parse(fs.readFileSync(indexPath, 'utf-8'))
           const entries = Array.isArray(indexRaw) ? indexRaw : indexRaw.entries
           if (Array.isArray(entries)) {
             for (const entry of entries) {
-              sessions.push({
-                sessionId: entry.sessionId || entry.id || '',
-                firstPrompt: entry.summary || entry.firstPrompt || '',
-                messageCount: entry.messageCount || 0,
-                created: entry.created || entry.createdAt || '',
-                modified: entry.modified || entry.updatedAt || '',
-                project: projDir.name
-              })
+              const id = entry.sessionId || entry.id || ''
+              if (id) indexedSessions.set(id, entry)
             }
-            continue
           }
         } catch {}
       }
 
-      // Fall back to scanning JSONL files
       const jsonlFiles = fs.readdirSync(projPath)
         .filter(f => f.endsWith('.jsonl'))
 
       for (const file of jsonlFiles) {
         const filePath = path.join(projPath, file)
         const sessionId = file.replace('.jsonl', '')
+
+        // Use cached index entry if available (fast path)
+        const cached = indexedSessions.get(sessionId)
+        if (cached) {
+          sessions.push({
+            sessionId,
+            firstPrompt: cached.summary || cached.firstPrompt || '',
+            messageCount: cached.messageCount || 0,
+            created: cached.created || cached.createdAt || '',
+            modified: cached.modified || cached.updatedAt || '',
+            project: projDir.name
+          })
+          continue
+        }
+
+        // Full scan for sessions not in the index
         try {
           const stat = fs.statSync(filePath)
+          // Quick size check — skip tiny files (< 100 bytes are empty sessions)
+          if (stat.size < 100) continue
+
           const { prompt: firstPrompt, hasRealContent } = await getFirstPrompt(filePath)
 
           // Skip empty sessions (opened Claude Code but never typed a real prompt)
           if (!hasRealContent && !firstPrompt) continue
-
-          const lineCount = await countLines(filePath)
 
           let project = projDir.name
           // For sessions in the home directory bucket, try to infer the actual project
@@ -240,7 +250,7 @@ export async function getCliSessions(): Promise<CLISession[]> {
           sessions.push({
             sessionId,
             firstPrompt,
-            messageCount: lineCount,
+            messageCount: Math.max(1, Math.round(stat.size / 500)),
             created: stat.birthtime.toISOString(),
             modified: stat.mtime.toISOString(),
             project
@@ -285,7 +295,7 @@ async function getFirstPrompt(filePath: string): Promise<{ prompt: string; hasRe
     })
 
     rl.on('close', () => {
-      if (!found) resolve({ prompt: '', hasRealContent: userMsgCount > 2 })
+      if (!found) resolve({ prompt: '', hasRealContent: userMsgCount >= 1 })
     })
 
     rl.on('error', () => resolve({ prompt: '', hasRealContent: false }))

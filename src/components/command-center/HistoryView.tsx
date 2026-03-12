@@ -98,7 +98,8 @@ export default function HistoryView() {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [expandedMessages, setExpandedMessages] = useState<CLISessionMessage[]>([])
   const [loadingMessages, setLoadingMessages] = useState(false)
-  const [activeTab, setActiveTab] = useState<'cli' | 'cc'>('cli')
+  const [activeTab, setActiveTab] = useState<'cli' | 'cc'>('cc')
+  const [dateFilter, setDateFilter] = useState<'all' | 'today' | '7d' | '30d'>('all')
   const [projectDescriptions, setProjectDescriptions] = useState<Record<string, string>>({})
 
   useEffect(() => {
@@ -141,13 +142,17 @@ export default function HistoryView() {
     setLoadingMessages(false)
   }
 
-  // Filter CLI sessions by exact project path match
-  const filteredSessions = historyFilter
-    ? cliSessions.filter(s => {
-        const filterEncoded = pathToEncoded(historyFilter)
-        return s.project === filterEncoded
-      })
-    : cliSessions
+  const dateCutoff = dateFilter === 'today' ? Date.now() - 86400000
+    : dateFilter === '7d' ? Date.now() - 7 * 86400000
+    : dateFilter === '30d' ? Date.now() - 30 * 86400000
+    : 0
+
+  // Filter CLI sessions by project + date
+  const filteredSessions = cliSessions.filter(s => {
+    if (historyFilter && s.project !== pathToEncoded(historyFilter)) return false
+    if (dateCutoff && new Date(s.modified).getTime() < dateCutoff) return false
+    return true
+  })
 
   return (
     <div>
@@ -164,6 +169,16 @@ export default function HistoryView() {
               {p.name}
             </option>
           ))}
+        </select>
+        <select
+          value={dateFilter}
+          onChange={e => setDateFilter(e.target.value as any)}
+          className="bg-surface-2 border border-white/[0.06] rounded-lg px-3 py-1.5 text-[10px] text-white/70 focus:outline-none"
+        >
+          <option value="all">All Time</option>
+          <option value="today">Today</option>
+          <option value="7d">Last 7 Days</option>
+          <option value="30d">Last 30 Days</option>
         </select>
 
         <div className="flex bg-surface-2 rounded-lg p-0.5 ml-auto">

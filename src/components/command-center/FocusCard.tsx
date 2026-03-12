@@ -1,8 +1,9 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { useCommandCenterStore, CCQueueItem } from '../../store/commandCenterStore'
 import { Button, Badge } from '../ui'
 import { ChevronRight, Send, Check, Loader2, FileEdit, Terminal } from 'lucide-react'
 import ConfettiOverlay from './ConfettiOverlay'
+import { renderMarkdown } from '../../utils/markdown'
 
 export default function FocusCard({ item }: { item: CCQueueItem }) {
   const { respond, dismiss, kill } = useCommandCenterStore()
@@ -16,6 +17,14 @@ export default function FocusCard({ item }: { item: CCQueueItem }) {
   useEffect(() => {
     if (item.status === 'awaiting_input') inputRef.current?.focus()
   }, [item.status])
+
+  const handleLinkClick = useCallback((e: React.MouseEvent) => {
+    const link = (e.target as HTMLElement).closest('a[data-external-link]') as HTMLAnchorElement | null
+    if (link) {
+      e.preventDefault()
+      window.electronAPI.openExternal(link.href)
+    }
+  }, [])
 
   const handleSend = () => {
     if (!response.trim()) return
@@ -85,12 +94,14 @@ export default function FocusCard({ item }: { item: CCQueueItem }) {
         </div>
 
         {/* Result text */}
-        <div className="text-[12px] text-white/80 mb-3 whitespace-pre-wrap leading-relaxed">
-          {showFullText ? displayText : shownText}
-          {truncated && !showFullText && (
-            <button onClick={() => setShowFullText(true)} className="text-accent-blue text-[10px] ml-1">Show more</button>
-          )}
-        </div>
+        <div
+          className="text-[12px] text-white/80 mb-3 leading-relaxed select-text cursor-text"
+          onClick={handleLinkClick}
+          dangerouslySetInnerHTML={{ __html: renderMarkdown(showFullText ? displayText : shownText) }}
+        />
+        {truncated && !showFullText && (
+          <button onClick={() => setShowFullText(true)} className="text-accent-blue text-[10px] mb-3">Show more</button>
+        )}
 
         {/* Expand toggles */}
         <div className="flex items-center gap-3 mb-3 text-[10px]">

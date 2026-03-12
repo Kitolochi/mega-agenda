@@ -555,6 +555,7 @@ export interface CCHistoryEntry {
   projectColor: string
   prompt: string
   summary: string
+  status: 'running' | 'completed' | 'killed'
   filesChanged: string[]
   costUsd: number
   turnCount: number
@@ -3239,6 +3240,14 @@ export function getAgentEvents(filters?: { agentId?: string; type?: AgentEvent['
 // Command Center History
 export function addCCHistoryEntry(entry: CCHistoryEntry): CCHistoryEntry {
   db.commandCenterHistory.push(entry)
+  saveDatabase()
+  return entry
+}
+
+export function updateCCHistoryEntry(id: string, updates: Partial<CCHistoryEntry>): CCHistoryEntry | null {
+  const entry = db.commandCenterHistory.find(e => e.id === id)
+  if (!entry) return null
+  Object.assign(entry, updates)
   saveDatabase()
   return entry
 }

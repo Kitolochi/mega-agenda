@@ -10,20 +10,42 @@ import {
 import {
   getCCHistory,
   addCCHistoryEntry,
+  updateCCHistoryEntry,
   getKnownProjects,
   upsertKnownProject,
   discoverProjects,
 } from '../database'
 import { getProjectDescription } from '../cli-logs'
 import path from 'path'
+import fs from 'fs'
+import os from 'os'
 import crypto from 'crypto'
+import { execSync } from 'child_process'
 
 export function registerCommandCenterHandlers(mainWindow: BrowserWindow) {
   initCommandCenter(mainWindow)
 
   ipcMain.handle('cc:launch', async (_, opts: { projectPath: string; prompt: string; model?: string; maxBudget?: number }) => {
     upsertKnownProject(opts.projectPath)
-    return launchProcess(opts)
+    const item = launchProcess(opts)
+
+    // Save to history immediately on launch
+    addCCHistoryEntry({
+      id: item.processId,
+      projectPath: item.projectPath,
+      projectName: item.projectName,
+      projectColor: item.projectColor,
+      prompt: item.prompt,
+      summary: 'Running...',
+      status: 'running',
+      filesChanged: [],
+      costUsd: 0,
+      turnCount: 0,
+      startedAt: item.startedAt,
+      completedAt: 0,
+    })
+
+    return item
   })
 
   ipcMain.handle('cc:respond', (_, opts: { processId: string; response: string }) => {
@@ -33,24 +55,17 @@ export function registerCommandCenterHandlers(mainWindow: BrowserWindow) {
   ipcMain.handle('cc:dismiss', (_, opts: { processId: string }) => {
     const item = dismissProcess(opts.processId)
     if (item) {
-      // Generate summary from last assistant text
       let summary = item.resultText || 'Task completed'
       if (summary.length > 200) {
         const firstSentence = summary.match(/^[^.!?]+[.!?]/)
         summary = firstSentence ? firstSentence[0] + '...' : summary.slice(0, 200) + '...'
       }
-
-      addCCHistoryEntry({
-        id: crypto.randomUUID(),
-        projectPath: item.projectPath,
-        projectName: item.projectName,
-        projectColor: item.projectColor,
-        prompt: item.prompt,
+      updateCCHistoryEntry(item.processId, {
         summary,
+        status: 'completed',
         filesChanged: item.filesChanged,
         costUsd: item.costUsd,
         turnCount: item.turnCount,
-        startedAt: item.startedAt,
         completedAt: Date.now(),
       })
     }
@@ -59,6 +74,11 @@ export function registerCommandCenterHandlers(mainWindow: BrowserWindow) {
 
   ipcMain.handle('cc:kill', (_, opts: { processId: string }) => {
     killProcess(opts.processId)
+    updateCCHistoryEntry(opts.processId, {
+      status: 'killed',
+      summary: 'Killed by user',
+      completedAt: Date.now(),
+    })
   })
 
   ipcMain.handle('cc:get-queue', () => {
@@ -75,6 +95,18 @@ export function registerCommandCenterHandlers(mainWindow: BrowserWindow) {
 
   ipcMain.handle('cc:get-project-description', (_, opts: { projectPath: string }) => {
     return getProjectDescription(opts.projectPath)
+  })
+
+  ipcMain.handle('cc:create-project', (_, opts: { name: string }) => {
+    const safeName = opts.name.trim().replace(/[<>:"/\\|?*]+/g, '-').replace(/\s+/g, '-').toLowerCase()
+    if (!safeName) return null
+    const projectPath = path.join(os.homedir(), safeName)
+    if (!fs.existsSync(projectPath)) {
+      fs.mkdirSync(projectPath, { recursive: true })
+      try { execSync('git init', { cwd: projectPath, stdio: 'ignore' }) } catch {}
+    }
+    upsertKnownProject(projectPath)
+    return { path: projectPath, name: safeName }
   })
 
   ipcMain.handle('cc:browse-project', async () => {
