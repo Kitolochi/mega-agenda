@@ -11,6 +11,7 @@ import {
   getCCHistory,
   addCCHistoryEntry,
   updateCCHistoryEntry,
+  cleanupStaleCCHistory,
   getKnownProjects,
   upsertKnownProject,
   discoverProjects,
@@ -24,6 +25,7 @@ import { execSync } from 'child_process'
 
 export function registerCommandCenterHandlers(mainWindow: BrowserWindow) {
   initCommandCenter(mainWindow)
+  cleanupStaleCCHistory()
 
   ipcMain.handle('cc:launch', async (_, opts: { projectPath: string; prompt: string; model?: string; maxBudget?: number; resumeSessionId?: string }) => {
     upsertKnownProject(opts.projectPath)
@@ -75,10 +77,11 @@ export function registerCommandCenterHandlers(mainWindow: BrowserWindow) {
   })
 
   ipcMain.handle('cc:kill', (_, opts: { processId: string }) => {
-    killProcess(opts.processId)
+    const item = killProcess(opts.processId)
     updateCCHistoryEntry(opts.processId, {
       status: 'killed',
       summary: 'Killed by user',
+      sessionId: item?.sessionId,
       completedAt: Date.now(),
     })
   })

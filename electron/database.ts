@@ -3256,7 +3256,21 @@ export function updateCCHistoryEntry(id: string, updates: Partial<CCHistoryEntry
 export function getCCHistory(filter?: string, limit = 100): CCHistoryEntry[] {
   let entries = db.commandCenterHistory
   if (filter) entries = entries.filter(e => e.projectPath === filter)
-  return entries.sort((a, b) => b.completedAt - a.completedAt).slice(0, limit)
+  return entries.sort((a, b) => (b.completedAt || b.startedAt) - (a.completedAt || a.startedAt)).slice(0, limit)
+}
+
+export function cleanupStaleCCHistory(): number {
+  let cleaned = 0
+  for (const entry of db.commandCenterHistory) {
+    if (entry.status === 'running') {
+      entry.status = 'killed'
+      entry.summary = entry.summary === 'Running...' ? 'Lost (app restarted)' : entry.summary
+      entry.completedAt = entry.startedAt
+      cleaned++
+    }
+  }
+  if (cleaned > 0) saveDatabase()
+  return cleaned
 }
 
 // Known Projects

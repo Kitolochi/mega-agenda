@@ -2,6 +2,7 @@ import { spawn, ChildProcess } from 'child_process'
 import crypto from 'crypto'
 import path from 'path'
 import { BrowserWindow } from 'electron'
+import { updateCCHistoryEntry } from './database'
 
 // --- Types ---
 
@@ -245,9 +246,10 @@ function handleMessage(processId: string, msg: any) {
     item.updatedAt = timestamp
     notifyRenderer()
   }
-  // Capture session ID from system init message
+  // Capture session ID from system init message and persist immediately
   if (msg.type === 'system' && msg.session_id) {
     item.sessionId = msg.session_id
+    updateCCHistoryEntry(item.processId, { sessionId: msg.session_id })
     notifyRenderer()
   }
 }
@@ -299,14 +301,16 @@ export function dismissProcess(processId: string): CCQueueItem | null {
   return finalItem
 }
 
-export function killProcess(processId: string) {
+export function killProcess(processId: string): CCQueueItem | null {
   const m = processes.get(processId)
-  if (!m) return
+  if (!m) return null
 
+  const finalItem = { ...m.item }
   try { m.proc.kill('SIGTERM') } catch {}
   setTimeout(() => { try { m.proc.kill('SIGKILL') } catch {} }, 5000)
   processes.delete(processId)
   notifyRenderer()
+  return finalItem
 }
 
 export function shutdownAllProcesses(): Promise<void> {
