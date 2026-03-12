@@ -232,6 +232,10 @@ Built with Electron + React + TypeScript + Tailwind CSS + Claude AI.
 
 ## Architecture
 
+<p align="center">
+  <img src="docs/architecture.svg" alt="Mega Agenda Architecture Diagram" width="100%">
+</p>
+
 ### Tech Stack
 - **Frontend:** React 18, TypeScript, Tailwind CSS, Vite
 - **Backend:** Electron 28 (main + preload + renderer)
