@@ -3185,18 +3185,62 @@ export function upsertKnownProject(projectPath: string): KnownProject {
   return db.knownProjects.find(p => p.path === projectPath)!
 }
 
+// Decode Claude's project directory encoding (e.g. "C--Users-chris-mega-agenda" → "C:\Users\chris\mega-agenda")
+// The encoding uses -- for :\ (drive) and - for both \ (separator) and literal hyphens.
+// We resolve the ambiguity by greedily checking which segments exist on disk.
+function decodeProjectDir(dirName: string): string | null {
+  const dashDash = dirName.indexOf('--')
+  if (dashDash === -1) return null
+
+  const drive = dirName.slice(0, dashDash) + ':' + path.sep
+  const rest = dirName.slice(dashDash + 2)
+  if (!rest) return drive
+
+  const parts = rest.split('-')
+  let currentPath = drive
+  let i = 0
+
+  while (i < parts.length) {
+    let segment = parts[i]
+    let found = false
+    for (let j = i; j < parts.length; j++) {
+      if (j > i) segment += '-' + parts[j]
+      const candidate = path.join(currentPath, segment)
+      if (j === parts.length - 1) {
+        // Last possible grouping — accept it
+        currentPath = candidate
+        i = j + 1
+        found = true
+        break
+      }
+      if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) {
+        currentPath = candidate
+        i = j + 1
+        found = true
+        break
+      }
+    }
+    if (!found) break
+  }
+
+  return currentPath
+}
+
 export function discoverProjects(): KnownProject[] {
   const claudeProjectsDir = path.join(process.env.USERPROFILE || process.env.HOME || '', '.claude', 'projects')
   if (!fs.existsSync(claudeProjectsDir)) return db.knownProjects
   try {
     const dirs = fs.readdirSync(claudeProjectsDir)
     for (const dir of dirs) {
-      const claudeMd = path.join(claudeProjectsDir, dir, 'CLAUDE.md')
-      if (fs.existsSync(claudeMd)) {
-        const projectPath = dir.split('--').join(path.sep)
-        if (!db.knownProjects.find(p => p.path === projectPath)) {
-          db.knownProjects.push({ path: projectPath, name: path.basename(projectPath), lastUsed: 0 })
-        }
+      const projectDir = path.join(claudeProjectsDir, dir)
+      // Skip non-directories and the bare home dir entry
+      if (!fs.statSync(projectDir).isDirectory()) continue
+      const projectPath = decodeProjectDir(dir)
+      if (!projectPath) continue
+      // Only add if the decoded path actually exists on disk
+      if (!fs.existsSync(projectPath) || !fs.statSync(projectPath).isDirectory()) continue
+      if (!db.knownProjects.find(p => p.path === projectPath)) {
+        db.knownProjects.push({ path: projectPath, name: path.basename(projectPath), lastUsed: 0 })
       }
     }
     saveDatabase()
