@@ -165,6 +165,7 @@ git commit -m "feat(command-center): add database schema and CRUD for history + 
 
 ```typescript
 import { spawn, ChildProcess } from 'child_process'
+import crypto from 'crypto'
 import path from 'path'
 import { BrowserWindow } from 'electron'
 
@@ -427,11 +428,15 @@ export function dismissProcess(processId: string): CCQueueItem | null {
   if (!m) return null
 
   const finalItem = { ...m.item, status: 'completed' as const, updatedAt: Date.now() }
+  const proc = m.proc  // capture ref before deleting from map
 
-  try { m.proc.stdin?.end() } catch {}
-  setTimeout(() => { try { m.proc.kill() } catch {} }, 1000)
+  try { proc.stdin?.end() } catch {}
   processes.delete(processId)
   notifyRenderer()
+
+  // Clean up process after stdin closes
+  setTimeout(() => { try { proc.kill() } catch {} }, 1000)
+
   return finalItem
 }
 
@@ -622,17 +627,20 @@ In `electron/main.ts`, import `shutdownAllProcesses` and add before-quit handler
 import { shutdownAllProcesses } from './command-center'
 ```
 
-In the app lifecycle section, add:
+In the existing `before-quit` handler at `electron/main.ts:297`, add `shutdownAllProcesses()` before `killAllOrchestrators()`:
 
 ```typescript
-app.on('before-quit', async (e) => {
-  e.preventDefault()
-  await shutdownAllProcesses()
-  app.exit(0)
+app.on('before-quit', () => {
+  shutdownAllProcesses()  // add this line
+  killAllOrchestrators()
+  if (tray) {
+    tray.destroy()
+    tray = null
+  }
 })
 ```
 
-Note: check if a `before-quit` handler already exists. If so, add `await shutdownAllProcesses()` inside it instead of creating a new one.
+Note: `shutdownAllProcesses()` is fire-and-forget here (no await). The 3-second SIGKILL timeout in the function handles cleanup. Do NOT create a new `before-quit` handler — modify the existing one at line 297.
 
 - [ ] **Step 5: Verify build compiles**
 
@@ -1068,7 +1076,11 @@ export default function FocusCard({ item }: { item: CCQueueItem }) {
         {/* Header */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <Badge variant={item.projectColor === 'blue' ? 'blue' : item.projectColor === 'purple' ? 'purple' : item.projectColor === 'red' ? 'red' : item.projectColor === 'amber' ? 'amber' : 'default'}>
+            <Badge variant={
+              (['blue', 'purple', 'red', 'amber'] as const).includes(item.projectColor as any)
+                ? (item.projectColor as 'blue' | 'purple' | 'red' | 'amber')
+                : item.projectColor === 'green' ? 'emerald' : 'default'
+            }>
               {item.projectName}
             </Badge>
             <span className={`text-[10px] ${statusColor}`}>{statusLabel}</span>
@@ -1194,6 +1206,9 @@ import { CCQueueItem } from '../../store/commandCenterStore'
 import { Badge } from '../ui'
 import { Loader2 } from 'lucide-react'
 
+// Note: clicking a collapsed card scrolls to top where the FocusCard is.
+// The queue is already sorted by priority, so the top card is always most urgent.
+// To "promote" a card, the user can click it and the view scrolls up.
 export default function CollapsedCard({ item }: { item: CCQueueItem }) {
   const statusText = {
     working: 'Working...',
