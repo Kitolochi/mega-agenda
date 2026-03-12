@@ -622,6 +622,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   ccGetHistory: (opts?: { filter?: string; limit?: number }) =>
     ipcRenderer.invoke('cc:get-history', opts),
   ccGetProjects: () => ipcRenderer.invoke('cc:get-projects'),
+  ccGetProjectDescription: (opts: { projectPath: string }) => ipcRenderer.invoke('cc:get-project-description', opts),
   ccBrowseProject: () => ipcRenderer.invoke('cc:browse-project'),
   onCCQueueUpdate: (callback: (queue: any[]) => void) => {
     const handler = (_: any, queue: any[]) => callback(queue)

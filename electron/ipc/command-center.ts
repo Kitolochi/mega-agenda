@@ -14,6 +14,7 @@ import {
   upsertKnownProject,
   discoverProjects,
 } from '../database'
+import { getProjectDescription } from '../cli-logs'
 import path from 'path'
 import crypto from 'crypto'
 
@@ -70,6 +71,10 @@ export function registerCommandCenterHandlers(mainWindow: BrowserWindow) {
 
   ipcMain.handle('cc:get-projects', () => {
     return discoverProjects()
+  })
+
+  ipcMain.handle('cc:get-project-description', (_, opts: { projectPath: string }) => {
+    return getProjectDescription(opts.projectPath)
   })
 
   ipcMain.handle('cc:browse-project', async () => {

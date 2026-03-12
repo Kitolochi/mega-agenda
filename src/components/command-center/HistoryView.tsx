@@ -99,12 +99,29 @@ export default function HistoryView() {
   const [expandedMessages, setExpandedMessages] = useState<CLISessionMessage[]>([])
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [activeTab, setActiveTab] = useState<'cli' | 'cc'>('cli')
+  const [projectDescriptions, setProjectDescriptions] = useState<Record<string, string>>({})
 
   useEffect(() => {
     loadHistory()
     loadProjects()
     loadCliSessions()
   }, [])
+
+  // Load project descriptions from CLAUDE.md files
+  useEffect(() => {
+    if (projects.length === 0) return
+    const loadDescriptions = async () => {
+      const descs: Record<string, string> = {}
+      for (const p of projects) {
+        try {
+          const desc = await window.electronAPI.ccGetProjectDescription({ projectPath: p.path })
+          if (desc) descs[p.path] = desc
+        } catch {}
+      }
+      setProjectDescriptions(descs)
+    }
+    loadDescriptions()
+  }, [projects])
 
   const loadCliSessions = async () => {
     const sessions = await window.electronAPI.getCliSessions()
@@ -192,18 +209,25 @@ export default function HistoryView() {
               const sortedGroups = Array.from(groups.entries())
                 .sort((a, b) => new Date(b[1][0].modified).getTime() - new Date(a[1][0].modified).getTime())
 
-              return sortedGroups.map(([project, sessions]) => (
+              return sortedGroups.map(([project, sessions]) => {
+                // Find matching project path for description lookup
+                const projName = projectNameFromEncoded(project)
+                const matchedProject = projects.find(p => p.name === projName || p.path.endsWith(projName))
+                const description = matchedProject ? projectDescriptions[matchedProject.path] : ''
+
+                return (
                 <div key={project}>
                   <div className="flex items-center gap-2 py-1.5 px-1">
-                    <span className="text-[10px] font-medium text-white/50">{projectNameFromEncoded(project)}</span>
+                    <span className="text-[10px] font-medium text-white/50">{projName}</span>
                     <span className="text-[9px] text-white/20">{sessions.length} chats</span>
+                    {description && <span className="text-[9px] text-white/15 truncate max-w-[300px]">{description}</span>}
                     <div className="flex-1 border-t border-white/[0.04]" />
                   </div>
                   {sessions.map(session => (
                     <SessionRow key={session.sessionId} session={session} expandedId={expandedId} onExpand={handleExpandSession} loadingMessages={loadingMessages} expandedMessages={expandedMessages} showBadge={false} />
                   ))}
                 </div>
-              ))
+              )})
             })()}
           </div>
         )

@@ -24,6 +24,23 @@ function getClaudeProjectsDir(): string {
   return path.join(os.homedir(), '.claude', 'projects')
 }
 
+/** Read the first heading/description from a project's CLAUDE.md */
+export function getProjectDescription(projectPath: string): string {
+  try {
+    const claudeMd = path.join(projectPath, 'CLAUDE.md')
+    if (!fs.existsSync(claudeMd)) return ''
+    const content = fs.readFileSync(claudeMd, 'utf-8')
+    const lines = content.split('\n').map(l => l.trim()).filter(Boolean)
+    // Skip the "# Title" line, grab the first non-heading descriptive line
+    for (const line of lines) {
+      if (line.startsWith('#')) continue
+      if (line.startsWith('-') || line.startsWith('*')) continue
+      if (line.length > 10) return line.slice(0, 200)
+    }
+  } catch {}
+  return ''
+}
+
 /** Encode a filesystem path to Claude's project directory name format */
 function pathToEncoded(p: string): string {
   return p.replace(':', '-').replace(/[\\/]/g, '-')
@@ -204,7 +221,11 @@ export async function getCliSessions(): Promise<CLISession[]> {
         const sessionId = file.replace('.jsonl', '')
         try {
           const stat = fs.statSync(filePath)
-          const firstPrompt = await getFirstPrompt(filePath)
+          const { prompt: firstPrompt, hasRealContent } = await getFirstPrompt(filePath)
+
+          // Skip empty sessions (opened Claude Code but never typed a real prompt)
+          if (!hasRealContent && !firstPrompt) continue
+
           const lineCount = await countLines(filePath)
 
           let project = projDir.name
@@ -235,21 +256,27 @@ export async function getCliSessions(): Promise<CLISession[]> {
   return sessions.sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime())
 }
 
-async function getFirstPrompt(filePath: string): Promise<string> {
+/** Skip generic startup messages that aren't real user prompts */
+const SKIP_PROMPTS = new Set(['read', 'continue', ''])
+
+async function getFirstPrompt(filePath: string): Promise<{ prompt: string; hasRealContent: boolean }> {
   return new Promise((resolve) => {
     const stream = fs.createReadStream(filePath, { encoding: 'utf-8' })
     const rl = readline.createInterface({ input: stream, crlfDelay: Infinity })
     let found = false
+    let userMsgCount = 0
 
     rl.on('line', (line) => {
       if (found) return
       try {
         const parsed = JSON.parse(line)
-        if (parsed.type === 'user' && !parsed.isMeta) {
+        if (parsed.type === 'user') {
           const content = extractTextContent(parsed)
-          if (content) {
+          userMsgCount++
+          // Skip "Read", "continue", and other generic startup messages
+          if (content && !SKIP_PROMPTS.has(content.trim().toLowerCase()) && content.length > 5) {
             found = true
-            resolve(content.slice(0, 100))
+            resolve({ prompt: content.slice(0, 150), hasRealContent: true })
             rl.close()
             stream.destroy()
           }
@@ -258,10 +285,10 @@ async function getFirstPrompt(filePath: string): Promise<string> {
     })
 
     rl.on('close', () => {
-      if (!found) resolve('')
+      if (!found) resolve({ prompt: '', hasRealContent: userMsgCount > 2 })
     })
 
-    rl.on('error', () => resolve(''))
+    rl.on('error', () => resolve({ prompt: '', hasRealContent: false }))
   })
 }
 

@@ -1624,6 +1624,7 @@ export interface ElectronAPI {
   ccGetQueue: () => Promise<any[]>
   ccGetHistory: (opts?: { filter?: string; limit?: number }) => Promise<any[]>
   ccGetProjects: () => Promise<any[]>
+  ccGetProjectDescription: (opts: { projectPath: string }) => Promise<string>
   ccBrowseProject: () => Promise<{ path: string; name: string } | null>
   onCCQueueUpdate: (callback: (queue: any[]) => void) => () => void
 }
