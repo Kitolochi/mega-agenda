@@ -152,10 +152,13 @@ export default function HistoryView() {
   }
 
   const handleResumeSession = async (session: CLISession) => {
-    // Match encoded project name against known projects
-    // Can't naively decode because hyphens in dir names (e.g. "mega-agenda") are ambiguous
     const matchedProject = projects.find(p => pathToEncoded(p.path) === session.project)
-    if (!matchedProject) return
+    if (!matchedProject) {
+      setResumeError(`Project not found for "${session.project}"`)
+
+      setTimeout(() => setResumeError(null), 6000)
+      return
+    }
     try {
       await launch(matchedProject.path, session.firstPrompt || 'Continue where we left off.', { resumeSessionId: session.sessionId })
       setActiveView('queue')

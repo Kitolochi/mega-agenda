@@ -1,6 +1,7 @@
 import { spawn, ChildProcess } from 'child_process'
 import crypto from 'crypto'
 import path from 'path'
+import os from 'os'
 import { BrowserWindow } from 'electron'
 import { updateCCHistoryEntry } from './database'
 
@@ -37,7 +38,6 @@ interface ManagedProcess {
   proc: ChildProcess
   item: CCQueueItem
   buffer: string
-  pendingPrompt?: string
 }
 
 // --- Constants ---
@@ -116,14 +116,17 @@ export function launchProcess(opts: {
   if (opts.model) args.push('--model', opts.model)
   if (opts.maxBudget) args.push('--max-budget-usd', String(opts.maxBudget))
 
-  const proc = spawn('claude', args, {
+  // Use full path to avoid shell: true buffering issues on Windows
+  const claudePath = path.join(os.homedir(), '.local', 'bin', 'claude.exe')
+  const proc = spawn(claudePath, args, {
     cwd: opts.projectPath,
     stdio: ['pipe', 'pipe', 'pipe'],
-    shell: true,
+    env: { ...process.env },
   })
 
   const item: CCQueueItem = {
     processId,
+    sessionId: opts.resumeSessionId,
     projectPath: opts.projectPath,
     projectName,
     projectColor,
@@ -140,21 +143,22 @@ export function launchProcess(opts: {
   const managed: ManagedProcess = { proc, item, buffer: '' }
   processes.set(processId, managed)
 
-  // For resumed sessions, store the prompt and send it after the system init message
-  // For new sessions, send immediately
-  if (opts.resumeSessionId) {
-    managed.pendingPrompt = opts.prompt || 'Continue where we left off.'
-  } else {
-    const msg = JSON.stringify({
-      type: 'user',
-      message: { role: 'user', content: opts.prompt }
-    }) + '\n'
-    proc.stdin?.write(msg)
-  }
+  // Send user message immediately for both new and resumed sessions.
+  // stream-json input mode won't emit any output until it receives stdin input,
+  // so we must send the prompt first — the system init message arrives after.
+  const prompt = opts.resumeSessionId
+    ? (opts.prompt || 'Continue where we left off.')
+    : opts.prompt
+  const msg = JSON.stringify({
+    type: 'user',
+    message: { role: 'user', content: prompt }
+  }) + '\n'
+  proc.stdin?.write(msg)
 
   // Handle stdout (stream-json, newline-delimited)
   proc.stdout?.on('data', (data: Buffer) => {
-    managed.buffer += data.toString()
+    const chunk = data.toString()
+    managed.buffer += chunk
     const lines = managed.buffer.split('\n')
     managed.buffer = lines.pop() || '' // keep incomplete line in buffer
     for (const line of lines) {
@@ -163,7 +167,7 @@ export function launchProcess(opts: {
         const parsed = JSON.parse(line)
         handleMessage(processId, parsed)
       } catch {
-        // skip unparseable lines
+        // Non-JSON line, skip
       }
     }
   })
@@ -174,7 +178,7 @@ export function launchProcess(opts: {
       try {
         const parsed = JSON.parse(managed.buffer)
         handleMessage(processId, parsed)
-      } catch {}
+      } catch { /* incomplete JSON, discard */ }
       managed.buffer = ''
     }
   })
@@ -182,8 +186,8 @@ export function launchProcess(opts: {
   // Handle stderr
   let stderrBuf = ''
   proc.stderr?.on('data', (data: Buffer) => {
-    stderrBuf += data.toString()
-    // Keep last 2000 chars
+    const s = data.toString()
+    stderrBuf += s
     if (stderrBuf.length > 2000) stderrBuf = stderrBuf.slice(-2000)
   })
 
@@ -197,7 +201,7 @@ export function launchProcess(opts: {
       try {
         const parsed = JSON.parse(m.buffer)
         handleMessage(processId, parsed)
-      } catch {}
+      } catch { /* incomplete JSON, discard */ }
       m.buffer = ''
     }
 
@@ -270,16 +274,6 @@ function handleMessage(processId: string, msg: any) {
     item.sessionId = msg.session_id
     updateCCHistoryEntry(item.processId, { sessionId: msg.session_id })
     notifyRenderer()
-
-    // Send pending prompt for resumed sessions (after session is loaded)
-    if (m.pendingPrompt) {
-      const userMsg = JSON.stringify({
-        type: 'user',
-        message: { role: 'user', content: m.pendingPrompt }
-      }) + '\n'
-      m.proc.stdin?.write(userMsg)
-      m.pendingPrompt = undefined
-    }
   }
 }
 

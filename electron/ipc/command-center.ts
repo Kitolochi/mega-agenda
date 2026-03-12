@@ -1,4 +1,5 @@
 import { ipcMain, BrowserWindow, dialog } from 'electron'
+import { execSync } from 'child_process'
 import {
   initCommandCenter,
   launchProcess,
@@ -17,11 +18,6 @@ import {
   discoverProjects,
 } from '../database'
 import { getProjectDescription } from '../cli-logs'
-import path from 'path'
-import fs from 'fs'
-import os from 'os'
-import crypto from 'crypto'
-import { execSync } from 'child_process'
 
 export function registerCommandCenterHandlers(mainWindow: BrowserWindow) {
   initCommandCenter(mainWindow)
