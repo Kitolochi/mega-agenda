@@ -25,13 +25,14 @@ import { execSync } from 'child_process'
 export function registerCommandCenterHandlers(mainWindow: BrowserWindow) {
   initCommandCenter(mainWindow)
 
-  ipcMain.handle('cc:launch', async (_, opts: { projectPath: string; prompt: string; model?: string; maxBudget?: number }) => {
+  ipcMain.handle('cc:launch', async (_, opts: { projectPath: string; prompt: string; model?: string; maxBudget?: number; resumeSessionId?: string }) => {
     upsertKnownProject(opts.projectPath)
     const item = launchProcess(opts)
 
     // Save to history immediately on launch
     addCCHistoryEntry({
       id: item.processId,
+      sessionId: opts.resumeSessionId,
       projectPath: item.projectPath,
       projectName: item.projectName,
       projectColor: item.projectColor,
@@ -63,6 +64,7 @@ export function registerCommandCenterHandlers(mainWindow: BrowserWindow) {
       updateCCHistoryEntry(item.processId, {
         summary,
         status: 'completed',
+        sessionId: item.sessionId,
         filesChanged: item.filesChanged,
         costUsd: item.costUsd,
         turnCount: item.turnCount,

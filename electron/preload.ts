@@ -610,7 +610,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   // Command Center
-  ccLaunch: (opts: { projectPath: string; prompt: string; model?: string; maxBudget?: number }) =>
+  ccLaunch: (opts: { projectPath: string; prompt: string; model?: string; maxBudget?: number; resumeSessionId?: string }) =>
     ipcRenderer.invoke('cc:launch', opts),
   ccRespond: (opts: { processId: string; response: string }) =>
     ipcRenderer.invoke('cc:respond', opts),

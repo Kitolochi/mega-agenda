@@ -1620,7 +1620,7 @@ export interface ElectronAPI {
   systemWipe: () => Promise<void>
 
   // Command Center
-  ccLaunch: (opts: { projectPath: string; prompt: string; model?: string; maxBudget?: number }) => Promise<any>
+  ccLaunch: (opts: { projectPath: string; prompt: string; model?: string; maxBudget?: number; resumeSessionId?: string }) => Promise<any>
   ccRespond: (opts: { processId: string; response: string }) => Promise<void>
   ccDismiss: (opts: { processId: string }) => Promise<any>
   ccKill: (opts: { processId: string }) => Promise<void>

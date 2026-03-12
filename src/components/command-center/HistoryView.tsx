@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useCommandCenterStore } from '../../store/commandCenterStore'
 import { Badge } from '../ui'
-import { ChevronRight, DollarSign, FileEdit, MessageSquare, Clock } from 'lucide-react'
+import { ChevronRight, DollarSign, FileEdit, MessageSquare, Clock, Play } from 'lucide-react'
 import type { CLISession, CLISessionMessage } from '../../types'
 
 function relativeTime(dateStr: string): string {
@@ -39,10 +39,11 @@ function projectNameFromEncoded(encoded: string): string {
   return parts[parts.length - 1] || encoded
 }
 
-function SessionRow({ session, expandedId, onExpand, loadingMessages, expandedMessages, showBadge = true }: {
+function SessionRow({ session, expandedId, onExpand, onResume, loadingMessages, expandedMessages, showBadge = true }: {
   session: CLISession
   expandedId: string | null
   onExpand: (id: string) => void
+  onResume: (session: CLISession) => void
   loadingMessages: boolean
   expandedMessages: CLISessionMessage[]
   showBadge?: boolean
@@ -67,6 +68,13 @@ function SessionRow({ session, expandedId, onExpand, loadingMessages, expandedMe
           <span className="text-[9px] text-white/20 flex items-center gap-1">
             <Clock size={8} />{relativeTime(session.modified)}
           </span>
+          <button
+            onClick={e => { e.stopPropagation(); onResume(session) }}
+            title="Resume this session"
+            className="p-1 rounded text-white/20 hover:text-accent-green hover:bg-white/[0.04] transition-colors"
+          >
+            <Play size={10} />
+          </button>
         </div>
       </div>
       {expandedId === session.sessionId && (
@@ -93,7 +101,7 @@ function SessionRow({ session, expandedId, onExpand, loadingMessages, expandedMe
 }
 
 export default function HistoryView() {
-  const { history, historyFilter, projects, loadHistory, loadProjects, setHistoryFilter } = useCommandCenterStore()
+  const { history, historyFilter, projects, loadHistory, loadProjects, setHistoryFilter, launch, setActiveView } = useCommandCenterStore()
   const [cliSessions, setCliSessions] = useState<CLISession[]>([])
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [expandedMessages, setExpandedMessages] = useState<CLISessionMessage[]>([])
@@ -140,6 +148,22 @@ export default function HistoryView() {
     const { messages } = await window.electronAPI.getCliSessionMessages(sessionId, 0, 20)
     setExpandedMessages(messages)
     setLoadingMessages(false)
+  }
+
+  const handleResumeSession = async (session: CLISession) => {
+    // Decode project path from encoded format: "C--Users-chris-mega-agenda" → "C:\Users\chris\mega-agenda"
+    const encoded = session.project
+    const dashDash = encoded.indexOf('--')
+    let projectPath = ''
+    if (dashDash >= 0) {
+      const drive = encoded.slice(0, dashDash)
+      const rest = encoded.slice(dashDash + 2).replace(/-/g, '\\')
+      projectPath = `${drive}:\\${rest}`
+    } else {
+      projectPath = encoded
+    }
+    await launch(projectPath, session.firstPrompt || 'Continue where we left off.', { resumeSessionId: session.sessionId })
+    setActiveView('queue')
   }
 
   const dateCutoff = dateFilter === 'today' ? Date.now() - 86400000
@@ -211,7 +235,7 @@ export default function HistoryView() {
               // Group by project when showing all, flat list when filtered
               if (historyFilter) {
                 return filteredSessions.map(session => (
-                  <SessionRow key={session.sessionId} session={session} expandedId={expandedId} onExpand={handleExpandSession} loadingMessages={loadingMessages} expandedMessages={expandedMessages} showBadge={false} />
+                  <SessionRow key={session.sessionId} session={session} expandedId={expandedId} onExpand={handleExpandSession} onResume={handleResumeSession} loadingMessages={loadingMessages} expandedMessages={expandedMessages} showBadge={false} />
                 ))
               }
               // Group by project, sorted by most recent session in each group
@@ -239,7 +263,7 @@ export default function HistoryView() {
                     <div className="flex-1 border-t border-white/[0.04]" />
                   </div>
                   {sessions.map(session => (
-                    <SessionRow key={session.sessionId} session={session} expandedId={expandedId} onExpand={handleExpandSession} loadingMessages={loadingMessages} expandedMessages={expandedMessages} showBadge={false} />
+                    <SessionRow key={session.sessionId} session={session} expandedId={expandedId} onExpand={handleExpandSession} onResume={handleResumeSession} loadingMessages={loadingMessages} expandedMessages={expandedMessages} showBadge={false} />
                   ))}
                 </div>
               )})
@@ -264,6 +288,14 @@ export default function HistoryView() {
                     <span className="text-[10px] text-white/60 truncate">{entry.summary}</span>
                   </div>
                   <div className="flex items-center gap-3 flex-shrink-0 ml-2">
+                    {entry.status === 'running' && (
+                      <span className="text-[9px] text-accent-green flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-accent-green animate-pulse" />running
+                      </span>
+                    )}
+                    {entry.status === 'killed' && (
+                      <span className="text-[9px] text-accent-red">killed</span>
+                    )}
                     <span className="text-[9px] text-white/20 flex items-center gap-1">
                       <DollarSign size={8} />{entry.costUsd.toFixed(2)}
                     </span>
@@ -271,8 +303,21 @@ export default function HistoryView() {
                       <FileEdit size={8} />{entry.filesChanged.length}
                     </span>
                     <span className="text-[9px] text-white/20">
-                      {new Date(entry.completedAt).toLocaleDateString()}
+                      {new Date(entry.completedAt || entry.startedAt).toLocaleDateString()}
                     </span>
+                    {entry.sessionId && entry.status !== 'running' && (
+                      <button
+                        onClick={e => {
+                          e.stopPropagation()
+                          launch(entry.projectPath, entry.prompt || 'Continue where we left off.', { resumeSessionId: entry.sessionId })
+                          setActiveView('queue')
+                        }}
+                        title="Resume this session"
+                        className="p-1 rounded text-white/20 hover:text-accent-green hover:bg-white/[0.04] transition-colors"
+                      >
+                        <Play size={10} />
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -299,7 +344,9 @@ export default function HistoryView() {
                     <div className="flex gap-4 text-[9px] text-white/30 pt-1">
                       <span>Cost: ${entry.costUsd.toFixed(4)}</span>
                       <span>Turns: {entry.turnCount}</span>
-                      <span>Duration: {Math.round((entry.completedAt - entry.startedAt) / 60000)}m</span>
+                      {entry.completedAt > 0 && (
+                        <span>Duration: {Math.round((entry.completedAt - entry.startedAt) / 60000)}m</span>
+                      )}
                     </div>
                   </div>
                 )}

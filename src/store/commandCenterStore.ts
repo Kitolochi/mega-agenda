@@ -2,6 +2,7 @@ import { create } from 'zustand'
 
 export interface CCQueueItem {
   processId: string
+  sessionId?: string
   projectPath: string
   projectName: string
   projectColor: string
@@ -28,11 +29,13 @@ export interface CCStreamMessage {
 
 export interface CCHistoryEntry {
   id: string
+  sessionId?: string
   projectPath: string
   projectName: string
   projectColor: string
   prompt: string
   summary: string
+  status: 'running' | 'completed' | 'killed'
   filesChanged: string[]
   costUsd: number
   turnCount: number
@@ -58,7 +61,7 @@ interface CommandCenterState {
   loadQueue: () => Promise<void>
   loadHistory: (filter?: string | null) => Promise<void>
   loadProjects: () => Promise<void>
-  launch: (projectPath: string, prompt: string, opts?: { model?: string; maxBudget?: number }) => Promise<void>
+  launch: (projectPath: string, prompt: string, opts?: { model?: string; maxBudget?: number; resumeSessionId?: string }) => Promise<void>
   respond: (processId: string, response: string) => Promise<void>
   dismiss: (processId: string) => Promise<void>
   kill: (processId: string) => Promise<void>

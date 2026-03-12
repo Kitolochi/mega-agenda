@@ -550,6 +550,7 @@ export interface CostEvent {
 
 export interface CCHistoryEntry {
   id: string
+  sessionId?: string
   projectPath: string
   projectName: string
   projectColor: string

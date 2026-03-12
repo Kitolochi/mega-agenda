@@ -7,6 +7,7 @@ import { BrowserWindow } from 'electron'
 
 export interface CCQueueItem {
   processId: string
+  sessionId?: string
   projectPath: string
   projectName: string
   projectColor: string
@@ -81,6 +82,7 @@ export function launchProcess(opts: {
   prompt: string
   model?: string
   maxBudget?: number
+  resumeSessionId?: string
 }): CCQueueItem {
   if (processes.size >= MAX_PROCESSES) {
     throw new Error('Max concurrent tasks reached (10)')
@@ -96,8 +98,10 @@ export function launchProcess(opts: {
     '--input-format', 'stream-json',
     '--verbose',
     '--dangerously-skip-permissions',
-    '--no-session-persistence',
   ]
+  if (opts.resumeSessionId) {
+    args.push('--resume', opts.resumeSessionId)
+  }
   if (opts.model) args.push('--model', opts.model)
   if (opts.maxBudget) args.push('--max-budget-usd', String(opts.maxBudget))
 
@@ -125,12 +129,20 @@ export function launchProcess(opts: {
   const managed: ManagedProcess = { proc, item, buffer: '' }
   processes.set(processId, managed)
 
-  // Send initial prompt
-  const msg = JSON.stringify({
-    type: 'user',
-    message: { role: 'user', content: opts.prompt }
-  }) + '\n'
-  proc.stdin?.write(msg)
+  // Send initial prompt (skip for resumed sessions — send follow-up instead)
+  if (opts.resumeSessionId) {
+    const msg = JSON.stringify({
+      type: 'user',
+      message: { role: 'user', content: opts.prompt || 'Continue where we left off.' }
+    }) + '\n'
+    proc.stdin?.write(msg)
+  } else {
+    const msg = JSON.stringify({
+      type: 'user',
+      message: { role: 'user', content: opts.prompt }
+    }) + '\n'
+    proc.stdin?.write(msg)
+  }
 
   // Handle stdout (stream-json, newline-delimited)
   proc.stdout?.on('data', (data: Buffer) => {
@@ -224,7 +236,11 @@ function handleMessage(processId: string, msg: any) {
     item.updatedAt = timestamp
     notifyRenderer()
   }
-  // Ignore system messages (init, hook_started, hook_response)
+  // Capture session ID from system init message
+  if (msg.type === 'system' && msg.session_id) {
+    item.sessionId = msg.session_id
+    notifyRenderer()
+  }
 }
 
 export function respondToProcess(processId: string, response: string) {
