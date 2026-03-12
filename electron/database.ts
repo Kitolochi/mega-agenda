@@ -3227,23 +3227,41 @@ function decodeProjectDir(dirName: string): string | null {
 }
 
 export function discoverProjects(): KnownProject[] {
-  const claudeProjectsDir = path.join(process.env.USERPROFILE || process.env.HOME || '', '.claude', 'projects')
-  if (!fs.existsSync(claudeProjectsDir)) return db.knownProjects
-  try {
-    const dirs = fs.readdirSync(claudeProjectsDir)
-    for (const dir of dirs) {
-      const projectDir = path.join(claudeProjectsDir, dir)
-      // Skip non-directories and the bare home dir entry
-      if (!fs.statSync(projectDir).isDirectory()) continue
-      const projectPath = decodeProjectDir(dir)
-      if (!projectPath) continue
-      // Only add if the decoded path actually exists on disk
-      if (!fs.existsSync(projectPath) || !fs.statSync(projectPath).isDirectory()) continue
-      if (!db.knownProjects.find(p => p.path === projectPath)) {
-        db.knownProjects.push({ path: projectPath, name: path.basename(projectPath), lastUsed: 0 })
+  const homeDir = process.env.USERPROFILE || process.env.HOME || ''
+
+  // Source 1: ~/.claude/projects/ (Claude Code CLI history)
+  const claudeProjectsDir = path.join(homeDir, '.claude', 'projects')
+  if (fs.existsSync(claudeProjectsDir)) {
+    try {
+      const dirs = fs.readdirSync(claudeProjectsDir)
+      for (const dir of dirs) {
+        const projectDir = path.join(claudeProjectsDir, dir)
+        if (!fs.statSync(projectDir).isDirectory()) continue
+        const projectPath = decodeProjectDir(dir)
+        if (!projectPath) continue
+        if (!fs.existsSync(projectPath) || !fs.statSync(projectPath).isDirectory()) continue
+        if (!db.knownProjects.find(p => p.path === projectPath)) {
+          db.knownProjects.push({ path: projectPath, name: path.basename(projectPath), lastUsed: 0 })
+        }
       }
-    }
-    saveDatabase()
-  } catch {}
+    } catch {}
+  }
+
+  // Source 2: Git repos in home directory
+  if (homeDir && fs.existsSync(homeDir)) {
+    try {
+      const entries = fs.readdirSync(homeDir)
+      for (const entry of entries) {
+        if (entry.startsWith('.')) continue
+        const fullPath = path.join(homeDir, entry)
+        const gitDir = path.join(fullPath, '.git')
+        if (fs.existsSync(gitDir) && !db.knownProjects.find(p => p.path === fullPath)) {
+          db.knownProjects.push({ path: fullPath, name: entry, lastUsed: 0 })
+        }
+      }
+    } catch {}
+  }
+
+  saveDatabase()
   return db.knownProjects
 }
