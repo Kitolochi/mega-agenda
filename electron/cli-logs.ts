@@ -24,10 +24,109 @@ function getClaudeProjectsDir(): string {
   return path.join(os.homedir(), '.claude', 'projects')
 }
 
+/** Encode a filesystem path to Claude's project directory name format */
+function pathToEncoded(p: string): string {
+  return p.replace(':', '-').replace(/[\\/]/g, '-')
+}
+
+// Cache inferred project mappings so we don't re-scan JSONL files every load
+const inferenceCache = new Map<string, string | null>()
+
+/** Infer the actual project from session JSONL content (first 30 lines) */
+async function inferProjectFromContent(filePath: string): Promise<string | null> {
+  const sessionId = path.basename(filePath, '.jsonl')
+  if (inferenceCache.has(sessionId)) return inferenceCache.get(sessionId)!
+
+  const homeDir = os.homedir()
+  return new Promise((resolve) => {
+    const projectRefs = new Map<string, number>()
+    let linesRead = 0
+
+    let stream: fs.ReadStream
+    try {
+      stream = fs.createReadStream(filePath, { encoding: 'utf-8' })
+    } catch {
+      inferenceCache.set(sessionId, null)
+      resolve(null)
+      return
+    }
+    const rl = readline.createInterface({ input: stream, crlfDelay: Infinity })
+
+    const addRef = (dir: string) => {
+      // Filter out noise: must be a plausible project directory name
+      if (!dir || dir.startsWith('.') || dir.length < 2) return
+      // Skip common non-project directories
+      if (['src', 'node_modules', 'electron', 'packages', 'apps', 'dist', 'build', 'lib', 'bin'].includes(dir)) return
+      // Skip files (contain dots like .js, .ts, .md, .png, .csv, etc.)
+      if (dir.includes('.')) return
+      // Skip quoted/escaped artifacts
+      if (dir.includes('"') || dir.includes("'")) return
+      // Verify it's an actual directory on disk
+      try {
+        const fullPath = path.join(homeDir, dir)
+        if (fs.existsSync(fullPath) && fs.statSync(fullPath).isDirectory()) {
+          projectRefs.set(dir, (projectRefs.get(dir) || 0) + 1)
+        }
+      } catch {}
+    }
+
+    rl.on('line', (line) => {
+      linesRead++
+      if (linesRead > 30) { rl.close(); stream.destroy(); return }
+      try {
+        const parsed = JSON.parse(line)
+
+        // file-history-snapshot: extract top-level directories from tracked file paths
+        if (parsed.type === 'file-history-snapshot' && parsed.snapshot?.trackedFileBackups) {
+          for (const fp of Object.keys(parsed.snapshot.trackedFileBackups)) {
+            const first = fp.split('\\')[0]
+            addRef(first)
+          }
+        }
+
+        // tool_use blocks: extract project from absolute paths
+        if (parsed.type === 'assistant' && Array.isArray(parsed.message?.content)) {
+          for (const block of parsed.message.content) {
+            if (block.type === 'tool_use') {
+              if (block.input?.file_path) {
+                const match = block.input.file_path.match(/[Cc]:\\Users\\[^\\]+\\([^\\]+)/)
+                if (match && match[1] !== '.claude') addRef(match[1])
+              }
+              if (block.input?.command) {
+                const match = block.input.command.match(/[Cc]:\/Users\/[^/]+\/([^/\s"']+)/)
+                if (match && match[1] !== '.claude') addRef(match[1])
+              }
+            }
+          }
+        }
+      } catch {}
+    })
+
+    rl.on('close', () => {
+      if (projectRefs.size === 0) {
+        inferenceCache.set(sessionId, null)
+        resolve(null)
+        return
+      }
+      // Pick the most referenced project
+      const sorted = [...projectRefs.entries()].sort((a, b) => b[1] - a[1])
+      const result = sorted[0][0]
+      inferenceCache.set(sessionId, result)
+      resolve(result)
+    })
+    rl.on('error', () => {
+      inferenceCache.set(sessionId, null)
+      resolve(null)
+    })
+  })
+}
+
 export async function getCliSessions(): Promise<CLISession[]> {
   const projectsDir = getClaudeProjectsDir()
   if (!fs.existsSync(projectsDir)) return []
 
+  const homeDir = os.homedir()
+  const homeDirEncoded = pathToEncoded(homeDir)
   const sessions: CLISession[] = []
 
   try {
@@ -36,6 +135,7 @@ export async function getCliSessions(): Promise<CLISession[]> {
 
     for (const projDir of projectDirs) {
       const projPath = path.join(projectsDir, projDir.name)
+      const isHomeBucket = projDir.name === homeDirEncoded
 
       // Check for sessions-index.json first (pre-computed metadata)
       const indexPath = path.join(projPath, 'sessions-index.json')
@@ -68,9 +168,17 @@ export async function getCliSessions(): Promise<CLISession[]> {
         const sessionId = file.replace('.jsonl', '')
         try {
           const stat = fs.statSync(filePath)
-          // Quick scan: read first few lines for first prompt
           const firstPrompt = await getFirstPrompt(filePath)
           const lineCount = await countLines(filePath)
+
+          let project = projDir.name
+          // For sessions in the home directory bucket, try to infer the actual project
+          if (isHomeBucket) {
+            const inferred = await inferProjectFromContent(filePath)
+            if (inferred) {
+              project = pathToEncoded(path.join(homeDir, inferred))
+            }
+          }
 
           sessions.push({
             sessionId,
@@ -78,7 +186,7 @@ export async function getCliSessions(): Promise<CLISession[]> {
             messageCount: lineCount,
             created: stat.birthtime.toISOString(),
             modified: stat.mtime.toISOString(),
-            project: projDir.name
+            project
           })
         } catch {}
       }
