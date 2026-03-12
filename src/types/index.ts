@@ -1615,6 +1615,17 @@ export interface ElectronAPI {
   gwsExportSheets: () => Promise<{ success: boolean; spreadsheetUrl?: string; error?: string }>
   gwsUploadDrive: (params: { format: 'csv' | 'json' }) =>
     Promise<{ success: boolean; fileId?: string; webViewLink?: string; error?: string }>
+
+  // Command Center
+  ccLaunch: (opts: { projectPath: string; prompt: string; model?: string; maxBudget?: number }) => Promise<any>
+  ccRespond: (opts: { processId: string; response: string }) => Promise<void>
+  ccDismiss: (opts: { processId: string }) => Promise<any>
+  ccKill: (opts: { processId: string }) => Promise<void>
+  ccGetQueue: () => Promise<any[]>
+  ccGetHistory: (opts?: { filter?: string; limit?: number }) => Promise<any[]>
+  ccGetProjects: () => Promise<any[]>
+  ccBrowseProject: () => Promise<{ path: string; name: string } | null>
+  onCCQueueUpdate: (callback: (queue: any[]) => void) => () => void
 }
 
 declare global {
