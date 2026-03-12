@@ -29,12 +29,44 @@ function pathToEncoded(p: string): string {
   return p.replace(':', '-').replace(/[\\/]/g, '-')
 }
 
-// Cache inferred project mappings so we don't re-scan JSONL files every load
+// Persistent cache: saved to disk so deep scan only happens once
 const inferenceCache = new Map<string, string | null>()
+let cacheLoaded = false
 
-/** Infer the actual project from session JSONL content (first 30 lines) */
+function getCachePath(): string {
+  return path.join(os.homedir(), '.claude', 'projects', 'C--Users-chris', '.project-inference-cache.json')
+}
+
+function loadInferenceCache(): void {
+  if (cacheLoaded) return
+  cacheLoaded = true
+  try {
+    const cachePath = getCachePath()
+    if (fs.existsSync(cachePath)) {
+      const data = JSON.parse(fs.readFileSync(cachePath, 'utf-8'))
+      for (const [k, v] of Object.entries(data)) {
+        inferenceCache.set(k, v as string | null)
+      }
+    }
+  } catch {}
+}
+
+function saveInferenceCache(): void {
+  try {
+    const obj: Record<string, string | null> = {}
+    for (const [k, v] of inferenceCache.entries()) obj[k] = v
+    fs.writeFileSync(getCachePath(), JSON.stringify(obj, null, 2))
+  } catch {}
+}
+
+/** Infer the actual project from session JSONL content.
+ *  Deep scans the full file on first encounter, caches result to disk.
+ *  Subsequent loads hit the cache instantly. */
+const knownDirsCache = new Map<string, boolean>()
+
 async function inferProjectFromContent(filePath: string): Promise<string | null> {
   const sessionId = path.basename(filePath, '.jsonl')
+  loadInferenceCache()
   if (inferenceCache.has(sessionId)) return inferenceCache.get(sessionId)!
 
   const homeDir = os.homedir()
@@ -61,18 +93,22 @@ async function inferProjectFromContent(filePath: string): Promise<string | null>
       if (dir.includes('.')) return
       // Skip quoted/escaped artifacts
       if (dir.includes('"') || dir.includes("'")) return
-      // Verify it's an actual directory on disk
-      try {
-        const fullPath = path.join(homeDir, dir)
-        if (fs.existsSync(fullPath) && fs.statSync(fullPath).isDirectory()) {
-          projectRefs.set(dir, (projectRefs.get(dir) || 0) + 1)
+      // Verify it's an actual directory on disk (cached)
+      if (!knownDirsCache.has(dir)) {
+        try {
+          const fullPath = path.join(homeDir, dir)
+          knownDirsCache.set(dir, fs.existsSync(fullPath) && fs.statSync(fullPath).isDirectory())
+        } catch {
+          knownDirsCache.set(dir, false)
         }
-      } catch {}
+      }
+      if (knownDirsCache.get(dir)) {
+        projectRefs.set(dir, (projectRefs.get(dir) || 0) + 1)
+      }
     }
 
     rl.on('line', (line) => {
       linesRead++
-      if (linesRead > 30) { rl.close(); stream.destroy(); return }
       try {
         const parsed = JSON.parse(line)
 
@@ -192,6 +228,9 @@ export async function getCliSessions(): Promise<CLISession[]> {
       }
     }
   } catch {}
+
+  // Persist inference cache to disk after processing all sessions
+  saveInferenceCache()
 
   return sessions.sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime())
 }
