@@ -62,10 +62,11 @@ export default function HeartbeatHistory() {
       {/* Table */}
       <div className="bg-surface-1/60 border border-white/5 rounded-xl overflow-hidden">
         {/* Header */}
-        <div className="grid grid-cols-[1fr_1fr_100px_80px_100px_80px] gap-2 px-4 py-2 border-b border-white/5 text-xs text-white/40 font-medium">
+        <div className="grid grid-cols-[1fr_1fr_100px_50px_80px_100px_80px] gap-2 px-4 py-2 border-b border-white/5 text-xs text-white/40 font-medium">
           <span>Agent</span>
           <span>Issue</span>
           <span>Status</span>
+          <span>Iter</span>
           <span>Source</span>
           <span>Duration</span>
           <span>Cost</span>
@@ -80,7 +81,7 @@ export default function HeartbeatHistory() {
               return (
                 <div key={run.id}>
                   <div
-                    className="grid grid-cols-[1fr_1fr_100px_80px_100px_80px] gap-2 px-4 py-3 text-xs hover:bg-surface-2/30 cursor-pointer transition-colors"
+                    className="grid grid-cols-[1fr_1fr_100px_50px_80px_100px_80px] gap-2 px-4 py-3 text-xs hover:bg-surface-2/30 cursor-pointer transition-colors"
                     onClick={() => setExpandedId(expandedId === run.id ? null : run.id)}
                   >
                     <span className="text-white/70 truncate">{getAgentName(run.agentId)}</span>
@@ -90,6 +91,7 @@ export default function HeartbeatHistory() {
                         {run.status}
                       </span>
                     </span>
+                    <span className="text-white/30">{run.iteration != null ? `#${run.iteration + 1}` : '-'}</span>
                     <span className="text-white/30">{run.source}</span>
                     <span className="text-white/40">{formatDuration(run.durationMs)}</span>
                     <span className="text-white/50">
@@ -171,10 +173,15 @@ export default function HeartbeatHistory() {
                         </div>
                       )}
 
-                      {/* Parent run link */}
-                      {run.parentRunId && (
-                        <div className="text-[10px] text-white/30">
-                          Parent run: <span className="font-mono text-white/40">{run.parentRunId.slice(0, 12)}...</span>
+                      {/* Iteration chain */}
+                      {(run.parentRunId || run.iteration != null) && (
+                        <div className="flex items-center gap-3 text-[10px] text-white/30">
+                          {run.iteration != null && (
+                            <span>Iteration <span className="text-white/50 font-medium">#{run.iteration + 1}</span></span>
+                          )}
+                          {run.parentRunId && (
+                            <span>Parent: <span className="font-mono text-white/40">{run.parentRunId.slice(0, 12)}...</span></span>
+                          )}
                         </div>
                       )}
 

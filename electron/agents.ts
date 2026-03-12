@@ -68,6 +68,67 @@ function getAgentConfig(taskType?: string): { preamble: string; allowedTools: st
   }
 }
 
+// --- Lifecycle stage helpers ---
+type LifecycleStage = 'research' | 'development' | 'review' | 'committed' | 'pushed' | 'live'
+
+const STAGE_ORDER: LifecycleStage[] = ['research', 'development', 'review', 'committed', 'pushed', 'live']
+
+function stageIndex(stage: LifecycleStage): number {
+  return STAGE_ORDER.indexOf(stage)
+}
+
+/** Assess the lifecycle stage of a completed run based on its structured result */
+function assessStage(run: HeartbeatRun): LifecycleStage {
+  const sr = run.structuredResult
+
+  // Check for push signals in tool calls
+  if (sr?.toolCalls?.some(t => t.tool === 'Bash' && t.count > 0)) {
+    // If there are git commits AND the summary mentions push, consider it pushed
+    if (sr?.gitCommits?.length && run.summary?.toLowerCase().includes('push')) {
+      return 'pushed'
+    }
+  }
+
+  // Has git commits → committed
+  if (sr?.gitCommits && sr.gitCommits.length > 0) {
+    return 'committed'
+  }
+
+  // Has test-related tool calls → review
+  if (sr?.toolCalls?.some(t => ['Bash'].includes(t.tool))) {
+    // Check if summary mentions tests
+    if (run.summary?.toLowerCase().match(/\b(test|spec|lint|check)\b/)) {
+      return 'review'
+    }
+  }
+
+  // Has files changed → development
+  if (sr?.filesChanged && sr.filesChanged.length > 0) {
+    return 'development'
+  }
+
+  // Default → research
+  return 'research'
+}
+
+/** Get stage-specific instruction suffix for the agent prompt */
+function getStageInstructions(stage: LifecycleStage): string {
+  switch (stage) {
+    case 'research':
+      return 'STAGE INSTRUCTIONS: Research the problem. Read relevant files and gather information. Do NOT make any code changes yet.'
+    case 'development':
+      return 'STAGE INSTRUCTIONS: Implement the changes. Write code, modify files, and build the solution.'
+    case 'review':
+      return 'STAGE INSTRUCTIONS: Review your changes. Run tests and linting. Fix any issues found. Ensure quality before committing.'
+    case 'committed':
+      return 'STAGE INSTRUCTIONS: Stage and commit your changes with a descriptive commit message following conventional commit format.'
+    case 'pushed':
+      return 'STAGE INSTRUCTIONS: Push committed changes to the remote repository.'
+    case 'live':
+      return 'STAGE INSTRUCTIONS: Verify the deployment is live and working correctly.'
+  }
+}
+
 // --- Module-level launch function for retry support ---
 type LaunchFn = (opts: { prompt: string; cwd: string; env: NodeJS.ProcessEnv; title?: string; allowedTools?: string }) => void
 let storedLaunchFn: LaunchFn | null = null
@@ -109,9 +170,12 @@ export function completeRun(runId: string, updates: { status: HeartbeatRun['stat
     if (agent && agent.status === 'running') {
       setAgentStatus(agent.id, 'idle')
     }
-    // Move issue to in_review on success
+    // Move issue to in_review on success (unless auto-loop will handle it)
     if (run.issueId && updates.status === 'succeeded') {
-      updateAgentIssue(run.issueId, { status: 'in_review', result: updates.summary })
+      const iss = getAgentIssue(run.issueId)
+      if (!iss?.targetStage) {
+        updateAgentIssue(run.issueId, { status: 'in_review', result: updates.summary })
+      }
     }
 
     // Cooldown tracking
@@ -307,8 +371,23 @@ function buildAgentPrompt(agent: Agent, issue?: AgentIssue | null): string {
       }
     }
 
-    parts.push('')
-    parts.push('Please work on this issue autonomously. Read relevant files, implement changes, and verify your work.')
+    // Deliverables as acceptance criteria
+    if (issue.deliverables && issue.deliverables.length > 0) {
+      parts.push('')
+      parts.push('ACCEPTANCE CRITERIA / DELIVERABLES:')
+      issue.deliverables.forEach((d, i) => parts.push(`  ${i + 1}. ${d}`))
+    }
+
+    // Lifecycle stage context
+    if (issue.stage && issue.targetStage) {
+      parts.push('')
+      parts.push(`LIFECYCLE: Stage ${issue.stage} → target ${issue.targetStage} | Iteration ${(issue.iteration || 0) + 1}/${issue.maxIterations || 5}`)
+      parts.push(getStageInstructions(issue.stage))
+    } else {
+      parts.push('')
+      parts.push('Please work on this issue autonomously. Read relevant files, implement changes, and verify your work.')
+    }
+
     parts.push('When done, provide a brief summary of what you accomplished.')
     parts.push('Update `.agent-context.md` with key findings for the next agent run.')
   } else {
@@ -349,6 +428,7 @@ export function executeAgentHeartbeat(
     prompt,
     startedAt: now,
     parentRunId,
+    iteration: issue?.iteration,
   })
 
   // Update issue with run reference
@@ -564,6 +644,70 @@ export async function pollAgentSessions(): Promise<boolean> {
               if (ratio >= 0.8 && agent.status !== 'paused') {
                 updateAgent(agent.id, { status: 'paused' })
                 emitBudgetAlert(agent, ratio)
+              }
+            }
+
+            // --- Auto-relaunch logic ---
+            if (run.issueId) {
+              const issue = getAgentIssue(run.issueId)
+              if (issue?.targetStage && agent) {
+                // Re-read the run with structuredResult attached
+                const completedRun = getHeartbeatRuns().find(r => r.id === run.id)
+                const assessed = completedRun ? assessStage(completedRun) : 'research'
+                const iteration = (issue.iteration || 0) + 1
+                const maxIter = issue.maxIterations || 5
+                const targetReached = stageIndex(assessed) >= stageIndex(issue.targetStage)
+
+                // Update issue stage and iteration
+                updateAgentIssue(issue.id, { stage: assessed, iteration })
+
+                if (targetReached || iteration >= maxIter) {
+                  // Target reached or max iterations — move to in_review
+                  updateAgentIssue(issue.id, { status: 'in_review', result: result.summary })
+                  appendAgentEvent({
+                    agentId: run.agentId, runId: run.id, issueId: issue.id,
+                    type: 'auto_relaunch',
+                    detail: targetReached
+                      ? `Target stage '${issue.targetStage}' reached at iteration ${iteration} (assessed: ${assessed})`
+                      : `Max iterations (${maxIter}) reached at stage '${assessed}'`,
+                  })
+                } else {
+                  // Determine next stage for instructions
+                  const nextStageIdx = Math.min(stageIndex(assessed) + 1, STAGE_ORDER.length - 1)
+                  const nextStage = STAGE_ORDER[nextStageIdx]
+                  updateAgentIssue(issue.id, { stage: nextStage })
+
+                  // Budget check before relaunch
+                  const freshAgent = getAgent(run.agentId)
+                  if (freshAgent && freshAgent.status !== 'paused' && freshAgent.budgetMonthlyCents > 0) {
+                    const budgetRatio = freshAgent.spentMonthlyCents / freshAgent.budgetMonthlyCents
+                    if (budgetRatio >= 0.8) {
+                      updateAgentIssue(issue.id, { status: 'in_review', result: `Budget limit reached at iteration ${iteration}` })
+                      appendAgentEvent({ agentId: run.agentId, issueId: issue.id, type: 'auto_relaunch', detail: `Budget limit — stopping auto-loop at stage '${nextStage}'` })
+                      changed = true
+                      continue
+                    }
+                  }
+
+                  appendAgentEvent({
+                    agentId: run.agentId, runId: run.id, issueId: issue.id,
+                    type: 'auto_relaunch',
+                    detail: `Auto-relaunch: stage ${assessed} → ${nextStage} (iteration ${iteration}/${maxIter})`,
+                  })
+
+                  // Schedule relaunch after 5s delay
+                  const relaunchAgent = freshAgent || agent
+                  const relaunchIssue = getAgentIssue(issue.id)!
+                  if (storedLaunchFn && relaunchIssue) {
+                    setTimeout(() => {
+                      try {
+                        executeAgentHeartbeat(relaunchAgent, relaunchIssue, 'assignment', storedLaunchFn!)
+                      } catch (err: any) {
+                        console.error(`[agents] Auto-relaunch failed for issue ${issue.id}:`, err)
+                      }
+                    }, 5000)
+                  }
+                }
               }
             }
           } else {

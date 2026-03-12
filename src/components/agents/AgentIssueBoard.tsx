@@ -1,9 +1,20 @@
 import { useState } from 'react'
-import { AgentIssue } from '../../types'
+import { AgentIssue, LifecycleStage } from '../../types'
 import { useAgentStore } from '../../store'
 
 type Column = AgentIssue['status']
 type Priority = AgentIssue['priority']
+
+const STAGE_COLORS: Record<LifecycleStage, string> = {
+  research: 'bg-accent-amber/20 text-accent-amber',
+  development: 'bg-accent-blue/20 text-accent-blue',
+  review: 'bg-accent-purple/20 text-accent-purple',
+  committed: 'bg-accent-emerald/20 text-accent-emerald',
+  pushed: 'bg-accent-cyan/20 text-accent-cyan',
+  live: 'bg-green-500/20 text-green-400',
+}
+
+const LIFECYCLE_STAGES: (LifecycleStage | '')[] = ['', 'research', 'development', 'review', 'committed', 'pushed']
 
 const COLUMNS: { key: Column; label: string; color: string }[] = [
   { key: 'backlog', label: 'Backlog', color: 'text-white/40' },
@@ -40,6 +51,9 @@ export default function AgentIssueBoard() {
   const [newPriority, setNewPriority] = useState<Priority>('medium')
   const [newTags, setNewTags] = useState('')
   const [newAgentId, setNewAgentId] = useState('')
+  const [newTargetStage, setNewTargetStage] = useState<LifecycleStage | ''>('')
+  const [newMaxIterations, setNewMaxIterations] = useState(5)
+  const [newDeliverables, setNewDeliverables] = useState('')
 
   const filteredIssues = filterAgentId
     ? issues.filter(i => i.assignedAgentId === filterAgentId)
@@ -47,6 +61,7 @@ export default function AgentIssueBoard() {
 
   const handleAdd = async () => {
     if (!newTitle.trim()) return
+    const deliverables = newDeliverables.split('\n').map(d => d.trim()).filter(Boolean)
     await createIssue({
       title: newTitle.trim(),
       description: newDesc.trim(),
@@ -54,12 +69,22 @@ export default function AgentIssueBoard() {
       priority: newPriority,
       assignedAgentId: newAgentId || undefined,
       tags: newTags.split(',').map(t => t.trim()).filter(Boolean),
+      ...(newTargetStage ? {
+        stage: 'research' as LifecycleStage,
+        targetStage: newTargetStage as LifecycleStage,
+        maxIterations: newMaxIterations,
+        iteration: 0,
+      } : {}),
+      ...(deliverables.length > 0 ? { deliverables } : {}),
     })
     setNewTitle('')
     setNewDesc('')
     setNewPriority('medium')
     setNewTags('')
     setNewAgentId('')
+    setNewTargetStage('')
+    setNewMaxIterations(5)
+    setNewDeliverables('')
     setShowIssueForm(false)
   }
 
@@ -138,6 +163,40 @@ export default function AgentIssueBoard() {
               className="flex-1 px-3 py-1.5 bg-surface-2 border border-white/10 rounded-lg text-white text-sm focus:outline-none"
             />
           </div>
+          <div className="flex gap-3">
+            <select
+              value={newTargetStage}
+              onChange={e => setNewTargetStage(e.target.value as LifecycleStage | '')}
+              className="px-3 py-1.5 bg-surface-2 border border-white/10 rounded-lg text-white text-sm focus:outline-none"
+            >
+              <option value="">No auto-loop</option>
+              {LIFECYCLE_STAGES.filter(Boolean).map(s => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+            {newTargetStage && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-white/40">Max iterations:</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={20}
+                  value={newMaxIterations}
+                  onChange={e => setNewMaxIterations(Number(e.target.value) || 5)}
+                  className="w-16 px-2 py-1.5 bg-surface-2 border border-white/10 rounded-lg text-white text-sm focus:outline-none text-center"
+                />
+              </div>
+            )}
+          </div>
+          {newTargetStage && (
+            <textarea
+              value={newDeliverables}
+              onChange={e => setNewDeliverables(e.target.value)}
+              placeholder="Deliverables (one per line)..."
+              rows={2}
+              className="w-full px-3 py-2 bg-surface-2 border border-white/10 rounded-lg text-white text-sm focus:outline-none resize-none"
+            />
+          )}
           <div className="flex gap-2 justify-end">
             <button
               onClick={() => setShowIssueForm(false)}
@@ -194,6 +253,18 @@ export default function AgentIssueBoard() {
                       <span className="inline-block mt-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-accent-red/20 text-accent-red">
                         ESC {issue.escalationLevel}
                       </span>
+                    )}
+                    {issue.stage && (
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${STAGE_COLORS[issue.stage] || ''}`}>
+                          {issue.stage}
+                        </span>
+                        {issue.targetStage && (
+                          <span className="text-[9px] text-white/25">
+                            {(issue.iteration || 0)}/{issue.maxIterations || 5}
+                          </span>
+                        )}
+                      </div>
                     )}
                     <div className="flex items-center justify-between mt-2">
                       <span className="text-[10px] text-white/30">{getAgentName(issue.assignedAgentId)}</span>

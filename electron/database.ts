@@ -490,6 +490,10 @@ export interface AgentIssue {
   estimatedComplexity?: 'S' | 'M' | 'L'
   escalationLevel?: number
   escalatedAt?: string
+  stage?: 'research' | 'development' | 'review' | 'committed' | 'pushed' | 'live'
+  targetStage?: 'research' | 'development' | 'review' | 'committed' | 'pushed' | 'live'
+  maxIterations?: number
+  iteration?: number
   createdAt: string
   updatedAt: string
 }
@@ -515,6 +519,7 @@ export interface HeartbeatRun {
   nextRetryAt?: string
   structuredResult?: { filesChanged?: string[]; toolCalls?: { tool: string; count: number }[]; gitCommits?: string[] }
   parentRunId?: string
+  iteration?: number
   checkpoint?: { filesChanged?: string[]; partialSummary?: string; toolCallCount?: number }
   createdAt: string
 }
@@ -525,7 +530,7 @@ export interface AgentEvent {
   agentId: string
   runId?: string
   issueId?: string
-  type: 'launch' | 'complete' | 'fail' | 'retry' | 'requeue' | 'budget_alert' | 'escalation' | 'cooldown' | 'pause' | 'resume'
+  type: 'launch' | 'complete' | 'fail' | 'retry' | 'requeue' | 'budget_alert' | 'escalation' | 'cooldown' | 'pause' | 'resume' | 'auto_relaunch'
   detail: string
 }
 

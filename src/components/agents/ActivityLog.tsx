@@ -13,6 +13,7 @@ const TYPE_COLORS: Record<AgentEvent['type'], { bg: string; text: string }> = {
   cooldown: { bg: 'bg-accent-amber/20', text: 'text-accent-amber' },
   pause: { bg: 'bg-white/10', text: 'text-white/50' },
   resume: { bg: 'bg-accent-blue/20', text: 'text-accent-blue' },
+  auto_relaunch: { bg: 'bg-accent-cyan/20', text: 'text-accent-cyan' },
 }
 
 export default function ActivityLog() {
