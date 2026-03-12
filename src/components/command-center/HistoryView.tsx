@@ -15,15 +15,81 @@ function relativeTime(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString()
 }
 
+function pathToEncoded(p: string): string {
+  // "C:\Users\chris\mega-agenda" → "C--Users-chris-mega-agenda"
+  return p.replace(':', '-').replace(/[\\/]/g, '-')
+}
+
 function projectNameFromEncoded(encoded: string): string {
-  // "C--Users-chris-mega-agenda" → "mega-agenda" (last meaningful segment)
-  const parts = encoded.split('-')
-  // Find last non-empty segment group (heuristic: take everything after "chris" or last 1-2 segments)
-  const chrisIdx = parts.indexOf('chris')
-  if (chrisIdx >= 0 && chrisIdx < parts.length - 1) {
-    return parts.slice(chrisIdx + 1).join('-')
+  // "C--Users-chris-mega-agenda" → "mega-agenda"
+  // Use the last path segment from the decoded path
+  const dashDash = encoded.indexOf('--')
+  if (dashDash === -1) return encoded
+  const rest = encoded.slice(dashDash + 2)
+  const lastSep = rest.lastIndexOf('-')
+  if (lastSep === -1) return rest || encoded
+  // Take from last path separator — but project names can have hyphens
+  // So we use the known username pattern: everything after the user dir
+  const parts = rest.split('-')
+  const userIdx = parts.indexOf('Users')
+  if (userIdx >= 0 && userIdx + 2 < parts.length) {
+    // Skip "Users" and the username (next segment)
+    return parts.slice(userIdx + 2).join('-')
   }
   return parts[parts.length - 1] || encoded
+}
+
+function SessionRow({ session, expandedId, onExpand, loadingMessages, expandedMessages, showBadge = true }: {
+  session: CLISession
+  expandedId: string | null
+  onExpand: (id: string) => void
+  loadingMessages: boolean
+  expandedMessages: CLISessionMessage[]
+  showBadge?: boolean
+}) {
+  return (
+    <div>
+      <div
+        onClick={() => onExpand(session.sessionId)}
+        className="bg-surface-1 border border-white/[0.04] rounded-lg px-4 py-2.5 flex items-center justify-between cursor-pointer hover:border-white/[0.08] transition-all"
+      >
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <ChevronRight size={10} className={`text-white/20 transition-transform flex-shrink-0 ${expandedId === session.sessionId ? 'rotate-90' : ''}`} />
+          {showBadge && <Badge>{projectNameFromEncoded(session.project)}</Badge>}
+          <span className="text-[10px] text-white/60 truncate">
+            {session.firstPrompt || 'No prompt'}
+          </span>
+        </div>
+        <div className="flex items-center gap-3 flex-shrink-0 ml-2">
+          <span className="text-[9px] text-white/20 flex items-center gap-1">
+            <MessageSquare size={8} />{session.messageCount}
+          </span>
+          <span className="text-[9px] text-white/20 flex items-center gap-1">
+            <Clock size={8} />{relativeTime(session.modified)}
+          </span>
+        </div>
+      </div>
+      {expandedId === session.sessionId && (
+        <div className="bg-surface-0 border border-white/[0.04] rounded-b-lg px-4 py-3 -mt-1 max-h-72 overflow-y-auto space-y-2">
+          {loadingMessages ? (
+            <p className="text-[10px] text-white/30">Loading messages...</p>
+          ) : expandedMessages.length === 0 ? (
+            <p className="text-[10px] text-white/30">No messages found.</p>
+          ) : (
+            expandedMessages.map((msg, i) => (
+              <div key={i} className={`text-[11px] ${msg.type === 'user' ? 'text-white/70' : 'text-white/40'}`}>
+                <span className={`text-[9px] font-medium uppercase mr-2 ${msg.type === 'user' ? 'text-accent-blue' : 'text-accent-purple'}`}>
+                  {msg.type}
+                </span>
+                {msg.content.slice(0, 300)}
+                {msg.content.length > 300 && <span className="text-white/20">...</span>}
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
 export default function HistoryView() {
@@ -58,11 +124,11 @@ export default function HistoryView() {
     setLoadingMessages(false)
   }
 
-  // Filter CLI sessions by project name
+  // Filter CLI sessions by exact project path match
   const filteredSessions = historyFilter
     ? cliSessions.filter(s => {
-        const name = projectNameFromEncoded(s.project)
-        return historyFilter.endsWith(name) || historyFilter.includes(name)
+        const filterEncoded = pathToEncoded(historyFilter)
+        return s.project === filterEncoded
       })
     : cliSessions
 
@@ -106,54 +172,39 @@ export default function HistoryView() {
       {activeTab === 'cli' ? (
         /* CLI Sessions */
         filteredSessions.length === 0 ? (
-          <p className="text-[11px] text-white/30 text-center py-8">No CLI sessions found.</p>
+          <p className="text-[11px] text-white/30 text-center py-8">No CLI chats</p>
         ) : (
           <div className="space-y-1">
-            {filteredSessions.map(session => (
-              <div key={session.sessionId}>
-                <div
-                  onClick={() => handleExpandSession(session.sessionId)}
-                  className="bg-surface-1 border border-white/[0.04] rounded-lg px-4 py-2.5 flex items-center justify-between cursor-pointer hover:border-white/[0.08] transition-all"
-                >
-                  <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <ChevronRight size={10} className={`text-white/20 transition-transform flex-shrink-0 ${expandedId === session.sessionId ? 'rotate-90' : ''}`} />
-                    <Badge>{projectNameFromEncoded(session.project)}</Badge>
-                    <span className="text-[10px] text-white/60 truncate">
-                      {session.firstPrompt || 'No prompt'}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-3 flex-shrink-0 ml-2">
-                    <span className="text-[9px] text-white/20 flex items-center gap-1">
-                      <MessageSquare size={8} />{session.messageCount}
-                    </span>
-                    <span className="text-[9px] text-white/20 flex items-center gap-1">
-                      <Clock size={8} />{relativeTime(session.modified)}
-                    </span>
-                  </div>
-                </div>
+            {(() => {
+              // Group by project when showing all, flat list when filtered
+              if (historyFilter) {
+                return filteredSessions.map(session => (
+                  <SessionRow key={session.sessionId} session={session} expandedId={expandedId} onExpand={handleExpandSession} loadingMessages={loadingMessages} expandedMessages={expandedMessages} showBadge={false} />
+                ))
+              }
+              // Group by project, sorted by most recent session in each group
+              const groups = new Map<string, CLISession[]>()
+              for (const s of filteredSessions) {
+                const list = groups.get(s.project) || []
+                list.push(s)
+                groups.set(s.project, list)
+              }
+              const sortedGroups = Array.from(groups.entries())
+                .sort((a, b) => new Date(b[1][0].modified).getTime() - new Date(a[1][0].modified).getTime())
 
-                {/* Expanded: messages */}
-                {expandedId === session.sessionId && (
-                  <div className="bg-surface-0 border border-white/[0.04] rounded-b-lg px-4 py-3 -mt-1 max-h-72 overflow-y-auto space-y-2">
-                    {loadingMessages ? (
-                      <p className="text-[10px] text-white/30">Loading messages...</p>
-                    ) : expandedMessages.length === 0 ? (
-                      <p className="text-[10px] text-white/30">No messages found.</p>
-                    ) : (
-                      expandedMessages.map((msg, i) => (
-                        <div key={i} className={`text-[11px] ${msg.type === 'user' ? 'text-white/70' : 'text-white/40'}`}>
-                          <span className={`text-[9px] font-medium uppercase mr-2 ${msg.type === 'user' ? 'text-accent-blue' : 'text-accent-purple'}`}>
-                            {msg.type}
-                          </span>
-                          {msg.content.slice(0, 300)}
-                          {msg.content.length > 300 && <span className="text-white/20">...</span>}
-                        </div>
-                      ))
-                    )}
+              return sortedGroups.map(([project, sessions]) => (
+                <div key={project}>
+                  <div className="flex items-center gap-2 py-1.5 px-1">
+                    <span className="text-[10px] font-medium text-white/50">{projectNameFromEncoded(project)}</span>
+                    <span className="text-[9px] text-white/20">{sessions.length} chats</span>
+                    <div className="flex-1 border-t border-white/[0.04]" />
                   </div>
-                )}
-              </div>
-            ))}
+                  {sessions.map(session => (
+                    <SessionRow key={session.sessionId} session={session} expandedId={expandedId} onExpand={handleExpandSession} loadingMessages={loadingMessages} expandedMessages={expandedMessages} showBadge={false} />
+                  ))}
+                </div>
+              ))
+            })()}
           </div>
         )
       ) : (
