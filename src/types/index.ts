@@ -1616,6 +1616,9 @@ export interface ElectronAPI {
   gwsUploadDrive: (params: { format: 'csv' | 'json' }) =>
     Promise<{ success: boolean; fileId?: string; webViewLink?: string; error?: string }>
 
+  // System Wipe
+  systemWipe: () => Promise<void>
+
   // Command Center
   ccLaunch: (opts: { projectPath: string; prompt: string; model?: string; maxBudget?: number }) => Promise<any>
   ccRespond: (opts: { processId: string; response: string }) => Promise<void>

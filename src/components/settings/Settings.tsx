@@ -3,6 +3,7 @@ import ChatGPTSettings from './ChatGPTSettings'
 import CategoryManager from './CategoryManager'
 import TwitterSettings from './TwitterSettings'
 import FeedSettings from './FeedSettings'
+import DangerZone from './DangerZone'
 
 const SHORTCUTS = [
   { key: 'N', label: 'New task' },
@@ -59,6 +60,9 @@ export default function Settings() {
 
       {/* Feed Sources */}
       <FeedSettings />
+
+      {/* Danger Zone */}
+      <DangerZone />
     </div>
   )
 }

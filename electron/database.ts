@@ -1226,6 +1226,26 @@ function checkRecurringTasks() {
 
 export { checkRecurringTasks }
 
+export function systemWipe(): void {
+  // Delete backups directory
+  const backupDir = path.join(path.dirname(dbPath), 'backups')
+  if (fs.existsSync(backupDir)) {
+    const files = fs.readdirSync(backupDir)
+    for (const f of files) {
+      fs.unlinkSync(path.join(backupDir, f))
+    }
+    fs.rmdirSync(backupDir)
+  }
+
+  // Delete main database file
+  if (fs.existsSync(dbPath)) {
+    fs.unlinkSync(dbPath)
+  }
+
+  // Reinitialize fresh database
+  initDatabase()
+}
+
 export function getCategories(): Category[] {
   return db.categories.sort((a, b) => a.sort_order - b.sort_order)
 }

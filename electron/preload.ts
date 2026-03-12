@@ -630,6 +630,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => { ipcRenderer.removeListener('cc:queue-update', handler) }
   },
 
+  // System Wipe
+  systemWipe: () => ipcRenderer.invoke('system-wipe'),
+
   // Clipboard
   readClipboard: () => ipcRenderer.sendSync('read-clipboard'),
   writeClipboard: (text: string) => ipcRenderer.send('write-clipboard', text),
